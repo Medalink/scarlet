@@ -299,6 +299,7 @@ local function Learn(unit)
         if Plain(name) and name then names[id] = name end
     end
     Sighted(unit, id)
+    ns.Place("n", id, "s", unit)
 end
 
 function H.PLAYER_TARGET_CHANGED()

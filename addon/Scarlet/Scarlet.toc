@@ -23,6 +23,7 @@ Loot.lua
 Legacy.lua
 World.lua
 Teleport.lua
+Places.lua
 Character.lua
 Spells.lua
 Collections.lua

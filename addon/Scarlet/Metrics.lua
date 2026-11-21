@@ -402,6 +402,7 @@ local function LootSources(isFromItem)
             end
         end
         Emit("LO", kind, id, src.slots, table.concat(src.items, ","), again)
+        if kind == "c" or kind == "g" then ns.PlaceGUID(src.guid, "l") end
     end
 end
 

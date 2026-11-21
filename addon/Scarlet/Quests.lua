@@ -60,6 +60,7 @@ local npcNamed = {}
 local function Npc()
     local guid = UnitGUID("npc")
     if not Plain(guid) or type(guid) ~= "string" then return "" end
+    ns.PlaceGUID(guid, "t")
     local id = NpcID(guid)
     if type(id) ~= "number" then return "" end -- a player, an object or a mailbox
     if not npcNamed[id] then
