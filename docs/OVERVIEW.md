@@ -80,7 +80,8 @@ ScarletDigest = {
       level = 41, xp = 34632, xpMax = 95800, zone = "Riverglades",
       played = <seconds, from the newest TP total, else the sum of sessions>,
       money = <copper, latest known balance>,
-      sessions = { <session rows, newest first: the last 60, or all from the last 14 days if more> },
+      sessions = { <session rows, newest first: the last 60, or all from the last 14 days if more; and
+                    more, if needed, until their `p` add up to 36,000, for the level estimates> },
       levels = { [level] = { p, xk, xd, xq, xe, xo, k, dd, q, at = <epoch s reached, 0 if before recording>, zone = <zone with the most time> } },
       zones = { { name, p, k, dd, x }, ... },          -- top 40 by time
       runs = { { inst, name, n, last }, ... },          -- by n, top 10; last = epoch s
@@ -99,8 +100,8 @@ file stays under 200 KB.
 
 ## The page
 
-Header: name in class colour, `Level N Race Class · Faction · in Zone · played`, and a bar to
-the next level. Cards: Gold (balance, change over the last 7 sessions, sparkline), Dungeons
+Header: name in class colour, `Level N Race Class · Faction · in Zone · played`, a bar to
+the next level and the level estimates under it. Cards: Gold (balance, change over the last 7 sessions, sparkline), Dungeons
 and raids (top 5 by runs, total), Played with (top 3 by time together, sessions), Deaths (top
 zones, most frequent killer). This week: played, dungeons, quests, gold, zones. Experience by
 level: stacked XP sources per level, or time per level. Play history: sessions, days or levels
@@ -110,3 +111,67 @@ zones tile and no killer. Empty cards say what is missing in plain words
 ("No deaths recorded"), no slogans.
 
 The old stat grids stay, renamed "Stats".
+
+## Level estimates
+
+Time to the next level, to the next multiple of 10 and to level 60, from how the character has
+actually gained XP. The game and the app show the same numbers, so both follow this section
+exactly. All sums use the merged session rows (digest rows, the addon's own rows, the open
+session), newest first by `t`; two keys within 3 seconds are one row.
+
+**Pace.** Take rows newest first, the open session included, and stop after the row that brings
+the running total of `p` to 36,000 seconds (10 hours) or more; use all rows when they add up to
+less. `played` is the sum of `p` over the rows taken and `xp` the sum of `xk + xd + xq + xe + xo`.
+There is no estimate when `played` is under 900 seconds (15 minutes) or `xp` is 0. Otherwise
+`pace = xp / played` (XP per played second); the page shows `round(pace * 3600)` as XP an hour.
+
+**XP left to reach level T**, for a character at level `L` with `xp` of `xpMax` on the bar
+(the client's numbers; the digest's `level`, `xp` and `xpMax` on the companion side):
+
+```
+left(T) = max(0, xpMax - xp) + sum of NEED[n] for n = L+1 .. T-1
+```
+
+The empty sum is 0, so the next level needs only what is left on the bar. `NEED[n]` is the XP
+that level `n` needs to reach level `n+1`:
+
+| Level | XP | Level | XP | Level | XP | Level | XP |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 400 | 16 | 16,000 | 31 | 50,800 | 46 | 123,200 |
+| 2 | 900 | 17 | 17,700 | 32 | 54,500 | 47 | 129,100 |
+| 3 | 1,400 | 18 | 19,400 | 33 | 58,600 | 48 | 135,100 |
+| 4 | 2,100 | 19 | 21,300 | 34 | 62,800 | 49 | 141,200 |
+| 5 | 2,800 | 20 | 23,200 | 35 | 67,100 | 50 | 147,500 |
+| 6 | 3,600 | 21 | 25,200 | 36 | 71,600 | 51 | 153,900 |
+| 7 | 4,500 | 22 | 27,300 | 37 | 76,100 | 52 | 160,400 |
+| 8 | 5,400 | 23 | 29,400 | 38 | 80,800 | 53 | 167,100 |
+| 9 | 6,500 | 24 | 31,700 | 39 | 85,700 | 54 | 173,900 |
+| 10 | 7,600 | 25 | 34,000 | 40 | 90,700 | 55 | 180,800 |
+| 11 | 8,800 | 26 | 36,400 | 41 | 95,800 | 56 | 187,900 |
+| 12 | 10,100 | 27 | 38,900 | 42 | 101,000 | 57 | 195,000 |
+| 13 | 11,400 | 28 | 41,400 | 43 | 106,300 | 58 | 202,300 |
+| 14 | 12,900 | 29 | 44,300 | 44 | 111,800 | 59 | 209,800 |
+| 15 | 14,400 | 30 | 47,400 | 45 | 117,500 | | |
+
+The current level uses the client's `xpMax` instead of its table value. Observed `xpMax` values
+(level 41: 95,800 in 131 `X` and `S` lines; level 7: 4,500 on the digest) match the table. If a
+level is ever seen to differ, the observed value replaces that table entry.
+
+**Targets**, for `L` below 60: the next level `L + 1`; the next multiple of 10 above `L`,
+`(floor(L / 10) + 1) * 10`, only when it differs from `L + 1` and from 60; and 60. At level 60
+and above nothing is shown. At 59 the only target is 60.
+
+**Time** is `left(T) / pace`, in played time. Written as minutes `m = max(1, round(seconds / 60))`
+(halves round up): `d` days and `h` hours (`m div 1440`, `m mod 1440 div 60`) as `3d 4h` when
+`d > 0`; hours and minutes as `1h 52m` when `h > 0`; otherwise `41m`.
+
+**Date.** `rate` is the sum of `p` over the rows with `t >= now - 14 * 86400`, divided by 14
+(played seconds per calendar day). The date is `now + time / rate * 86400` seconds, in local
+time, written `Fri 28 Nov` (weekday, day, month), with the year added when it is not this year.
+Leave the date out when `rate` is 0 or when `time / rate` is more than 3,650 days. The page
+writes "about" before it.
+
+**The page.** Under the level bar: one row per target, `Level T`, the time and the date, and one
+muted line with the basis, `At your pace over the last 5h 35m played: 12,564 XP an hour`, where
+the duration is `played` in the time format above. With no estimate the rows are empty and the
+muted line says what is missing.

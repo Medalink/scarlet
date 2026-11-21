@@ -6,9 +6,22 @@ local _, ns = ...
 local floor, format, max, abs = math.floor, string.format, math.max, math.abs
 local Plain = ns.Plain
 
--- Page layout, in pixels: four panels in two rows under the name and level bar.
-local PANEL_H, PANEL_GAP, PANEL_TOP, ROW_H, ROWS = 146, 12, 96, 24, 4
+-- Page layout, in pixels: the level times under the level bar, then four panels in two rows.
+local PANEL_H, PANEL_GAP, PANEL_TOP, ROW_H, ROWS = 132, 10, 160, 22, 4
+local ETA_TOP, ETA_ROW_H = 86, 17
 local MATES, DEATHS = 3, 3
+
+-- Level estimates, see "Level estimates" in docs/OVERVIEW.md.
+local PACE_SECONDS = 36000 -- played time the pace is measured over
+local MIN_PLAYED = 900     -- less played time than this gives no estimate
+local DAY_WINDOW = 14      -- days the calendar rate is measured over
+local MAX_DAYS = 3650      -- a date further away than this is left out
+local MAX_LEVEL = 60
+-- NEED[n]: XP that level n needs to reach level n + 1.
+local NEED = { 400, 900, 1400, 2100, 2800, 3600, 4500, 5400, 6500, 7600, 8800, 10100, 11400, 12900, 14400,
+    16000, 17700, 19400, 21300, 23200, 25200, 27300, 29400, 31700, 34000, 36400, 38900, 41400, 44300, 47400,
+    50800, 54500, 58600, 62800, 67100, 71600, 76100, 80800, 85700, 90700, 95800, 101000, 106300, 111800, 117500,
+    123200, 129100, 135100, 141200, 147500, 153900, 160400, 167100, 173900, 180800, 187900, 195000, 202300, 209800 }
 
 -- Readers for client values: a secret, missing or mistyped value reads as nil.
 local function CNum(v)
@@ -77,6 +90,80 @@ local function Top(map, n, names, vals)
         if not bn then break end
         names[i], vals[i] = bn, bv
     end
+end
+
+-- Level estimates -----------------------------------------------------------------
+
+local function XPOf(row)
+    return N(row.xk) + N(row.xd) + N(row.xq) + N(row.xe) + N(row.xo)
+end
+
+-- Played seconds and XP of the newest rows until PACE_SECONDS are played (rows are newest first,
+-- the open session counts as the newest), and the played seconds of the last DAY_WINDOW days.
+local pace = { played = 0, xp = 0, day = 0, full = false }
+
+local function Take(t, p, x, dayStart)
+    if not pace.full then
+        pace.played, pace.xp = pace.played + p, pace.xp + x
+        pace.full = pace.played >= PACE_SECONDS
+    end
+    if t >= dayStart then pace.day = pace.day + p end
+end
+
+local function Pace(rows, live, now)
+    pace.played, pace.xp, pace.day, pace.full = 0, 0, 0, false
+    local dayStart = now - DAY_WINDOW * 86400
+    if live then
+        local t, held = N(live.t), false
+        for i = 1, #rows do
+            local rt = rows[i].t
+            if rt < t - 3 then break end
+            if rt <= t + 3 then held = true; break end
+        end
+        if not held then Take(t, N(live.p), XPOf(live), dayStart) end
+    end
+    for i = 1, #rows do
+        local r = rows[i]
+        if pace.full and r.t < dayStart then break end
+        Take(r.t, r.p, r.x, dayStart)
+    end
+end
+
+-- The levels to show for a character at level lvl: the next, the next multiple of 10, 60.
+local function Targets(lvl, out)
+    if lvl >= MAX_LEVEL then return 0 end
+    local n = 1
+    out[1] = lvl + 1
+    local major = (floor(lvl / 10) + 1) * 10
+    if major ~= lvl + 1 and major < MAX_LEVEL then n = n + 1; out[n] = major end
+    if lvl + 1 ~= MAX_LEVEL then n = n + 1; out[n] = MAX_LEVEL end
+    return n
+end
+
+-- XP still to earn before reaching level target, from level lvl with xp of xpMax on the bar.
+local function XPLeft(lvl, xp, xpMax, target)
+    local left = max(0, xpMax - xp)
+    for n = lvl + 1, target - 1 do left = left + (NEED[n] or 0) end
+    return left
+end
+
+-- "3d 4h", "1h 52m", "41m".
+local function Span(secs)
+    local m = max(1, floor(secs / 60 + 0.5))
+    local d, h = floor(m / 1440), floor(m % 1440 / 60)
+    if d > 0 then return format("%dd %dh", d, h) end
+    if h > 0 then return format("%dh %dm", h, m % 60) end
+    return format("%dm", m)
+end
+
+-- "Fri 28 Nov", with the year when it is not this year.
+local function DateText(ts, now)
+    local t = date("*t", ts)
+    if not t then return end
+    local text = format("%s %d %s", date("%a", ts), t.day, date("%b", ts))
+    local this = date("*t", now)
+    if this and this.year ~= t.year then text = text .. " " .. t.year end
+    return text
 end
 
 -- Everything that does not change while the window is open: the digest's sessions up to
@@ -151,6 +238,29 @@ local function Collect(key, lvl, weekStart)
         end
     end
     Top(mates, MATES, b.mn, b.mv)
+
+    -- Rows for the level estimates, newest first: all the digest's, plus the addon's that the digest
+    -- does not hold (two keys within 3 seconds are one session).
+    local rows = {}
+    if d and type(d.sessions) == "table" then
+        for _, row in ipairs(d.sessions) do
+            local t = type(row) == "table" and N(row.t) or 0
+            if t > 0 then rows[#rows + 1] = { t = t, p = N(row.p), x = XPOf(row) } end
+        end
+    end
+    local held = #rows
+    if type(o) == "table" and type(o.sess) == "table" then
+        for _, row in ipairs(o.sess) do
+            local t = type(row) == "table" and N(row.t) or 0
+            local dup = t <= 0
+            for i = 1, held do
+                if abs(rows[i].t - t) <= 3 then dup = true; break end
+            end
+            if not dup then rows[#rows + 1] = { t = t, p = N(row.p), x = XPOf(row) } end
+        end
+    end
+    table.sort(rows, function(a, c) return a.t > c.t end)
+    b.rows = rows
     return b
 end
 
@@ -180,6 +290,64 @@ function ns.OverviewPage(parent, ui)
     local progress = Text(page, 13, T.text)
     progress:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, -8)
 
+    -- Time to the next level, the next multiple of 10 and level 60, and what they are based on.
+    local etaLevel, etaTime, etaDate = {}, {}, {}
+    for i = 1, 3 do
+        local y = -ETA_TOP - (i - 1) * ETA_ROW_H
+        etaLevel[i] = Text(page, 13, T.text)
+        etaLevel[i]:SetPoint("TOPLEFT", 0, y)
+        etaLevel[i]:SetWidth(80)
+        etaTime[i] = Text(page, 13, T.fg)
+        etaTime[i]:SetPoint("TOPLEFT", 84, y)
+        etaTime[i]:SetWidth(90)
+        etaDate[i] = Text(page, 13, T.text)
+        etaDate[i]:SetPoint("TOPLEFT", 180, y)
+        etaDate[i]:SetWidth(220)
+    end
+    local etaBasis = Text(page, 13, T.muted)
+    etaBasis:SetPoint("TOPLEFT", 0, -ETA_TOP - 3 * ETA_ROW_H)
+    etaBasis:SetPoint("TOPRIGHT", 0, -ETA_TOP - 3 * ETA_ROW_H)
+    local targets = {}
+
+    -- Fills the rows for a character at level lvl; no rows (and no basis line) at level 60 or when
+    -- the client hides the experience bar.
+    local function ShowEta(rows, live, lvl, xp, xpMax)
+        local n = 0
+        local basis = ""
+        if lvl and xp and xpMax and xpMax > 0 then
+            n = Targets(lvl, targets)
+        end
+        if n > 0 then
+            local now = time()
+            Pace(rows, live, now)
+            if pace.played < MIN_PLAYED or pace.xp <= 0 then
+                n = 0
+                basis = "No level times yet: they need 15m played with XP recorded"
+            else
+                local perSecond = pace.xp / pace.played
+                local rate = pace.day / DAY_WINDOW
+                for i = 1, n do
+                    local secs = XPLeft(lvl, xp, xpMax, targets[i]) / perSecond
+                    local when
+                    if rate > 0 and secs / rate <= MAX_DAYS then
+                        when = DateText(floor(now + secs / rate * 86400), now)
+                    end
+                    etaLevel[i]:SetText("Level " .. targets[i])
+                    etaTime[i]:SetText(Span(secs))
+                    etaDate[i]:SetText(when and ("about " .. when) or "")
+                end
+                basis = format("At your pace over the last %s played: %s XP an hour",
+                    Span(pace.played), Num(perSecond * 3600))
+            end
+        end
+        etaBasis:SetText(basis)
+        for i = n + 1, 3 do
+            etaLevel[i]:SetText("")
+            etaTime[i]:SetText("")
+            etaDate[i]:SetText("")
+        end
+    end
+
     local function Card(col, row, title)
         local c = CreateFrame("Frame", nil, page)
         c:SetHeight(PANEL_H)
@@ -199,15 +367,15 @@ function ns.OverviewPage(parent, ui)
         c.left, c.right = {}, {}
         for i = 1, ROWS do
             local l = Text(c, 14, T.text)
-            l:SetPoint("TOPLEFT", 14, -40 - (i - 1) * ROW_H)
+            l:SetPoint("TOPLEFT", 14, -36 - (i - 1) * ROW_H)
             l:SetWidth(180)
             local r = Text(c, 14, T.fg, "RIGHT")
-            r:SetPoint("TOPRIGHT", -14, -40 - (i - 1) * ROW_H)
+            r:SetPoint("TOPRIGHT", -14, -36 - (i - 1) * ROW_H)
             r:SetWidth(96)
             c.left[i], c.right[i] = l, r
         end
         c.empty = Text(c, 14, T.muted)
-        c.empty:SetPoint("TOPLEFT", 14, -40)
+        c.empty:SetPoint("TOPLEFT", 14, -36)
         c.empty:Hide()
         -- Row i shows label and value; rows after the last one given are cleared.
         function c:Set(i, label, value)
@@ -259,6 +427,7 @@ function ns.OverviewPage(parent, ui)
         local color = classFile and _G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[classFile] or T.fg
         name:SetText(key)
         name:SetTextColor(color.r or color[1], color.g or color[2], color.b or color[3])
+        local clientLevel = lvl
         lvl = lvl or (type(base.level0) == "number" and base.level0) or nil
         local zone = CStr(GetRealZoneText()) or (type(base.zone) == "string" and base.zone) or nil
         if lvl and zone then
@@ -280,6 +449,7 @@ function ns.OverviewPage(parent, ui)
             barFill:SetWidth(1)
             progress:SetText(levelTime > 0 and ("This level " .. Duration(levelTime) .. " so far") or "")
         end
+        ShowEta(base.rows, live, clientLevel, xp, xpMax)
 
         -- This week
         local wp, wq, wg, ws, wr = base.wp, base.wq, base.wg, base.ws, base.wr
