@@ -666,14 +666,15 @@ end
 
 -- Route each event to handlers[event] and register every event the client
 -- knows. Unknown events are skipped, so one bad name never breaks loading.
--- label names the file in the profiler's rows.
-function ns.Listen(frame, handlers, label)
+-- label names the file in the profiler's rows. lazy is a set of events left unregistered here:
+-- the file registers them itself while it has a use for them.
+function ns.Listen(frame, handlers, label, lazy)
     local plain = function(_, event, ...) handlers[event](...) end
     frame:SetScript("OnEvent", plain)
     listeners[#listeners + 1] = { label = label or "?", frame = frame, handlers = handlers, plain = plain }
     local valid = C_EventUtils and C_EventUtils.IsEventValid
     for event in pairs(handlers) do
-        if not valid or valid(event) then
+        if (not lazy or not lazy[event]) and (not valid or valid(event)) then
             if UNIT_EVENTS[event] then
                 frame:RegisterUnitEvent(event, "player")
             else

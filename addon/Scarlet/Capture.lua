@@ -423,12 +423,22 @@ local function Threat(who, unit)
     return ok and Plain(v) and v ~= nil
 end
 
+-- UNIT_HEALTH reaches every frame for every unit the client updates (a raid sends thousands a
+-- second), and Died does nothing while no mob is engaged, so the event is registered only while one is.
+local healthOn = false
+local function WatchHealth(on)
+    if on == healthOn then return end
+    healthOn = on
+    if on then frame:RegisterEvent("UNIT_HEALTH") else frame:UnregisterEvent("UNIT_HEALTH") end
+end
+
 function H.UNIT_THREAT_LIST_UPDATE(unit)
     local guid = UnitGUID(unit)
     if not Plain(guid) or engaged[guid] then return end
     if Threat("player", unit) or (UnitExists("pet") and Threat("pet", unit)) then
         engaged[guid] = true
         nEngaged = nEngaged + 1
+        WatchHealth(true)
     end
 end
 
@@ -443,6 +453,7 @@ local function Died(unit)
     if Plain(denied) and denied then return end
     engaged[guid] = nil
     nEngaged = nEngaged - 1
+    if nEngaged == 0 then WatchHealth(false) end
     local id = NpcID(guid)
     NameNpc(id, guid)
     C_Timer.After(KILL_WAIT, function()
@@ -462,6 +473,7 @@ H.NAME_PLATE_UNIT_REMOVED = Died
 local function ForgetKills()
     if InCombatLockdown() then return end
     engaged, nEngaged, reported = {}, 0, {}
+    WatchHealth(false)
 end
 
 -- Spell and item names: each is written once per session (SN / IN lines) so
@@ -1462,4 +1474,4 @@ end
 ns.SpellName, ns.ItemName, ns.MapPoint, ns.NpcID, ns.Pattern = SpellName, ItemName, MapPoint, NpcID, Pattern
 ns.Round1, ns.TimerOn, ns.TimerOff = Round1, TimerOn, TimerOff
 
-ns.Listen(frame, H, "Capture")
+ns.Listen(frame, H, "Capture", { UNIT_HEALTH = true })
