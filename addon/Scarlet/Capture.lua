@@ -364,7 +364,10 @@ function H.PARTY_KILL(attacker, target)
     NameNpc(id, target)
     Emit("K", id, by)
     Ov.Kill()
-    if id == "p" and Plain(target) then PlayerKill(target, by) end
+    if id == "p" and Plain(target) then
+        PlayerKill(target, by)
+        if by == 1 then ns.AutoShot("pk") end
+    end
     ns.XPSource("k", id)
     Add("kills")
     if by == 1 then Add("blows") end
@@ -967,6 +970,7 @@ end
 function H.BOSS_KILL(id, name)
     Emit("B", id, name)
     Add("bosses")
+    ns.AutoShot("bk")
 end
 
 -- Progress: xp, money, loot, quests, gear, skills, reputation --------------------
@@ -1030,6 +1034,7 @@ function H.PLAYER_LEVEL_UP(level)
     Emit("L", level)
     Ov.Level(Num(level))
     Add("levels")
+    ns.AutoShot("lv")
 end
 
 -- Money mailed between your own characters is a transfer: M carries it as a
@@ -1126,6 +1131,8 @@ function H.CHAT_MSG_LOOT(text)
             ItemName(id)
             Emit("O", id, count, LinkVariant(text:match("|Hitem:[^|]+")))
             Add("loot", count)
+            local quality = C_Item and C_Item.GetItemQualityByID and C_Item.GetItemQualityByID(id)
+            if Plain(quality) and type(quality) == "number" and quality >= 4 then ns.AutoShot("ep") end
             return
         end
     end

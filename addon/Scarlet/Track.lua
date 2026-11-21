@@ -174,6 +174,7 @@ function H.PLAYER_DEAD()
     local m, x, y = MapPoint()
     Emit("DL", m, x, y)
     LookAround()
+    ns.AutoShot("de")
     C_Timer.After(1, function()
         DeathRecap()
         wipe(killers)
@@ -299,6 +300,7 @@ end
 local function Collected(kind, id, name)
     Emit("NC", kind, id or "", Str(name) or "")
     Add("collected")
+    ns.AutoShot("nc")
 end
 
 function H.NEW_MOUNT_ADDED(mountID)
@@ -349,6 +351,7 @@ local function Duel(winner, loser)
     if winner == me then
         Emit("DW", 1, loser)
         Add("duelsWon")
+        ns.AutoShot("dw")
     elseif loser == me then
         Emit("DW", 0, winner)
         Add("duelsLost")
@@ -625,16 +628,25 @@ end
 -- SS <file> <trigger>: the client names the file WoWScrnShot_MMDDYY_HHMMSS.<format> (the format is
 -- the screenshotFormat setting). The event does not give the name, so it is rebuilt from the
 -- time and can be a second off. trigger `c` when a Screenshot() call was seen in the 10 seconds
--- before (a key, macro or another addon), empty when none was. Scarlet takes no screenshots.
+-- before (a key, macro or another addon), empty when none was. The third field is the moment Scarlet
+-- took it for (Shots.lua, only when the setting is on), empty for any other screenshot.
 local shotCall = -100
 if type(_G.Screenshot) == "function" then
-    hooksecurefunc("Screenshot", function() shotCall = GetTime() end)
+    hooksecurefunc("Screenshot", function()
+        if not ns.shooting then shotCall = GetTime() end
+    end)
 end
 
 function H.SCREENSHOT_SUCCEEDED()
     local ext = _G.C_CVar and Str(_G.C_CVar.GetCVar("screenshotFormat")) or "jpg"
-    Emit("SS", date("WoWScrnShot_%m%d%y_%H%M%S") .. "." .. ext, GetTime() - shotCall < 10 and "c" or "")
+    local trigger = ns.shotTrigger and GetTime() - ns.shotT < 5 and ns.shotTrigger or ""
+    ns.shotTrigger = nil
+    Emit("SS", date("WoWScrnShot_%m%d%y_%H%M%S") .. "." .. ext, GetTime() - shotCall < 10 and "c" or "", trigger)
     Add("screenshots")
+end
+
+function H.SCREENSHOT_FAILED()
+    ns.shotTrigger = nil
 end
 
 -- Other addons ask for /played too, so one login can answer three times;

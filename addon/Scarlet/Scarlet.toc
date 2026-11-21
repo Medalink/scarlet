@@ -24,6 +24,7 @@ Legacy.lua
 World.lua
 Teleport.lua
 Places.lua
+Shots.lua
 Character.lua
 Spells.lua
 Collections.lua

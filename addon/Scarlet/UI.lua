@@ -459,12 +459,14 @@ local function SettingsPage(parent)
         Toggle(page, -132, "Pause recording", function() return opt.paused end, function(v) opt.paused = v end),
         Toggle(page, -176, "Show recording icon", function() return opt.icon ~= false end,
             function(v) opt.icon = v end),
+        Toggle(page, -220, "Take screenshots at key moments", function() return opt.shots end,
+            function(v) opt.shots = v end),
     }
     local save = Button(page, "Save chunk now", 150, function()
         SlashCmdList.SCARLET("save")
         ns.RefreshStatus()
     end)
-    save:SetPoint("TOPLEFT", 0, -240)
+    save:SetPoint("TOPLEFT", 0, -284)
     function page:Refresh()
         for i = 1, #toggles do toggles[i]:Refresh() end
     end
