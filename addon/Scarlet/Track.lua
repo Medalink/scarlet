@@ -465,17 +465,31 @@ local function RepairCost()
     return Plain(cost) and cost or 0
 end
 
+-- A repair is seen when the cost the vendor showed drops to 0 and money moved while the vendor was
+-- open. The client reports the durability change and the money change in either order (the real
+-- order is durability first), so the last positive cost is kept and a 0 never replaces it.
+local moneyMoved = false
+
+local function Settle()
+    if merchant and moneyMoved and repairCost > 0 and RepairCost() == 0 then
+        Emit("RE", repairCost)
+        Add("repairs", repairCost)
+        repairCost, moneyMoved = 0, false
+    end
+end
+
 function H.UPDATE_INVENTORY_DURABILITY()
     Durability()
-    if merchant then repairCost = RepairCost() end
+    if not merchant then return end
+    local cost = RepairCost()
+    if cost > 0 then repairCost = cost end
+    Settle()
 end
 
 function H.PLAYER_MONEY()
-    if merchant and repairCost > 0 and RepairCost() == 0 then
-        Emit("RE", repairCost)
-        Add("repairs", repairCost)
-        repairCost = 0
-    end
+    if not merchant then return end
+    moneyMoved = true
+    Settle()
 end
 
 -- Talking to NPCs: gossip, vendors, flight masters, trainers, bank, mail, auction --
@@ -498,7 +512,7 @@ end
 
 function H.GOSSIP_SHOW() Npc("g") end
 function H.MERCHANT_SHOW()
-    merchant, repairCost = true, RepairCost()
+    merchant, repairCost, moneyMoved = true, RepairCost(), false
     Npc("v")
 end
 function H.MERCHANT_CLOSED() merchant = false end
