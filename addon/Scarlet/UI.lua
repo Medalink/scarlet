@@ -56,11 +56,16 @@ local BUILTIN_FONTS = {
 }
 local DEFAULT_FONT, FALLBACK_FONT = "Sofia Sans", "Arial Narrow"
 local fontList, fontPaths = {}, {}
+local broken = {} -- file -> true for a font this client draws nothing with (see CheckFonts)
 local followers = {} -- font string -> { size, role }, for every string that follows the chosen font
 
 local function SharedMedia()
     local stub = _G.LibStub
     return stub and stub("LibSharedMedia-3.0", true)
+end
+
+local function FileKey(path)
+    return (path:lower():gsub("/", "\\"))
 end
 
 local function ListFonts()
@@ -69,8 +74,8 @@ local function ListFonts()
     local seen = {}
     local function Add(name, path)
         if type(name) ~= "string" or type(path) ~= "string" or fontPaths[name] then return end
-        local file = path:lower():gsub("/", "\\")
-        if seen[file] then return end
+        local file = FileKey(path)
+        if seen[file] or broken[file] then return end
         seen[file] = true
         fontPaths[name] = path
         fontList[#fontList + 1] = name
@@ -121,9 +126,53 @@ local function ApplyFont()
     for fs, def in pairs(followers) do SetFontSafe(fs, FacePath(def[2]), FaceSize(def[2], def[1])) end
 end
 
+local function Relist()
+    ListFonts()
+    ApplyFont()
+    if window and window:IsShown() and current == "fonts" then pages.fonts:Refresh() end
+end
+
+-- An addon can register a font whose file this client does not have (LibSharedMedia lists
+-- the retail CJK fonts). SetFont still takes it and the text draws nothing, so a font that
+-- measures no width twice, a second apart, leaves the list; a chosen one falls back.
+local probe, checking
+local function Draws(path)
+    if not probe then
+        probe = UIParent:CreateFontString(nil, "BACKGROUND")
+        probe:SetAlpha(0)
+    end
+    if not probe:SetFont(path, 16, "") then return false end
+    probe:SetText("Scarlet 0123")
+    return probe:GetStringWidth() > 0
+end
+
+local function CheckFonts()
+    if checking then return end
+    local suspect = {}
+    for _, name in ipairs(fontList) do
+        local path = fontPaths[name]
+        if not Draws(path) then suspect[#suspect + 1] = path end
+    end
+    if #suspect == 0 then return end
+    checking = true
+    C_Timer.After(1, function()
+        checking = nil
+        local dropped
+        for _, path in ipairs(suspect) do
+            if not Draws(path) then
+                broken[FileKey(path)] = true
+                dropped = true
+            end
+        end
+        if dropped then Relist() end
+    end)
+end
+
 -- Fonts registered after login (an addon loaded on demand) join the list.
 local fontRelist
 local function WatchFonts()
+    ListFonts()
+    CheckFonts()
     local lsm = SharedMedia()
     if not lsm or ns.fontWatch then return end
     ns.fontWatch = true
@@ -132,9 +181,8 @@ local function WatchFonts()
         fontRelist = true
         C_Timer.After(0.5, function()
             fontRelist = nil
-            ListFonts()
-            ApplyFont()
-            if window and window:IsShown() and current == "fonts" then pages.fonts:Refresh() end
+            Relist()
+            CheckFonts()
         end)
     end)
 end
