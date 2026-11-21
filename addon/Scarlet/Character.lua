@@ -568,7 +568,7 @@ function H.ACTIVE_GAME_MODE_UPDATED()
     if started then ModeRead() end
 end
 
--- RU <record> <warOn> <warOff> <warArea> <desired> <active> <faction> <flagged> <rules> <why>: the
+-- RU <record> <warOn> <warOff> <warArea> <desired> <active> <faction> <flagged> <server> <realm> <rules> <why>: the
 -- signals that might tell the character's ruleset (Normal, PvP, RP, RP-PvP, Hardcore), read
 -- together. The client has no call that names the ruleset, so none is guessed here; the web
 -- maps these once they are known for each ruleset. record is the game mode record id the
@@ -576,7 +576,9 @@ end
 -- warOn and warOff say whether the client allows turning war mode on and off, warArea
 -- whether this area allows a toggle (`1` or `0`, empty when the client has no answer).
 -- desired and active are the war mode state, faction the player's faction, flagged the PvP
--- flag. rules are the names of the client's game rules that are active, comma-joined (60 at
+-- flag. server is the realm id inside the player's GUID (`Player-<server>-<id>`), the only
+-- server number the client reports on Forever; realm is `GetRealmID`, which reads 0 there.
+-- rules are the names of the client's game rules that are active, comma-joined (60 at
 -- most). why as XD.
 local ruKey
 local function RuRead()
@@ -593,6 +595,8 @@ local function RuRead()
         for i = #names, 61, -1 do names[i] = nil end
     end
     local faction = Call(_G.UnitFactionGroup, "player")
+    local guid = Call(_G.UnitGUID, "player")
+    local server = type(guid) == "string" and guid:match("^Player%-(%d+)%-") or ""
     local fields = {
         rec or "",
         Flag(Call(PVP and PVP.CanToggleWarMode, true)),
@@ -602,6 +606,8 @@ local function RuRead()
         Flag(Call(PVP and PVP.IsWarModeActive)),
         Str(faction) or "",
         Flag(Call(_G.UnitIsPVP, "player")),
+        server,
+        Num(Call(_G.GetRealmID)) or "",
         concat(names, ","),
     }
     local key = concat(fields, "|")
