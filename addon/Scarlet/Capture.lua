@@ -231,6 +231,46 @@ end
 
 -- Zones -------------------------------------------------------------------------
 
+-- SZ <uiMapID> <subzone> <x> <y>: the first time this character enters a subzone, and where
+-- it stood on the map (the P units). The companion's Survey map reads its place names from
+-- the client's own tables, which several maps have none of; these lines give it a point
+-- there. One line per subzone per character, so it costs almost nothing after the first
+-- visit. The set is kept in the character's SavedVariables up to SZ_CAP subzones; past that
+-- a subzone is written once a session, like II.
+local SZ_CAP = 2000
+local szRetries, szSession = 0, {}
+
+local function Subzone()
+    local ch = ns.char
+    local sub = Str(GetSubZoneText())
+    if not ch or not sub then return end
+    local map, x, y = MapPoint()
+    if not map or not x or not y then
+        -- At login the map position can still be missing; wait for the world to settle.
+        if szRetries < 10 then
+            szRetries = szRetries + 1
+            C_Timer.After(1, Subzone)
+        end
+        return
+    end
+    szRetries = 0
+    local seen = ch.sz
+    if type(seen) ~= "table" then
+        seen = {}
+        ch.sz, ch.szN = seen, 0
+    end
+    local key = ns.Field(map) .. ":" .. ns.Field(sub)
+    if seen[key] then return end
+    if (ch.szN or 0) >= SZ_CAP then
+        if szSession[key] then return end
+        szSession[key] = true
+    else
+        seen[key] = true
+        ch.szN = (ch.szN or 0) + 1
+    end
+    Emit("SZ", map, sub, x, y)
+end
+
 local lastZone
 local zoneRetries = 0
 local function Zone()
@@ -252,6 +292,10 @@ local function Zone()
     if key == lastZone then return end
     lastZone = key
     Emit("Z", mapID, inst, itype, diff, zone, sub)
+    -- A subzone with no name yet has nothing to record; one late look covers a
+    -- name that trails the zone at login. Each entry gets its own retry budget.
+    szRetries = 0
+    if Str(sub) then Subzone() else C_Timer.After(5, Subzone) end
     Ov.Zone(Str(zone), Str(itype), Num(inst))
     -- A position with every zone line, so events after a login, hearth or
     -- flight link to a place on this map, not the last one walked on.

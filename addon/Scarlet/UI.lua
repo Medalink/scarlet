@@ -294,7 +294,7 @@ local PEOPLE_CARDS = {
 }
 
 local WORDS = {
-    S = "session", ES = "end", Z = "zone", P = "path", W = "moved", T = "flight", C = "cast", K = "kill",
+    S = "session", ES = "end", Z = "zone", SZ = "subzone", P = "path", W = "moved", T = "flight", C = "cast", K = "kill",
     N = "name", D = "died", R = "released", U = "revived", F = "combat", E = "encounter", B = "boss",
     L = "level", X = "xp", M = "money", O = "loot", Q = "quest", G = "gear", SK = "skill", RP = "rep",
     AC = "achieve", LG = "combatlog", A = "aura", CP = "camp", RS = "resting", I = "item",
