@@ -11,10 +11,8 @@
 ## IconTexture: Interface\AddOns\Scarlet\Media\Icon
 ## AddonCompartmentFunc: Scarlet_OnCompartmentClick
 
-# After creating the CurseForge and Wago projects, remove the leading "# " and paste the ID after the colon.
-# The BigWigs packager reads these two lines. See listing/README.md.
-# ## X-Curse-Project-ID: 
-# ## X-Wago-ID: 
+## X-Curse-Project-ID: 1822334
+## X-Wago-ID: 4N2b0xNL
 
 Core.lua
 Capture.lua
