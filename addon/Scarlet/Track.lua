@@ -98,6 +98,40 @@ end
 -- entry 1 is the killing blow (Forever's own recap marks it causedDeath). Its event table
 -- is undocumented, so every field is read defensively.
 local RECAP_HITS = 3
+
+-- Who could have killed you: the units you can see when you die. Read at PLAYER_DEAD, since the recap
+-- arrives a second later, and matched to the killing blow's source name. A creature keeps its level and
+-- classification, a player its level, class, race and guild.
+local KILLER_UNITS = { "target", "focus", "mouseover", "pettarget" }
+for i = 1, 4 do KILLER_UNITS[#KILLER_UNITS + 1] = "party" .. i .. "target" end
+for i = 1, 40 do
+    KILLER_UNITS[#KILLER_UNITS + 1] = "nameplate" .. i
+    KILLER_UNITS[#KILLER_UNITS + 1] = "raid" .. i .. "target"
+end
+local killers = {}
+
+local function Look(unit)
+    local exists = UnitExists(unit)
+    if not Plain(exists) or not exists then return end
+    local name = Str(UnitName(unit))
+    if not name or killers[name] then return end
+    local isPlayer = UnitIsPlayer(unit)
+    if not Plain(isPlayer) then return end
+    local lv = UnitLevel(unit)
+    local level = Plain(lv) and type(lv) == "number" and lv or ""
+    if isPlayer then
+        killers[name] = { "p", level, Str(select(2, UnitClass(unit))) or "", Str(select(2, UnitRace(unit))) or "",
+            Str((_G.GetGuildInfo(unit))) or "" }
+    else
+        killers[name] = { "c", level, Str(UnitClassification(unit)) or "", "", "" }
+    end
+end
+
+local function LookAround()
+    wipe(killers)
+    for i = 1, #KILLER_UNITS do Look(KILLER_UNITS[i]) end
+end
+
 local function DeathRecap()
     local recap = C_DeathRecap
     if not recap or not recap.GetRecapEvents then return end
@@ -117,10 +151,21 @@ local function DeathRecap()
             local amount, src = e.amount, e.sourceName
             if Plain(spell) and spell then SpellName(spell) end
             local t = N(e.timestamp)
-            Emit("DR", Plain(spell) and spell or "?", Plain(amount) and amount or "?",
-                Str(src) or "", Plain(e.isEnvironmental) and e.isEnvironmental and 1 or 0,
-                i, N(e.overkill), N(e.currentHP), maxHP,
-                (t ~= "" and last > 0) and ns.Round1(last - t) or "", N(e.school))
+            local who = Str(src)
+            local k = i == 1 and who and killers[who]
+            local when = (t ~= "" and last > 0) and ns.Round1(last - t) or ""
+            if i == 1 then
+                -- The killing blow also carries who it came from, when that unit was in sight, and the
+                -- number of hits the recap holds.
+                Emit("DR", Plain(spell) and spell or "?", Plain(amount) and amount or "?",
+                    who or "", Plain(e.isEnvironmental) and e.isEnvironmental and 1 or 0,
+                    i, N(e.overkill), N(e.currentHP), maxHP, when, N(e.school),
+                    k and k[1] or "", k and k[2] or "", k and k[3] or "", k and k[4] or "", k and k[5] or "", #events)
+            else
+                Emit("DR", Plain(spell) and spell or "?", Plain(amount) and amount or "?",
+                    who or "", Plain(e.isEnvironmental) and e.isEnvironmental and 1 or 0,
+                    i, N(e.overkill), N(e.currentHP), maxHP, when, N(e.school))
+            end
         end
     end
 end
@@ -128,7 +173,11 @@ end
 function H.PLAYER_DEAD()
     local m, x, y = MapPoint()
     Emit("DL", m, x, y)
-    C_Timer.After(1, DeathRecap)
+    LookAround()
+    C_Timer.After(1, function()
+        DeathRecap()
+        wipe(killers)
+    end)
 end
 
 -- Currencies, with the client's reason for each change -----------------------------
