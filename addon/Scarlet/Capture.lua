@@ -1110,14 +1110,28 @@ local mailMove -- { copper = signed transfer, t = GetTime() }
 -- Forever has no realms: a character's full name is Name-Surname, the key in
 -- ScarletDB.chars and the client's own WTF folder name. Mail may give it as
 -- "Name Surname", "Name-Surname" or just "Name".
-local function OwnChar(name)
-    if not Plain(name) or type(name) ~= "string" or name == "" or not (ns.db and ns.db.chars) then return false end
-    name = (name:gsub("%s+", "-")):lower()
-    for key in pairs(ns.db.chars) do
-        local k = key:lower()
-        if k == name or k:match("^[^-]+") == name then return true end
+local function HasChar(chars, name)
+    if type(chars) ~= "table" then return false end
+    for key in pairs(chars) do
+        if type(key) == "string" then
+            local k = key:lower()
+            if k == name or k:match("^[^-]+") == name then return true end
+        end
     end
     return false
+end
+
+local function OwnChar(name)
+    if not Plain(name) or type(name) ~= "string" or name == "" then return false end
+    name = (name:gsub("%s+", "-")):lower()
+    if HasChar(ns.db and ns.db.chars, name) then return true end
+    local d = _G.ScarletDigest
+    return type(d) == "table" and HasChar(d.chars, name)
+end
+ns.OwnChar = OwnChar
+
+function ns.MarkTransfer(copper)
+    mailMove = copper and copper ~= 0 and { copper = copper, t = GetTime() } or nil
 end
 
 -- The money on the send form, kept as it changes in case the form is

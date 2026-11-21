@@ -645,7 +645,17 @@ end
 function H.TRADE_ACCEPT_UPDATE(player, target)
     if not trade then return end
     if Num(player) == 1 or Num(target) == 1 then TradeSnapshot() end
-    if Num(player) == 1 and Num(target) == 1 then trade.both = true end
+    if Num(player) == 1 and Num(target) == 1 then
+        trade.both = true
+        local moved = trade.gotMoney - trade.gaveMoney
+        if moved ~= 0 and ns.OwnChar(trade.who) then
+            trade.marked = true
+            ns.MarkTransfer(moved)
+        end
+    elseif trade.marked then
+        trade.marked = nil
+        ns.MarkTransfer(nil)
+    end
 end
 
 function H.UI_INFO_MESSAGE(_, message)
@@ -658,6 +668,7 @@ function H.TRADE_CLOSED()
     local t = trade
     trade, lastTrade = nil, t
     if not t then return end
+    if t.marked and not (t.complete or t.both) then ns.MarkTransfer(nil) end
     -- done 1: the client said the trade completed. done 2: both sides accepted
     -- but no completion message came (it can still fail, e.g. full bags).
     C_Timer.After(0.5, function()
