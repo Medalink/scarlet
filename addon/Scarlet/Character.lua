@@ -83,11 +83,12 @@ end
 -- group, a trait config read by C_Traits like the Legacy trees, with the talent tabs as
 -- trait node groups and no PvP or hero talents. Two spec groups exist once dual spec is
 -- unlocked.
--- TG <why> <group> <groups> <specID> <spec> <treeID> <tabs> <classPoints> <specPoints> <configID>:
+-- TG <why> <group> <groups> <specID> <spec> <treeID> <tabs> <classPoints> <specPoints> <configID> <loadout>:
 -- the active talent group (1 or 2) and how many exist; specID and spec the name from the spec
 -- list (empty when the client has no spec selection); tabs is `groupID:spent:available` per
 -- talent tab, comma-joined, from the client's group currency; the two unspent counts come from
--- HasUnspentTalentPoints. why: `s` the first read of the session, `w` the active group changed,
+-- HasUnspentTalentPoints. loadout is the client's loadout export string for the config
+-- (C_Traits.GenerateImportString), read only with no picks staged; empty where the client gives none. why: `s` the first read of the session, `w` the active group changed,
 -- `r` the client reset or changed it, `c` anything else. Written when a value differs from the
 -- last TG of the session.
 -- TA <group> <nodeID> <entryID> <rank> <oldRank> <maxRanks> <spellID> <tab> <why>: a node's
@@ -212,11 +213,12 @@ local function Summary(group, cfg, specID, specName, tree, tabs)
     tabs = tabs or Tabs(tree, cfg)
     local u = CT and Pack(CT.HasUnspentTalentPoints)
     local classPoints, specPoints = u and Num(u[3]) or "", u and Num(u[4]) or ""
-    local key = concat({ group, groups, specID or "", specName or "", tree, tabs, classPoints, specPoints, cfg }, "|")
+    local loadout = Str(Call(TRAITS.GenerateImportString, cfg)) or ""
+    local key = concat({ group, groups, specID or "", specName or "", tree, tabs, classPoints, specPoints, cfg, loadout }, "|")
     if key == tgKey then return end
     local why = tgKey == nil and "s" or tal.why or "c"
     tgKey = key
-    Emit("TG", why, group, groups, specID or "", specName or "", tree, tabs, classPoints, specPoints, cfg)
+    Emit("TG", why, group, groups, specID or "", specName or "", tree, tabs, classPoints, specPoints, cfg, loadout)
 end
 
 -- Returns true when the client gave this node's data. Before a config has loaded the
