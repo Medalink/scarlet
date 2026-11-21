@@ -22,6 +22,7 @@ PvP.lua
 Loot.lua
 Legacy.lua
 World.lua
+Teleport.lua
 Character.lua
 Spells.lua
 Collections.lua

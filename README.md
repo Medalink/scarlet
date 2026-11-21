@@ -5,7 +5,7 @@ it on your PC. It never sends anything anywhere.
 
 ## What it records
 
-- **Travel:** the path you walk, ride, swim and fly on each map, flight paths, hearthstones and summons, zones and
+- **Travel:** the path you walk, ride, swim and fly on each map, flight paths, hearthstones, summons and other teleports, zones and
   subzones, the places you discover.
 - **Combat:** kills and who got them, deaths with the last three hits and the killing blow, time in combat, crowd
   control taken, damage and healing meters, boss encounters, duels and PvP kills.
