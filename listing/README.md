@@ -105,10 +105,10 @@ from a clean checkout, with an annotated tag on the commit:
 
 (`release.sh` is from https://github.com/BigWigsMods/packager; `-d` skips upload, `-z` skips the zip when `zip` is not
 installed.) The result is in `.release/Scarlet`. Zip that folder so the zip's top-level folder is `Scarlet`. It must not
-contain `Digest.lua`: the desktop app writes it into a working copy, the packager leaves out untracked files, and
-`.pkgmeta` ignores it as well.
+contain `Digest.lua`, `Items.lua` or a `ScarletData` folder: the desktop app writes those into its own `ScarletData`
+addon folder, and Scarlet's TOC lists none of them.
 
-Checked on 2026-11-20 against the packager's `master`: the package holds the TOC, all `.lua` files except `Digest.lua`,
+Checked on 2026-11-20 against the packager's `master`: the package holds the TOC, all `.lua` files,
 `Media/` and `Icon.tga`. It does not hold `docs/`, `tools/`, `listing/` or `README.md`.
 
 ## Check in game once
@@ -116,7 +116,7 @@ Checked on 2026-11-20 against the packager's `master`: the package holds the TOC
 - The icon shows in the AddOn list. `Icon.tga` is the format the client loads for `## IconTexture`, but this client
   was not available here to confirm it. If the icon is blank, convert it to `.blp`.
 - The addon compartment entry shows the same icon.
-- A copy without `Digest.lua` loads with no error. This is how a git clone already installs.
+- A copy without `ScarletData` loads with no error and no LUA_WARNING about a missing file. This is how a git clone and a CurseForge install load.
 - `## X-Category: Data Export` is metadata only; the client groups the AddOn list by `## Category`, which has no fitting
   name (the client's list has "Other" and "Development Tools"), so Scarlet is left ungrouped.
 

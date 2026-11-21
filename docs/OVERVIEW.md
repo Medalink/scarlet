@@ -5,7 +5,7 @@ Both read the same rows. Three places produce them:
 
 - **The companion** builds them from every recorded line of a character
   (`companion/src/overview.rs`). The app shows them, and each export writes
-  them to `Digest.lua` in the addon folder for the game to read.
+  them to `Digest.lua` in the `ScarletData` addon folder for the game to read.
 - **The addon** keeps a ring of the same session rows in SavedVariables
   (`ScarletDB.chars[<Name-Surname>].ov`), summed live as events happen.
 - **The game** merges the two: the digest covers every session up to
@@ -74,10 +74,14 @@ leaves open keeps its time up to then.
 ## Digest.lua
 
 Written by the companion after each export, to
-`<wow>\_forever_\Interface\AddOns\Scarlet\Digest.lua`, through a `.tmp` file and a rename
-(retried on the next export when the game holds the file). Each character's rows come from
-`overview.json`, rebuilt from the payloads first when any payload is newer than it. It is generated, not in git, and
-listed in the TOC; the addon works the same when it is missing (`ScarletDigest == nil`).
+`<wow>\_forever_\Interface\AddOns\ScarletData\Digest.lua`, through a `.tmp` file and a rename
+(retried on the next export when the game holds the file). `ScarletData` is an addon folder the companion owns, in
+every WoW folder it manages. Its `ScarletData.toc` carries Scarlet's Interface number and lists `Digest.lua` and
+`Items.lua`, and is written once both exist. Scarlet's TOC names `ScarletData` in `## OptionalDeps` and lists neither
+file, so a player without the app has no missing file for the client to warn about. The companion deletes the old
+`Digest.lua`, `Items.lua` and `.tmp` files from the `Scarlet` folder once Scarlet's TOC no longer lists them. Each character's rows come from
+`overview.json`, rebuilt from the payloads first when any payload is newer than it. It is generated and not in git; the addon reads
+`_G.ScarletDigest` only when a page or event needs it and works the same when it is missing (`ScarletDigest == nil`).
 
 ```lua
 ScarletDigest = {
@@ -177,7 +181,7 @@ estimates and Played together.
   digest; the logged-in character uses the client's level and XP.
 - Played together lists each pair once with the larger of the two sides' `o`, `p` and `last` from `alts`.
 
-- Item search reads `Items.lua` (`ScarletItems`), which the companion writes into the addon folder beside
+- Item search reads `Items.lua` (`ScarletItems`), which the companion writes into `ScarletData` beside
   `Digest.lua` from each character's latest `BC` lines: `names` (itemID to name), and per character `b` and
   `k` (itemID to count in the bags and in the bank) with `tb` and `tk`, when each was read. A query of two or
   more characters matches an item name (any case, as typed) or an item id. A row is one item held by one

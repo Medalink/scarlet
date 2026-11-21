@@ -10,10 +10,6 @@ move-folders:
   Scarlet/addon/Scarlet: Scarlet
 
 ignore:
-  - addon/Scarlet/Digest.lua
-  - addon/Scarlet/Digest.lua.tmp
-  - addon/Scarlet/Items.lua
-  - addon/Scarlet/Items.lua.tmp
   - .luarc.json
   - .gitignore
   - .github

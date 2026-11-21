@@ -259,7 +259,6 @@ function Env.load(dir)
             if not chunk then error(err) end
             chunk("Scarlet", ns)
         else
-            -- Digest.lua is written by scarlet-app and is not in a clean checkout.
             Env.skipped[#Env.skipped + 1] = f
         end
     end

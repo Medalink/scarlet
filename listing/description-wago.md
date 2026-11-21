@@ -55,7 +55,7 @@ Settings has toggles for movement path recording, combat logging at login, the l
 
 ### Desktop app (optional)
 
-The Windows desktop app reads the recording and draws an overview, timeline, maps, charts and loot tables. It also writes `Digest.lua` into the addon folder, which lets the in-game Character page show your history from before the current session. Scarlet works without it.
+The Windows desktop app reads the recording and draws an overview, timeline, maps, charts and loot tables. It also writes a small `ScarletData` addon beside Scarlet, which lets the in-game Character page show your history from before the current session. Scarlet works without it.
 
 Download it from https://github.com/Medalink/scarlet-app/releases
 
