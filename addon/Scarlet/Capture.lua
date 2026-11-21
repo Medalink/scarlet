@@ -879,6 +879,7 @@ end
 -- bags net to zero and write nothing.
 
 local bagCounts, bagScratch = {}, {}
+local bankScratch = {}
 local bagsReady = false
 local where, whereUntil
 
@@ -907,6 +908,62 @@ end
 local function SellPrice(id)
     local r = Pack(C_Item and C_Item.GetItemInfo, id)
     return r and Num(r[12]) or ""
+end
+
+local BC_ITEMS = 150
+local BANK_READ_DELAY = 0.6
+local bankCounts, bankSig, bankWritten = {}, nil, nil
+local bankOpen = false
+
+local function WriteCounts(code, counts)
+    local ids = {}
+    for id in pairs(counts) do ids[#ids + 1] = id end
+    table.sort(ids)
+    for i = 1, #ids do ItemName(ids[i]) end
+    if #ids == 0 then
+        Emit("BC", code, "")
+        return
+    end
+    local list = {}
+    for i = 1, #ids do
+        list[#list + 1] = ids[i] .. ":" .. counts[ids[i]]
+        if #list == BC_ITEMS or i == #ids then
+            Emit("BC", code, table.concat(list, ","))
+            wipe(list)
+        end
+    end
+end
+
+local function ListSig(counts)
+    local ids = {}
+    for id in pairs(counts) do ids[#ids + 1] = id end
+    table.sort(ids)
+    for i = 1, #ids do ids[i] = ids[i] .. ":" .. counts[ids[i]] end
+    return table.concat(ids, ",")
+end
+
+local function ReadBank()
+    local bank, kind = _G.C_Bank, _G.Enum and _G.Enum.BankType
+    if not (bank and bank.FetchPurchasedBankTabData and kind and kind.Character) then return end
+    local tabs = bank.FetchPurchasedBankTabData(kind.Character)
+    if not Plain(tabs) or type(tabs) ~= "table" then return end
+    local seen = 0
+    wipe(bankScratch)
+    for _, tab in ipairs(tabs) do
+        local id = type(tab) == "table" and tab.ID
+        if Plain(id) and type(id) == "number" then
+            local slots = C_Container.GetContainerNumSlots(id) or 0
+            seen = seen + slots
+            for slot = 1, slots do
+                local info = C_Container.GetContainerItemInfo(id, slot)
+                local item, n = info and info.itemID, info and info.stackCount
+                if item and Plain(item) and Plain(n) then bankScratch[item] = (bankScratch[item] or 0) + (n or 1) end
+            end
+        end
+    end
+    if seen == 0 then return end
+    bankCounts, bankScratch = bankScratch, bankCounts
+    bankSig = nil
 end
 
 function H.BAG_UPDATE_DELAYED()
@@ -942,6 +999,7 @@ function H.BAG_UPDATE_DELAYED()
         end
     end
     bagCounts, bagScratch = bagScratch, bagCounts
+    if bankOpen then ReadBank() end
 end
 
 local function Opened(code) return function() where, whereUntil = code, nil end end
@@ -949,7 +1007,24 @@ local function Opened(code) return function() where, whereUntil = code, nil end 
 -- fished and opened items reach the bags up to about 1.2 s after the window.
 local function Closed() whereUntil = GetTime() + 2 end
 H.MERCHANT_SHOW, H.MERCHANT_CLOSED = Opened("v"), Closed
-H.BANKFRAME_OPENED, H.BANKFRAME_CLOSED = Opened("b"), Closed
+
+function H.BANKFRAME_OPENED()
+    where, whereUntil = "b", nil
+    bankOpen = true
+    C_Timer.After(BANK_READ_DELAY, function() if bankOpen then ReadBank() end end)
+end
+
+function H.BANKFRAME_CLOSED()
+    Closed()
+    if bankOpen then ReadBank() end
+    bankOpen = false
+    local sig = bankSig or ListSig(bankCounts)
+    bankSig = sig
+    if next(bankCounts) ~= nil and sig ~= bankWritten then
+        bankWritten = sig
+        WriteCounts("k", bankCounts)
+    end
+end
 H.MAIL_SHOW, H.MAIL_CLOSED = Opened("m"), Closed
 H.TRADE_SHOW, H.TRADE_CLOSED = Opened("t"), Closed
 -- LOOT_READY too: fast-loot addons take everything before LOOT_OPENED.
@@ -1507,6 +1582,7 @@ function H.PLAYER_LOGOUT()
     end
     FlushMates()
     for k in pairs(timers) do TimerOff(k) end
+    if bagsReady then WriteCounts("b", bagCounts) end
     if ns.Cap.Levelling() then
         local rest, xpMax, resting = GetXPExhaustion(), UnitXPMax("player"), IsResting()
         if Plain(rest) and Plain(xpMax) and Plain(resting) then
