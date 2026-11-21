@@ -308,14 +308,17 @@ H.CP = function(st, store, f)
     if ms then AddPoint(ms, "camps", x, y) end
 end
 
-local function Main(st, store, line)
-    local sp1 = find(line, "\t", 1, true)
-    if not sp1 then return end
-    st.ms = st.ms + (tonumber(sub(line, 1, sp1 - 1)) or 0) * 10
-    local sp2 = find(line, "\t", sp1 + 1, true)
-    local code = sub(line, sp1 + 1, sp2 and sp2 - 1 or -1)
+-- One line, read where it lies in a chunk's text (text[s..e]): a line the map has no use for is never
+-- cut out of the text, so it costs no string.
+local function MainAt(st, store, text, s, e)
+    local sp1 = find(text, "\t", s, true)
+    if not sp1 or sp1 > e then return end
+    st.ms = st.ms + (tonumber(sub(text, s, sp1 - 1)) or 0) * 10
+    local sp2 = find(text, "\t", sp1 + 1, true)
+    if sp2 and sp2 > e then sp2 = nil end
+    local code = sub(text, sp1 + 1, sp2 and sp2 - 1 or e)
     if code == "P" then
-        local m, x, y = match(line, "^%d+\tP\t(%d+)\t(%d+)\t(%d+)")
+        local m, x, y = match(text, "^%d+\tP\t(%d+)\t(%d+)\t(%d+)", s)
         m, x, y = tonumber(m), tonumber(x), tonumber(y)
         if m and x and y then
             st.hm, st.hx, st.hy = m, x, y
@@ -324,12 +327,16 @@ local function Main(st, store, line)
     elseif code == "S" then
         st.hm, st.flying, st.lastM = nil, false, nil
     elseif code == "Z" then
-        local m = tonumber(match(line, "^%d+\tZ\t(%d+)"))
+        local m = tonumber(match(text, "^%d+\tZ\t(%d+)", s))
         if st.hm and st.hm ~= m then st.hm = nil end
     else
         local h = H[code]
-        if h then h(st, store, { strsplit("\t", line) }) end
+        if h then h(st, store, { strsplit("\t", sub(text, s, e)) }) end
     end
+end
+
+local function Main(st, store, line)
+    MainAt(st, store, line, 1, #line)
 end
 
 -- Lines other addons recorded (ScarletAddonsDB): GatherMate2 nodes and The Fishing Log catches.
@@ -394,11 +401,15 @@ local function Build()
             local text = Text(c)
             if text then
                 stS.ms = (tonumber(c.t) or 0) * 1000
-                local n = 0
-                for line in gmatch(text, "[^\n]+") do
-                    Main(stS, sealed, line)
-                    n = n + 1
-                    if n % 128 == 0 then Pause() end
+                local n, pos, len = 0, 1, #text
+                while pos <= len do
+                    local nl = find(text, "\n", pos, true) or len + 1
+                    if nl > pos then
+                        MainAt(stS, sealed, text, pos, nl - 1)
+                        n = n + 1
+                        if n % 128 == 0 then Pause() end
+                    end
+                    pos = nl + 1
                 end
             end
         end
