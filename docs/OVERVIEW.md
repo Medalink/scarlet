@@ -167,8 +167,8 @@ The in-game Characters page reads the digest first, since `ScarletDB` holds only
 the current game account. A character's row is its digest figures (`class`, `level`, `zone`, `played`,
 `money`, `through`) plus this account's own rows after `through`; the logged-in character is live.
 Characters are grouped by game account (`accounts`, else the characters this account recorded).
-Sections: the totals (characters, played, gold), the character list, This week, Level estimates and
-Played together.
+Sections: the totals (characters, played, gold), Item search, the character list, This week, Level
+estimates and Played together.
 
 - This week sums each character's `days` from the Monday 00:00 local time of this week, plus its own rows
   after `through` and, for the logged-in character, the open session. A digest without `days` falls back
@@ -176,6 +176,14 @@ Played together.
 - Level estimates are the estimates below for each character that is not at the cap, from its own
   digest; the logged-in character uses the client's level and XP.
 - Played together lists each pair once with the larger of the two sides' `o`, `p` and `last` from `alts`.
+
+- Item search reads `Items.lua` (`ScarletItems`), which the companion writes into the addon folder beside
+  `Digest.lua` from each character's latest `BC` lines: `names` (itemID to name), and per character `b` and
+  `k` (itemID to count in the bags and in the bank) with `tb` and `tk`, when each was read. A query of two or
+  more characters matches an item name (any case, as typed) or an item id. A row is one item held by one
+  character, with its bag and bank counts, sorted by item name, then by the larger total. The logged-in
+  character's bags are counted live; its bank is the last list read. The page shows 40 rows and says how many
+  matched. Without `Items.lua` only the logged-in character's bags are found.
 
 ## Level estimates
 

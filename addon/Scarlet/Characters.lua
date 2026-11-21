@@ -1,6 +1,7 @@
 local _, ns = ...
 
-local floor, format, max = math.floor, string.format, math.max
+local floor, format, max, min = math.floor, string.format, math.max, math.min
+local lower, find = string.lower, string.find
 local Plain = ns.Plain
 
 local ROW_H, HEAD_H, SECTION_GAP, STAT_H = 26, 20, 30, 62
@@ -33,7 +34,13 @@ local function CStr(v)
     if Plain(v) and type(v) == "string" and v ~= "" then return v end
 end
 
+local ITEMS = {
+    { x = 0, w = 240 }, { x = 250, w = 170 }, { x = 430, w = 100, just = "RIGHT" }, { x = 540, w = 115, just = "RIGHT" },
+}
+local MIN_QUERY, MAX_HITS, BOX_H = 2, 40, 28
+
 local rows, pairsList = {}, {}
+local liveBags = {}
 
 local function Span(secs)
     local m = max(1, floor(secs / 60 + 0.5))
@@ -165,8 +172,58 @@ local function Collect()
     end)
 end
 
+local function AddHits(hits, key, bags, bank, names, query, want)
+    local seen = {}
+    for _, list in ipairs({ bags, bank }) do
+        for id in pairs(list) do
+            if type(id) == "number" and not seen[id] then
+                seen[id] = true
+                local name = names[id]
+                if not name and C_Item and C_Item.GetItemNameByID then name = CStr(C_Item.GetItemNameByID(id)) end
+                if id == want or (name and find(lower(name), query, 1, true)) then
+                    local b, k = N(bags[id]), N(bank[id])
+                    hits[#hits + 1] = { id = id, name = name or ("Item " .. id), key = key, bags = b, bank = k,
+                        total = b + k }
+                end
+            end
+        end
+    end
+end
+
+local function Find(query)
+    local data = _G.ScarletItems
+    local ok = type(data) == "table"
+    local names = ok and type(data.names) == "table" and data.names or {}
+    local stored = ok and type(data.chars) == "table" and data.chars or {}
+    local want = tonumber(query)
+    local keys = {}
+    for key in pairs(stored) do keys[key] = true end
+    if ns.charKey then keys[ns.charKey] = true end
+    local hits = {}
+    for key in pairs(keys) do
+        if type(key) == "string" then
+            local c = type(stored[key]) == "table" and stored[key] or {}
+            local bags = type(c.b) == "table" and c.b or {}
+            local bank = type(c.k) == "table" and c.k or {}
+            if key == ns.charKey and ns.CountBags then
+                ns.CountBags(liveBags)
+                bags = liveBags
+            end
+            AddHits(hits, key, bags, bank, names, query, want)
+        end
+    end
+    table.sort(hits, function(a, b)
+        local x, y = lower(a.name), lower(b.name)
+        if x ~= y then return x < y end
+        if a.id ~= b.id then return a.id < b.id end
+        if a.total ~= b.total then return a.total > b.total end
+        return a.key < b.key
+    end)
+    return hits
+end
+
 function ns.CharactersPage(parent, ui)
-    local T, Fill, Hair, Text = ui.T, ui.Fill, ui.Hair, ui.Text
+    local T, Fill, Hair, Text, Border = ui.T, ui.Fill, ui.Hair, ui.Text, ui.Border
     local Num, Money, Duration = ui.Num, ui.Money, ui.Duration
 
     local function Signed(copper)
@@ -255,6 +312,22 @@ function ns.CharactersPage(parent, ui)
     local etaSec = Section("Level estimates", ETA, { "Character", "Level", "Time", "Date" })
     local togetherSec = Section("Played together", TOGETHER,
         { "Character", "Character", "Online together", "Grouped", "Last" })
+    local findSec = Section("Item search", ITEMS, { "Item", "Character", "Bags", "Bank" })
+
+    local query = ""
+    local box = CreateFrame("Frame", nil, child)
+    box:SetSize(320, BOX_H)
+    Fill(box, T.panel):SetAllPoints()
+    Border(box, T.line2)
+    local edit = CreateFrame("EditBox", nil, box)
+    edit:SetPoint("TOPLEFT", 8, 0)
+    edit:SetPoint("BOTTOMRIGHT", -8, 0)
+    edit:SetAutoFocus(false)
+    edit:SetMaxLetters(40)
+    ui.SetFont(edit, ui.Face("body"), 13)
+    edit:SetTextColor(T.fg[1], T.fg[2], T.fg[3])
+    edit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    edit:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
 
     local y
     local function Below(frame, gap)
@@ -337,7 +410,8 @@ function ns.CharactersPage(parent, ui)
         local live = ns.Ov.Live()
         local weekStart = ns.WeekStart()
         local level, money = CNum(UnitLevel("player")) or 0, CNum(GetMoney()) or 0
-        local sig = format("%d:%d:%d:%d", floor(N(live and live.p) / 15), money, level, #rows)
+        local sig = format("%d:%d:%d:%d:%s:%d", floor(N(live and live.p) / 15), money, level, #rows, query,
+            query ~= "" and floor(GetTime() / 5) or 0)
         if not force and sig == stamp then return end
         stamp = sig
         local now = time()
@@ -361,6 +435,41 @@ function ns.CharactersPage(parent, ui)
             cell:SetWidth(cw)
         end
         y = -(STAT_H + SECTION_GAP)
+
+        findSec.title:ClearAllPoints()
+        findSec.title:SetPoint("TOPLEFT", 0, y)
+        findSec.title:Show()
+        y = y - TITLE_H
+        box:ClearAllPoints()
+        box:SetPoint("TOPLEFT", 0, y)
+        y = y - BOX_H - 14
+        local hits = #query >= MIN_QUERY and Find(query) or nil
+        local found = 0
+        findSec.empty:Hide()
+        if hits and #hits > 0 then
+            findSec.head:Show()
+            Below(findSec.head, HEAD_H)
+            local classOf = {}
+            for i, r in ipairs(rows) do classOf[r.key] = list[i].class end
+            for i = 1, min(#hits, MAX_HITS) do
+                local h = hits[i]
+                found = found + 1
+                local c = Place(findSec, found).cols
+                c[1]:SetText(h.name)
+                c[2]:SetText(h.key)
+                Tint(c[2], classOf[h.key], T.fg)
+                c[3]:SetText(h.bags > 0 and Num(h.bags) or "")
+                c[4]:SetText(h.bank > 0 and Num(h.bank) or "")
+            end
+            if #hits > MAX_HITS then
+                found = found + 1
+                Place(findSec, found, format("Showing %d of %d", MAX_HITS, #hits))
+            end
+        else
+            findSec.head:Hide()
+        end
+        for i = #findSec.rows, found + 1, -1 do findSec.rows[i].frame:Hide() end
+        Close(findSec, found, hits and "No items match" or nil)
 
         Open(charSec)
         local count, group = 0, nil
@@ -458,6 +567,11 @@ function ns.CharactersPage(parent, ui)
         child:SetHeight(-y)
     end
 
+    edit:SetScript("OnTextChanged", function(self)
+        query = lower(self:GetText():match("^%s*(.-)%s*$"))
+        if page:IsShown() then Draw(true) end
+    end)
+
     local dirty = true
     function page:Refresh()
         if dirty then
@@ -471,5 +585,6 @@ function ns.CharactersPage(parent, ui)
     end
 
     page:SetScript("OnShow", function() dirty = true end)
+    page:SetScript("OnHide", function() edit:ClearFocus() end)
     return page
 end

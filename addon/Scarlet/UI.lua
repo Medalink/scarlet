@@ -269,7 +269,7 @@ end
 
 -- What Overview.lua draws with.
 ns.UI = { T = T, Fill = Fill, Border = Border, Hair = Hair, Text = Text, Num = Num, Money = Money,
-    Duration = Duration }
+    Duration = Duration, SetFont = SetFontSafe, Face = FacePath }
 
 local CARDS = {
     { "Kills", function(s) return Num(s.kills) end },

@@ -1,6 +1,8 @@
 # Written into the addon folder by scarlet-app
 addon/Scarlet/Digest.lua
 addon/Scarlet/Digest.lua.tmp
+addon/Scarlet/Items.lua
+addon/Scarlet/Items.lua.tmp
 __pycache__/
 
 # Packager and listing render scratch

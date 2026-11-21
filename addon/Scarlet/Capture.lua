@@ -896,6 +896,7 @@ local function CountBags(out)
         end
     end
 end
+ns.CountBags = CountBags
 
 -- At a vendor an I line also carries the vendor's npcID and, for a sale, the item's vendor sell price
 -- per unit (copper, from the item's info).

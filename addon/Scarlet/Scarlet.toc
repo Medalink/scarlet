@@ -17,6 +17,7 @@
 # ## X-Wago-ID: 
 
 Digest.lua
+Items.lua
 Core.lua
 Capture.lua
 Track.lua
