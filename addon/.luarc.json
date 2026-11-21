@@ -1,0 +1,28 @@
+{
+  "runtime.version": "Lua 5.1",
+  "workspace.checkThirdParty": false,
+  "diagnostics.globals": [
+    "ScarletDB",
+    "Scarlet_OnCompartmentClick",
+    "SLASH_SCARLET1",
+    "SLASH_SCARLET2",
+    "LoggingCombat",
+    "JumpOrAscendStart",
+    "SKILL_RANK_UP",
+    "FACTION_STANDING_INCREASED",
+    "FACTION_STANDING_DECREASED",
+    "SendChatMessage",
+    "DoEmote",
+    "NUM_BAG_SLOTS",
+    "UNKNOWNOBJECT"
+  ],
+  "diagnostics.disable": [
+    "redefined-local",
+    "inject-field",
+    "undefined-field",
+    "need-check-nil",
+    "cast-local-type",
+    "missing-parameter",
+    "undefined-global"
+  ]
+}

@@ -1,0 +1,29 @@
+## Interface: 16001
+## Title: |cffff2d55Scarlet|r
+## Notes: Records what you do in game into compact chunks for the Scarlet companion.
+## Author: Medalink
+## Version: 0.3.0
+## SavedVariables: ScarletDB
+## OptionalDeps: LibSharedMedia-3.0, SharedMedia, EllesmereUI
+## IconTexture: Interface\Icons\INV_Misc_Book_09
+## AddonCompartmentFunc: Scarlet_OnCompartmentClick
+
+Core.lua
+Capture.lua
+Track.lua
+Metrics.lua
+Combat.lua
+Professions.lua
+Quests.lua
+Economy.lua
+Progress.lua
+PvP.lua
+Loot.lua
+Legacy.lua
+World.lua
+Character.lua
+Spells.lua
+Collections.lua
+Social.lua
+Interface.lua
+UI.lua

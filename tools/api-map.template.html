@@ -1,0 +1,223 @@
+<title>Scarlet API Map</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a coverage ledger. Domain bars first, then one dense filterable table of every API. */
+:root {
+  --bg: #f6f4f4;
+  --panel: #ffffff;
+  --fg: #1d1a1c;
+  --muted: #6b6468;
+  --line: #e4dfe1;
+  --accent: #d4123c;
+  --accent-soft: #fbe3e8;
+  --track: #ece7e9;
+  --live: #3a6f8f;
+  --on-accent: #ffffff;
+  --display: "Barlow Condensed", "Bahnschrift", "Arial Narrow", sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141214; --panel: #1c191b; --fg: #efeaec; --muted: #9a9195; --line: #2d282b;
+    --accent: #ff4567; --accent-soft: #3a1820; --track: #2a2528; --live: #7fb3d3; --on-accent: #141214; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141214; --panel: #1c191b; --fg: #efeaec; --muted: #9a9195; --line: #2d282b;
+  --accent: #ff4567; --accent-soft: #3a1820; --track: #2a2528; --live: #7fb3d3; --on-accent: #141214; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font: 14px/1.5 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 48px;
+}
+main { max-width: 1180px; margin: 0 auto; display: grid; gap: 28px; }
+h1, h2 { font-family: var(--display); font-weight: 700; letter-spacing: 0.02em; text-wrap: balance; margin: 0; }
+h1 { font-size: 2.4rem; line-height: 1.05; }
+h1 b { color: var(--accent); font-weight: 700; }
+h2 { font-size: 1.35rem; text-transform: uppercase; letter-spacing: 0.08em; }
+p { margin: 0; max-width: 68ch; color: var(--muted); }
+.head { display: grid; gap: 10px; }
+.totals { display: flex; flex-wrap: wrap; gap: 10px 32px; margin-top: 6px; }
+.total { display: grid; }
+.total .n { font-family: var(--display); font-size: 2rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1; }
+.total .l { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.total.hot .n { color: var(--accent); }
+
+.domains { display: grid; gap: 2px; background: var(--panel); border: 1px solid var(--line); }
+.drow {
+  display: grid; grid-template-columns: minmax(130px, 190px) 1fr 120px; gap: 14px; align-items: center;
+  padding: 9px 14px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.drow:hover, .drow[aria-pressed="true"] { background: var(--accent-soft); }
+.drow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.drow .name { font-weight: 600; }
+.bar { height: 10px; background: var(--track); position: relative; overflow: hidden; }
+.bar i { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
+.drow .num { font-variant-numeric: tabular-nums; text-align: right; color: var(--muted); font-size: 13px; }
+.drow .num b { color: var(--fg); font-weight: 600; }
+.drow.other .name { color: var(--muted); font-weight: 500; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+.controls input[type="search"], .controls select {
+  font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); padding: 7px 10px; min-width: 0;
+}
+.controls input[type="search"] { flex: 1 1 240px; }
+.controls label { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 13px; }
+.controls input:focus-visible, .controls select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.count { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); background: var(--panel); }
+table { border-collapse: collapse; width: 100%; min-width: 760px; }
+th, td { padding: 6px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--panel); }
+td.api { font-family: var(--mono); font-size: 12.5px; word-break: break-all; }
+td.fields { font-family: var(--mono); font-size: 11.5px; color: var(--muted); max-width: 360px; }
+td.sys { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+.pill { display: inline-block; font-size: 11px; padding: 1px 7px; border: 1px solid var(--line); white-space: nowrap; color: var(--muted); }
+.pill.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.pill.ui { color: var(--live); border-color: currentColor; }
+td.st { white-space: nowrap; }
+.why { white-space: normal; font-size: 11.5px; color: var(--muted); margin-top: 3px; max-width: 260px; }
+.kind { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+tr.act td.api { color: var(--muted); }
+.more { padding: 10px 12px; color: var(--muted); font-size: 13px; }
+.note { font-size: 13px; }
+.undoc { font-family: var(--mono); font-size: 12px; color: var(--fg); }
+@media (max-width: 560px) {
+  h1 { font-size: 1.9rem; }
+  .drow { grid-template-columns: 1fr 88px; }
+  .drow .bar { grid-column: 1 / -1; grid-row: 2; }
+}
+@media (prefers-reduced-motion: no-preference) { .bar i { transition: width 0.4s ease; } }
+</style>
+
+<main>
+  <header class="head">
+    <h1>Scarlet API map <b id="build"></b></h1>
+    <p>Every function and event the WoW Forever client documents, sorted by what it is about. A data point is an event or a function that reads state; actions like Set, Open and Craft are listed but not counted. Live means a file the Forever client loads calls it, so the API works in Forever and not only in retail. Coverage counts live data points, minus the ones a review judged not worth recording; each of those shows its reason.</p>
+    <div class="totals" id="totals"></div>
+  </header>
+
+  <section aria-labelledby="dom-h" style="display:grid;gap:10px">
+    <h2 id="dom-h">Coverage by domain</h2>
+    <div class="domains" id="domains"></div>
+  </section>
+
+  <section aria-labelledby="list-h" style="display:grid;gap:10px">
+    <h2 id="list-h">Every API</h2>
+    <div class="controls">
+      <input type="search" id="q" placeholder="Search names and fields" aria-label="Search names and fields">
+      <select id="dom" aria-label="Domain"><option value="">All domains</option></select>
+      <select id="kind" aria-label="Kind">
+        <option value="">Events and functions</option>
+        <option value="e">Events</option>
+        <option value="f">Functions</option>
+      </select>
+      <select id="state" aria-label="Tracking">
+        <option value="">Tracked or not</option>
+        <option value="1">Tracked</option>
+        <option value="0">Not tracked</option>
+      </select>
+      <label><input type="checkbox" id="points" checked> Data points only</label>
+      <label><input type="checkbox" id="ui" checked> Live in Forever</label>
+    </div>
+    <div class="count" id="count"></div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>API</th><th>Kind</th><th>System</th><th>Returns or payload</th><th>Status</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div class="more" id="more" hidden></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="ud-h" style="display:grid;gap:8px">
+    <h2 id="ud-h">Older globals Scarlet reads that the docs leave out</h2>
+    <p class="note">These are not in the generated docs but the Forever client's UI code calls them, and the addon checks for each before use.</p>
+    <div class="undoc" id="undoc"></div>
+  </section>
+</main>
+
+<script type="application/json" id="data">/*DATA*/</script>
+<script>
+const LIMIT = 400;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+let rows = [], domain = "";
+
+function totals(summary) {
+  const t = { points: 0, live: 0, liveTracked: 0, skipped: 0 };
+  for (const [d, s] of Object.entries(summary)) {
+    if (d === "Interface and other") continue;
+    for (const k in t) t[k] += s[k];
+  }
+  const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : 0);
+  $("totals").innerHTML = [
+    ["hot", t.liveTracked, "live data points tracked"],
+    ["", t.live - t.skipped, "worth tracking"],
+    ["", pct(t.liveTracked, t.live - t.skipped) + "%", "coverage"],
+    ["", t.skipped, "judged not worth it"],
+    ["", t.points, "documented in game domains"],
+  ].map(([c, n, l]) => `<div class="total ${c}"><span class="n">${esc(n)}</span><span class="l">${esc(l)}</span></div>`).join("");
+}
+
+function domains(summary) {
+  const order = Object.entries(summary).sort((a, b) =>
+    (a[0] === "Interface and other") - (b[0] === "Interface and other") || b[1].live - a[1].live);
+  $("domains").innerHTML = order.map(([d, s]) => {
+    const target = s.live - s.skipped;
+    const w = target ? (s.liveTracked / target) * 100 : 0;
+    return `<button class="drow${d === "Interface and other" ? " other" : ""}" data-d="${esc(d)}" aria-pressed="false">
+      <span class="name">${esc(d)}</span>
+      <span class="bar" aria-hidden="true"><i style="width:${w.toFixed(1)}%"></i></span>
+      <span class="num"><b>${s.liveTracked}</b> / ${target}</span></button>`;
+  }).join("");
+  const sel = $("dom");
+  for (const [d] of order) sel.insertAdjacentHTML("beforeend", `<option value="${esc(d)}">${esc(d)}</option>`);
+  $("domains").addEventListener("click", (e) => {
+    const b = e.target.closest(".drow");
+    if (!b) return;
+    sel.value = sel.value === b.dataset.d ? "" : b.dataset.d;
+    render();
+    $("list-h").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+function render() {
+  const q = $("q").value.trim().toLowerCase();
+  const dom = $("dom").value, kind = $("kind").value, st = $("state").value;
+  const points = $("points").checked, ui = $("ui").checked;
+  for (const b of document.querySelectorAll(".drow")) b.setAttribute("aria-pressed", String(b.dataset.d === dom));
+  const hit = rows.filter((r) =>
+    (!dom || r[0] === dom) && (!kind || r[2] === kind) && (!st || String(r[6]) === st) &&
+    (!points || r[5]) && (!ui || r[7]) &&
+    (!q || r[3].toLowerCase().includes(q) || r[4].toLowerCase().includes(q) || r[1].toLowerCase().includes(q)));
+  $("count").textContent = `${hit.length.toLocaleString()} of ${rows.length.toLocaleString()} APIs`;
+  $("rows").innerHTML = hit.slice(0, LIMIT).map((r) => `<tr class="${r[5] ? "" : "act"}">
+    <td class="api">${esc(r[3])}</td>
+    <td class="kind">${r[2] === "e" ? "event" : r[5] ? "read" : "action"}</td>
+    <td class="sys">${esc(r[1])}</td>
+    <td class="fields">${esc(r[4])}</td>
+    <td class="st">${r[6] ? '<span class="pill on">Tracked</span>' : r[8] ? '<span class="pill">Skipped</span>' : '<span class="pill">Not tracked</span>'}
+        ${r[7] ? '<span class="pill ui">Live</span>' : ""}
+        ${r[8] ? `<div class="why">Skipped: ${esc(r[8])}</div>` : ""}</td></tr>`).join("");
+  const more = $("more");
+  more.hidden = hit.length <= LIMIT;
+  more.textContent = `Showing the first ${LIMIT}. Search or filter to narrow the list.`;
+}
+
+const d = JSON.parse(document.getElementById("data").textContent);
+rows = d.rows;
+$("build").textContent = d.build;
+totals(d.summary);
+domains(d.summary);
+$("undoc").textContent = d.undocumented.join("  ");
+for (const id of ["q", "dom", "kind", "state", "points", "ui"]) $(id).addEventListener("input", render);
+render();
+</script>
