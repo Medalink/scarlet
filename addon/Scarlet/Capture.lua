@@ -1397,7 +1397,7 @@ function H.ADDON_LOADED(name)
 end
 
 function H.PLAYER_LOGIN()
-    -- On Forever the second part is the surname (no realms): Thrall-Stormblessed,
+    -- On Forever the second part is the surname (no realms): Thrall-Doomhammer,
     -- the same as the client's WTF folder. A name without one falls back to the server.
     local name, realm = UnitFullName("player")
     if not Plain(realm) or realm == "" then realm = GetNormalizedRealmName() or GetRealmName() end
