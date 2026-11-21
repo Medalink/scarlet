@@ -482,6 +482,15 @@ SavedVariables path.
   - `stats.csv`: `ms, session, key, value, reason` from `SC` and `SX`.
   - `statistics.csv`: `ms, session, id, value, number` from `WS`. number is
     the value as an integer (copper for money) when it parses, else empty.
+  - `talents.csv`: `ms, session, level, group, node_id, entry_id, spell_id,
+    spell, tab_id, tab, rank, old_rank, max_ranks, kind, point_no` from `TA`.
+    level is the last `S` or `L` before the line. tab_id is the tab the client
+    shows; a line from an addon older than `TV` and `TD` has its tab taken
+    from the node's `TD` line when the first group it names is not a `TY` tab.
+    kind: `baseline` (the group's ranks as read at the start of a session),
+    `pick`, `refund`, `swap` (another entry of a choice node), `unseen` (a
+    baseline that differs from the ranks the earlier lines left). point_no is
+    the points the group holds after the line, empty on a baseline.
   - `drops.csv`: `npc, npc_name, item, item_name, rule, threshold,
     group_size, kills, looted, drops, quantity, rate`. One row per creature
     and item that dropped at least once, for each loot rule (method,
