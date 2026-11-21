@@ -121,6 +121,8 @@ local treeNodes = {}  -- treeID -> nodeIDs (static)
 local nodeTree = {}   -- nodeID -> treeID
 local cfgs = {}       -- configID -> true for the configs read
 local tabNamed = {}
+local tabSet = {}
+local laidOut = {}
 local tgKey
 local WHY_RANK = { c = 1, w = 2, r = 3 }
 
@@ -181,11 +183,14 @@ local function Tabs(tree, cfg)
     local displays = Call(TRAITS.GetGroupDisplayInfoByTreeID, tree)
     if type(displays) ~= "table" then return "" end
     local ids = {}
+    local shown = tabSet[tree] or {}
+    tabSet[tree] = shown
     for i = 1, min(#displays, 10) do
         local d = displays[i]
         local gid = type(d) == "table" and Num(d.groupID)
         if gid then
             ids[#ids + 1] = gid
+            shown[gid] = true
             if not tabNamed[gid] and Str(d.displayName) then
                 tabNamed[gid] = true
                 Emit("TY", gid, d.displayName)
@@ -223,6 +228,24 @@ local function Summary(group, cfg, specID, specName, tree, tabs)
     Emit("TG", why, group, groups, specID or "", specName or "", tree, tabs, classPoints, specPoints, cfg, loadout)
 end
 
+local function TabOf(tree, info)
+    local shown = tabSet[tree]
+    if not shown or type(info.groupIDs) ~= "table" then return "" end
+    for i = 1, min(#info.groupIDs, 10) do
+        local gid = Num(info.groupIDs[i])
+        if gid and shown[gid] then return gid end
+    end
+    return ""
+end
+
+local function EntrySpell(cfg, entryID)
+    local entry = Call(TRAITS.GetEntryInfo, cfg, entryID)
+    if type(entry) ~= "table" then return end
+    local definitionID = Num(entry.definitionID)
+    local def = definitionID and Call(TRAITS.GetDefinitionInfo, definitionID)
+    return type(def) == "table" and Num(def.spellID) or nil, Num(entry.maxRanks)
+end
+
 -- Returns true when the client gave this node's data. Before a config has loaded the
 -- client answers with an empty node (ID not this node, rank 0), which is not a read.
 local function Node(group, cfg, nodeID, baseline, out)
@@ -244,16 +267,9 @@ local function Node(group, cfg, nodeID, baseline, out)
     -- A refund has no active entry; name the one that was refunded.
     if not entryID then entryID = oldEntry end
     if not entryID and type(info.entryIDs) == "table" then entryID = Num(info.entryIDs[1]) end
-    local spell
-    if entryID then
-        local entry = Call(TRAITS.GetEntryInfo, cfg, entryID)
-        local definitionID = type(entry) == "table" and Num(entry.definitionID) or nil
-        local def = definitionID and Call(TRAITS.GetDefinitionInfo, definitionID)
-        if type(def) == "table" then spell = Num(def.spellID) end
-    end
-    local tab = type(info.groupIDs) == "table" and Num(info.groupIDs[1]) or nil
+    local spell = entryID and EntrySpell(cfg, entryID)
     out[#out + 1] = { spell or "", group, nodeID, entryID or "", now, baseline and "" or (old or 0),
-        Num(info.maxRanks) or "", spell or "", tab or "", baseline and "s" or "c" }
+        Num(info.maxRanks) or "", spell or "", TabOf(nodeTree[nodeID], info), baseline and "s" or "c" }
     return true
 end
 
@@ -286,6 +302,61 @@ local function ScanNodes(group, cfg, tree)
         Emit("TA", unpack(row, 2, 10))
     end
     return true
+end
+
+local MAX_ENTRIES, MAX_EDGES = 6, 12
+
+local function LayoutFields(cfg, tree, nodeID)
+    local info = Call(TRAITS.GetNodeInfo, cfg, nodeID)
+    if type(info) ~= "table" or Num(info.ID) ~= nodeID then return false end
+    local shown = Flag(info.isVisible)
+    if shown == "" then return false end
+    if shown == 0 then return end
+    local posX, posY = Num(info.posX), Num(info.posY)
+    if not (posX and posY) then return false end
+    local entries, edges = {}, {}
+    local ids = type(info.entryIDs) == "table" and info.entryIDs or {}
+    for i = 1, min(#ids, MAX_ENTRIES) do
+        local entryID = Num(ids[i])
+        if entryID then
+            local spell, maxRanks = EntrySpell(cfg, entryID)
+            if spell then SpellName(spell) end
+            entries[#entries + 1] = entryID .. ":" .. (spell or "") .. ":" .. (maxRanks or "")
+        end
+    end
+    local visible = type(info.visibleEdges) == "table" and info.visibleEdges or {}
+    for i = 1, min(#visible, MAX_EDGES) do
+        local edge = visible[i]
+        local target = type(edge) == "table" and Num(edge.targetNode)
+        if target then edges[#edges + 1] = target .. ":" .. (Num(edge.type) or "") end
+    end
+    return { tree, nodeID, posX, posY, Num(info.type) or "", Num(info.maxRanks) or "",
+        TabOf(tree, info), concat(entries, ","), concat(edges, ",") }
+end
+
+local function LayoutHash(rows)
+    local h = 5381
+    for i = 1, #rows do
+        local s = concat(rows[i], "|")
+        for j = 1, #s do h = (h * 33 + s:byte(j)) % 4294967296 end
+    end
+    return ("%08x"):format(h)
+end
+
+local function Layout(cfg, tree)
+    if laidOut[tree] then return end
+    local nodes = Nodes(tree)
+    if not nodes or #nodes == 0 then return end
+    local rows = {}
+    for i = 1, #nodes do
+        local fields = LayoutFields(cfg, tree, nodes[i])
+        if fields == false then return end
+        rows[#rows + 1] = fields
+    end
+    laidOut[tree] = true
+    local classID = Num(select(3, UnitClass("player"))) or ""
+    Emit("TV", tree, classID, #rows, LayoutHash(rows))
+    for i = 1, #rows do Emit("TD", unpack(rows[i], 1, 9)) end
 end
 
 local TalentScan
@@ -326,7 +397,8 @@ TalentScan = function()
     end
     Summary(group, cfg, specID, specName, tree, tabs)
     tal.why = nil
-    if ok then tal.tries = 0 else Retry() end
+    if ok then Layout(cfg, tree) end
+    if ok and laidOut[tree] then tal.tries = 0 else Retry() end
 end
 
 local function TalentSoon(why)
