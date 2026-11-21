@@ -103,6 +103,11 @@ return function(Env)
     Def("UnitTokenFromGUID", function(guid) return W.guids[guid] end)
     Def("UnitXP", function() return P.xp end)
     Def("UnitXPMax", function() return P.xpMax end)
+    -- The level cap: only when bench.lua gets --cap N, so a bare run has the cap unreadable.
+    if Env.cap then
+        Def("GetMaxPlayerLevel", function() return Env.cap end)
+        Def("GetMaxLevelForPlayerExpansion", function() return Env.cap end)
+    end
     Def("GetPlayerInfoByGUID", function(guid)
         local token = W.guids[guid]
         local u = token and U(token)

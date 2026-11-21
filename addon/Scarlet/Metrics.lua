@@ -457,7 +457,7 @@ local PROBE = {
     "UnitClassification", "UnitCreatureType", "UnitCreatureFamily", "UnitPlayerControlled", "UnitReaction",
     "UnitFactionGroup", "C_RecentAllies", "GetCurrentRegion", "UnitXP", "UnitXPMax", "C_AddOns",
     "GetInboxInvoiceInfo", "GetPlayerInfoByGUID", "GetPlayerFacing", "Screenshot",
-    "GetSendMailPrice",
+    "GetSendMailPrice", "GetMaxPlayerLevel", "GetMaxLevelForPlayerExpansion",
 }
 
 local function Probe()

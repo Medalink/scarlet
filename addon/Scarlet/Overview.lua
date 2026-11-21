@@ -17,8 +17,9 @@ local MIN_LEVEL_PLAYED = 900 -- a level needs this much played time to count as 
 local MAX_GROWTH = math.log(1.05) -- most the pace may rise a level, as a log
 local DAY_WINDOW = 14      -- most days the calendar rate is measured over
 local MAX_DAYS = 3650      -- a date further away than this is left out
-local MAX_LEVEL = 60
--- NEED[n]: XP that level n needs to reach level n + 1.
+local FALLBACK_CAP = 60    -- the cap when neither the client nor the digest reports one
+local FOCUS_SECONDS = 3600 -- played time at the cap before the page leads with max level data
+-- NEED[n]: XP that level n needs to reach level n + 1 (the table ends at level 60).
 local NEED = { 400, 900, 1400, 2100, 2800, 3600, 4500, 5400, 6500, 7600, 8800, 10100, 11400, 12900, 14400,
     16000, 17700, 19400, 21300, 23200, 25200, 27300, 29400, 31700, 34000, 36400, 38900, 41400, 44300, 47400,
     50800, 54500, 58600, 62800, 67100, 71600, 76100, 80800, 85700, 90700, 95800, 101000, 106300, 111800, 117500,
@@ -76,6 +77,13 @@ local function AddWeek(b, row)
     b.wr = b.wr + N(row.r)
 end
 
+-- The level cap: the client's (ns.Cap, Core.lua), else the one the digest recorded.
+local function CapOf(d)
+    if ns.Cap.level then return ns.Cap.level end
+    local c = d and d.cap
+    if type(c) == "table" and type(c.level) == "number" and c.level > 0 then return c.level end
+end
+
 -- A level's share, in the digest's levels table and in a session row's lv table (same keys).
 local function AddLevel(b, s)
     if type(s) ~= "table" then return end
@@ -86,6 +94,25 @@ local function AddLevel(b, s)
     b.ldd = b.ldd + N(s.dd)
 end
 
+-- The share of the cap level: time, gold, runs, kills, deaths, quests.
+local CAP_KEYS = { "p", "g", "s", "r", "k", "dd", "q" }
+local function AddCap(b, s)
+    if type(s) ~= "table" then return end
+    for _, k in ipairs(CAP_KEYS) do b.cap[k] = b.cap[k] + N(s[k]) end
+end
+
+-- What the levels before the cap held, for the Levelling card: played time and XP by source.
+local function AddBelow(b, levels, cap)
+    if type(levels) ~= "table" then return end
+    for n, s in pairs(levels) do
+        if type(n) == "number" and n < cap and type(s) == "table" then
+            local t = b.below
+            t.p, t.xk, t.xq = t.p + N(s.p), t.xk + N(s.xk) + N(s.xd), t.xq + N(s.xq)
+            t.xo = t.xo + N(s.xe) + N(s.xo)
+        end
+    end
+end
+
 -- All XP of a row or a level's share: kills, dungeons, quests, exploration and other.
 local function XPOf(row)
     return N(row.xk) + N(row.xd) + N(row.xq) + N(row.xe) + N(row.xo)
@@ -94,8 +121,9 @@ end
 -- Every level's played seconds and XP, for the level estimates: the same tables, level by level.
 local function AddLevels(b, levels)
     if type(levels) ~= "table" then return end
+    local top = b.cap.level or FALLBACK_CAP
     for n, s in pairs(levels) do
-        if type(n) == "number" and n >= 1 and n < MAX_LEVEL and n == floor(n) and type(s) == "table" then
+        if type(n) == "number" and n >= 1 and n < top and n == floor(n) and type(s) == "table" then
             b.levelP[n] = (b.levelP[n] or 0) + N(s.p)
             b.levelX[n] = (b.levelX[n] or 0) + XPOf(s)
         end
@@ -197,13 +225,15 @@ end
 local function Rate(n) return math.exp(pace.a + pace.b * n) end
 
 -- The levels to show for a character at level lvl: the next, the next multiple of 10, 60.
-local function Targets(lvl, out)
-    if lvl >= MAX_LEVEL then return 0 end
+local function Targets(lvl, out, cap)
+    -- NEED ends at level 60: a longer climb is not estimated past it.
+    cap = math.min(cap, #NEED + 1)
+    if lvl >= cap then return 0 end
     local n = 1
     out[1] = lvl + 1
     local major = (floor(lvl / 10) + 1) * 10
-    if major ~= lvl + 1 and major < MAX_LEVEL then n = n + 1; out[n] = major end
-    if lvl + 1 ~= MAX_LEVEL then n = n + 1; out[n] = MAX_LEVEL end
+    if major ~= lvl + 1 and major < cap then n = n + 1; out[n] = major end
+    if lvl + 1 ~= cap then n = n + 1; out[n] = cap end
     return n
 end
 
@@ -236,9 +266,14 @@ end
 -- Everything that does not change while the window is open: the digest's sessions up to
 -- `through`, the addon's closed rows after it. The open session is added on each refresh.
 local function Collect(key, lvl, weekStart)
-    local b = { key = key, level = lvl, weekStart = weekStart, wp = 0, wq = 0, wg = 0, ws = 0, wr = 0,
-        lp = 0, lxk = 0, lxq = 0, lk = 0, ldd = 0, zd = {}, mn = {}, mv = {}, dt = {}, levelP = {}, levelX = {} }
     local d = DigestFor(key)
+    local cap = CapOf(d)
+    local capped = cap ~= nil and (lvl or (d and N(d.level)) or 0) >= cap
+    local b = { key = key, level = lvl, weekStart = weekStart, wp = 0, wq = 0, wg = 0, ws = 0, wr = 0,
+        lp = 0, lxk = 0, lxq = 0, lk = 0, ldd = 0, zd = {}, mn = {}, mv = {}, dt = {}, levelP = {}, levelX = {},
+        capped = capped, extra = d and type(d.cap) == "table" and d.cap or {},
+        cap = { level = cap, p = 0, g = 0, s = 0, r = 0, k = 0, dd = 0, q = 0 },
+        below = { p = 0, xk = 0, xq = 0, xo = 0 } }
     local through = -1
     local mates = {}
     if d then
@@ -255,7 +290,13 @@ local function Collect(key, lvl, weekStart)
             end
         end
         if lvl and type(d.levels) == "table" then AddLevel(b, d.levels[lvl]) end
-        AddLevels(b, d.levels)
+        if capped then
+            -- At the cap nothing is fitted or estimated: the levels only add up to the Levelling card.
+            AddBelow(b, d.levels, cap)
+            if type(d.levels) == "table" then AddCap(b, d.levels[cap]) end
+        else
+            AddLevels(b, d.levels)
+        end
         if type(d.deathZones) == "table" then
             for _, z in ipairs(d.deathZones) do
                 if type(z) == "table" and type(z.name) == "string" then b.zd[z.name] = (b.zd[z.name] or 0) + N(z.n) end
@@ -284,7 +325,12 @@ local function Collect(key, lvl, weekStart)
             if t > through + 3 then
                 if N(row.t) >= weekStart then AddWeek(b, row) end
                 if lvl and type(row.lv) == "table" then AddLevel(b, row.lv[lvl]) end
-                AddLevels(b, row.lv)
+                if capped then
+                    AddBelow(b, row.lv, cap)
+                    if type(row.lv) == "table" then AddCap(b, row.lv[cap]) end
+                else
+                    AddLevels(b, row.lv)
+                end
                 if type(row.zn) == "table" then
                     for name, z in pairs(row.zn) do
                         if type(name) == "string" and type(z) == "table" then
@@ -313,7 +359,7 @@ local function Collect(key, lvl, weekStart)
     -- session). `first` is the start of the oldest recorded session.
     local rows = {}
     if d then
-        local list = type(d.recent) == "table" and d.recent or d.sessions
+        local list = not capped and (type(d.recent) == "table" and d.recent or d.sessions)
         if type(list) == "table" then
             for _, row in ipairs(list) do
                 local t = type(row) == "table" and N(row.t) or 0
@@ -324,7 +370,7 @@ local function Collect(key, lvl, weekStart)
         end
         b.first = N(d.first) > 0 and N(d.first) or nil
     end
-    if type(o) == "table" and type(o.sess) == "table" then
+    if not capped and type(o) == "table" and type(o.sess) == "table" then
         for _, row in ipairs(o.sess) do
             local t = type(row) == "table" and N(row.t) or 0
             if t > through + 3 then rows[#rows + 1] = { t = t, p = N(row.p), x = XPOf(row) } end
@@ -333,6 +379,16 @@ local function Collect(key, lvl, weekStart)
     table.sort(rows, function(a, c) return a.t > c.t end)
     b.rows = rows
     return b
+end
+
+-- Played seconds at the cap: the larger of the time the rows and the digest hold for the cap level, the
+-- digest's own figure (which also reads the client's /played seconds on the level) and the addon's last
+-- /played read at the cap. docs/OVERVIEW.md, "Max level".
+local function CapSeconds(b, live)
+    local secs = b.cap.p
+    local lv = live and b.cap.level and live.lv[b.cap.level]
+    if type(lv) == "table" then secs = secs + N(lv.p) end
+    return max(secs, N(b.extra.p), N(ns.char and ns.char.capSecs))
 end
 
 -- Page -----------------------------------------------------------------------------
@@ -349,7 +405,11 @@ function ns.OverviewPage(parent, ui)
     local where = Text(page, 14, T.fg, "RIGHT")
     where:SetPoint("BOTTOMRIGHT", page, "TOPRIGHT", 0, -34)
 
-    local bar = CreateFrame("Frame", nil, page)
+    -- The levelling layout; the max level group below replaces it once the character has an hour at the cap.
+    local lvlPage = CreateFrame("Frame", nil, page)
+    lvlPage:SetAllPoints()
+
+    local bar = CreateFrame("Frame", nil, lvlPage)
     bar:SetHeight(6)
     bar:SetPoint("TOPLEFT", 0, -50)
     bar:SetPoint("TOPRIGHT", 0, -50)
@@ -358,24 +418,24 @@ function ns.OverviewPage(parent, ui)
     barFill:SetPoint("TOPLEFT")
     barFill:SetPoint("BOTTOMLEFT")
     barFill:SetWidth(1)
-    local progress = Text(page, 13, T.text)
+    local progress = Text(lvlPage, 13, T.text)
     progress:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, -8)
 
     -- Time to the next level, the next multiple of 10 and level 60, and what they are based on.
     local etaLevel, etaTime, etaDate = {}, {}, {}
     for i = 1, 3 do
         local y = -ETA_TOP - (i - 1) * ETA_ROW_H
-        etaLevel[i] = Text(page, 13, T.text)
+        etaLevel[i] = Text(lvlPage, 13, T.text)
         etaLevel[i]:SetPoint("TOPLEFT", 0, y)
         etaLevel[i]:SetWidth(80)
-        etaTime[i] = Text(page, 13, T.fg)
+        etaTime[i] = Text(lvlPage, 13, T.fg)
         etaTime[i]:SetPoint("TOPLEFT", 84, y)
         etaTime[i]:SetWidth(90)
-        etaDate[i] = Text(page, 13, T.text)
+        etaDate[i] = Text(lvlPage, 13, T.text)
         etaDate[i]:SetPoint("TOPLEFT", 180, y)
         etaDate[i]:SetWidth(220)
     end
-    local etaBasis = Text(page, 13, T.muted)
+    local etaBasis = Text(lvlPage, 13, T.muted)
     etaBasis:SetPoint("TOPLEFT", 0, -ETA_TOP - 3 * ETA_ROW_H)
     etaBasis:SetPoint("TOPRIGHT", 0, -ETA_TOP - 3 * ETA_ROW_H)
     local targets = {}
@@ -387,7 +447,7 @@ function ns.OverviewPage(parent, ui)
         local n = 0
         local basis = ""
         if lvl and xp and xpMax and xpMax > 0 then
-            n = Targets(lvl, targets)
+            n = Targets(lvl, targets, b.cap.level or FALLBACK_CAP)
         end
         if n > 0 then
             local now = time()
@@ -424,15 +484,15 @@ function ns.OverviewPage(parent, ui)
         end
     end
 
-    local function Card(col, row, title)
-        local c = CreateFrame("Frame", nil, page)
+    local function Card(host, col, row, title, top)
+        local c = CreateFrame("Frame", nil, host)
         c:SetHeight(PANEL_H)
-        local y = -PANEL_TOP - row * (PANEL_H + PANEL_GAP)
+        local y = -(top or PANEL_TOP) - row * (PANEL_H + PANEL_GAP)
         if col == 0 then
             c:SetPoint("TOPLEFT", 0, y)
-            c:SetPoint("TOPRIGHT", page, "TOP", -PANEL_GAP / 2, y)
+            c:SetPoint("TOPRIGHT", host, "TOP", -PANEL_GAP / 2, y)
         else
-            c:SetPoint("TOPLEFT", page, "TOP", PANEL_GAP / 2, y)
+            c:SetPoint("TOPLEFT", host, "TOP", PANEL_GAP / 2, y)
             c:SetPoint("TOPRIGHT", 0, y)
         end
         Fill(c, T.panel):SetAllPoints()
@@ -466,24 +526,153 @@ function ns.OverviewPage(parent, ui)
         return c
     end
 
-    local week = Card(0, 0, "This week")
-    local lvlCard = Card(1, 0, "")
-    local mates = Card(0, 1, "Played with")
-    local deaths = Card(1, 1, "Deaths")
+    local week = Card(lvlPage, 0, 0, "This week")
+    local lvlCard = Card(lvlPage, 1, 0, "")
+    local mates = Card(lvlPage, 0, 1, "Played with")
+    local deaths = Card(lvlPage, 1, 1, "Deaths")
 
     -- "History through the last export, a dot, this session live"
     local footerY = -PANEL_TOP - 2 * (PANEL_H + PANEL_GAP) - 2
-    local footer = Text(page, 13, T.muted)
+    local footer = Text(lvlPage, 13, T.muted)
     footer:SetPoint("TOPLEFT", 0, footerY)
-    local liveDot = Fill(page, T.accent, 1, "ARTWORK")
+    local liveDot = Fill(lvlPage, T.accent, 1, "ARTWORK")
     liveDot:SetSize(6, 6)
     liveDot:SetPoint("LEFT", footer, "RIGHT", 8, 0)
-    local liveText = Text(page, 13, T.fg)
+    local liveText = Text(lvlPage, 13, T.fg)
     liveText:SetPoint("LEFT", liveDot, "RIGHT", 6, 0)
     liveText:SetText("this session live")
 
     local base
     local deathMap, deathNames, deathVals = {}, {}, {}
+
+    -- Max level group ---------------------------------------------------------------------
+    -- Built the first time a character has an hour at the cap, so a levelling character never pays for it.
+    local maxPage, maxCards
+    local MAX_TOP, MAX_ROWS_OF_CARDS = 56, 4
+
+    local function Signed(copper)
+        if copper < 0 then return "-" .. Money(-copper) end
+        return "+" .. Money(copper)
+    end
+
+    local function BuildMax()
+        maxPage = CreateFrame("ScrollFrame", nil, page)
+        maxPage:SetPoint("TOPLEFT", 0, -MAX_TOP)
+        maxPage:SetPoint("BOTTOMRIGHT")
+        local child = CreateFrame("Frame", nil, maxPage)
+        child:SetSize(1, MAX_ROWS_OF_CARDS * (PANEL_H + PANEL_GAP) + 24)
+        maxPage:SetScrollChild(child)
+        maxPage:EnableMouseWheel(true)
+        maxPage:SetScript("OnMouseWheel", function(self, delta)
+            local top = max(0, child:GetHeight() - self:GetHeight())
+            self:SetVerticalScroll(math.min(top, max(0, self:GetVerticalScroll() - delta * ROW_H * 3)))
+        end)
+        maxPage:SetScript("OnSizeChanged", function(_, w) child:SetWidth(w) end)
+        local function C(col, row, title) return Card(child, col, row, title, 0) end
+        maxCards = { atMax = C(0, 0, "At max level"), gold = C(1, 0, "Gold"), runs = C(0, 1, "Dungeons and raids"),
+            deaths = C(1, 1, "Deaths"), rep = C(0, 2, "Reputation and professions"), legacy = C(1, 2, "Legacy and PvP"),
+            levelling = C(0, 3, "Levelling"), mates = C(1, 3, "Played with") }
+        local f = Text(child, 13, T.muted)
+        f:SetPoint("TOPLEFT", 0, -MAX_ROWS_OF_CARDS * (PANEL_H + PANEL_GAP) - 2)
+        f:SetText("History through the last export \194\183 this session live")
+    end
+
+    -- The page is redrawn only when something it shows moved: the minute of played time, or a count
+    -- the open session changed. The ticker calls Refresh every half second while the window is open.
+    local drawnBase, drawnStamp
+    local function RefreshMax(b, live)
+        if not maxCards then BuildMax() end
+        local cap, x, secs = b.cap, b.extra, CapSeconds(b, live)
+        local lvCap0 = live and cap.level and live.lv[cap.level]
+        local stamp = floor(secs / 60)
+        if type(lvCap0) == "table" then
+            stamp = stamp + N(lvCap0.g) * 7 + N(lvCap0.s) * 13 + N(lvCap0.dd) * 10007 + N(lvCap0.r) * 100003
+        end
+        if b == drawnBase and stamp == drawnStamp then return end
+        drawnBase, drawnStamp = b, stamp
+        local g, s, r, dd = cap.g, cap.s, cap.r, cap.dd
+        local lvCap = live and cap.level and live.lv[cap.level]
+        if type(lvCap) == "table" then
+            g, s, r, dd = g + N(lvCap.g), s + N(lvCap.s), r + N(lvCap.r), dd + N(lvCap.dd)
+        end
+        local hours = max(secs / 3600, 1)
+        local net = g - s
+        local m = maxCards
+
+        local reached = N(x.reached)
+        m.atMax:Set(1, "Time at max level", Duration(secs))
+        m.atMax:Set(2, "Reached", reached > 0 and date("%d %b %Y", reached) or "Before recording")
+        m.atMax:Set(3, "Item level", N(x.ilvl) > 0 and Num(x.ilvl) or "")
+        m.atMax:Set(4, "Items looted", Num(N(x.loot)))
+        m.atMax:Rows(4)
+
+        m.gold:Set(1, "Earned", Money(g))
+        m.gold:Set(2, "Spent", Money(s))
+        m.gold:Set(3, "Net", Signed(net))
+        m.gold:Set(4, "Net an hour", Signed(floor(net / hours)))
+        m.gold:Rows(4)
+
+        m.runs:Set(1, "Runs", Num(r))
+        m.runs:Set(2, "Bosses", Num(N(x.bosses)))
+        local shown = 2
+        for i = 1, 2 do
+            local run = type(x.runs) == "table" and x.runs[i]
+            if type(run) == "table" and type(run.name) == "string" then
+                shown = 2 + i
+                m.runs:Set(shown, run.name, Num(N(run.n)) .. " \194\183 " .. Duration(N(run.p)))
+            end
+        end
+        m.runs:Rows(shown)
+
+        m.deaths:Set(1, "Deaths", Num(dd))
+        m.deaths:Set(2, "Deaths an hour", format("%.1f", dd / hours))
+        local killer = type(x.killers) == "table" and x.killers[1]
+        local dz = type(x.dz) == "table" and x.dz[1]
+        local n = 2
+        if type(killer) == "table" and type(killer.name) == "string" then
+            n = n + 1
+            m.deaths:Set(n, "By " .. killer.name, Num(N(killer.n)))
+        end
+        if type(dz) == "table" and type(dz.name) == "string" then
+            n = n + 1
+            m.deaths:Set(n, "In " .. dz.name, Num(N(dz.n)))
+        end
+        m.deaths:Rows(n)
+
+        n = 0
+        for i = 1, 3 do
+            local rep = type(x.rep) == "table" and x.rep[i]
+            if type(rep) == "table" and type(rep.name) == "string" then
+                n = n + 1
+                m.rep:Set(n, rep.name, "+" .. Num(N(rep.n)))
+            end
+        end
+        n = n + 1
+        m.rep:Set(n, "Skill-ups", Num(N(x.skillups)))
+        m.rep:Rows(n)
+
+        m.legacy:Set(1, "Legacy Challenges", format("%s of %s", Num(N(x.ldone)), Num(N(x.ltotal))))
+        m.legacy:Set(2, "Legacy points", Num(N(x.lpoints)))
+        m.legacy:Set(3, "Honorable kills", Num(N(x.hks)))
+        m.legacy:Set(4, "Honor", Num(N(x.honor)))
+        m.legacy:Rows(4)
+
+        local bl = b.below
+        m.levelling:Set(1, "Time to reach max level", Duration(bl.p))
+        m.levelling:Set(2, "XP from kills", Num(bl.xk))
+        m.levelling:Set(3, "XP from quests", Num(bl.xq))
+        m.levelling:Set(4, "XP from other", Num(bl.xo))
+        m.levelling:Rows(4)
+
+        shown = 0
+        for i = 1, MATES do
+            if b.mn[i] then
+                shown = i
+                m.mates:Set(i, b.mn[i], Duration(b.mv[i]))
+            end
+        end
+        m.mates:Rows(shown, "No groups recorded")
+    end
 
     function page:Refresh()
         local key = ns.charKey
@@ -514,7 +703,21 @@ function ns.OverviewPage(parent, ui)
 
         local lv = live and lvl and live.lv[lvl]
         local levelTime = base.lp + (lv and N(lv.p) or 0)
-        local xp, xpMax = CNum(UnitXP("player")), CNum(UnitXPMax("player"))
+
+        -- An hour at the cap: the page leads with max level data and the levelling moves down.
+        local focus = base.capped and CapSeconds(base, live) >= FOCUS_SECONDS
+        lvlPage:SetShown(not focus)
+        if maxPage then maxPage:SetShown(focus) end
+        if focus then
+            RefreshMax(base, live)
+            maxPage:SetShown(true)
+            return
+        end
+
+        -- Levelling work (bar, pace, estimates) runs only while the character levels (ns.Cap).
+        local levelling = ns.Cap.Levelling()
+        local xp, xpMax
+        if levelling then xp, xpMax = CNum(UnitXP("player")), CNum(UnitXPMax("player")) end
         if xp and xpMax and xpMax > 0 then
             local ratio = math.min(1, max(0, xp / xpMax))
             barFill:SetWidth(max(1, ratio * (bar:GetWidth() or 0)))
@@ -523,9 +726,14 @@ function ns.OverviewPage(parent, ui)
             progress:SetText(text)
         else
             barFill:SetWidth(1)
-            progress:SetText(levelTime > 0 and ("This level " .. Duration(levelTime) .. " so far") or "")
+            progress:SetText(levelTime > 0 and ((base.capped and "At max level " or "This level ") .. Duration(levelTime)
+                .. " so far") or "")
         end
-        ShowEta(base, live, clientLevel, xp, xpMax)
+        if levelling then
+            ShowEta(base, live, clientLevel, xp, xpMax)
+        else
+            ShowEta(base, live, nil, nil, nil)
+        end
 
         -- This week
         local wp, wq, wg, ws, wr = base.wp, base.wq, base.wg, base.ws, base.wr
@@ -546,11 +754,17 @@ function ns.OverviewPage(parent, ui)
             kills, dead = kills + N(lv.k), dead + N(lv.dd)
         end
         lvlCard.title:SetText(lvl and format("Level %d so far", lvl) or "This level so far")
-        lvlCard:Set(1, "XP from kills", Num(xk))
-        lvlCard:Set(2, "XP from quests", Num(xq))
-        lvlCard:Set(3, "Kills", Num(kills))
-        lvlCard:Set(4, "Deaths", Num(dead))
-        lvlCard:Rows(4)
+        if base.capped then
+            lvlCard:Set(1, "Kills", Num(kills))
+            lvlCard:Set(2, "Deaths", Num(dead))
+            lvlCard:Rows(2)
+        else
+            lvlCard:Set(1, "XP from kills", Num(xk))
+            lvlCard:Set(2, "XP from quests", Num(xq))
+            lvlCard:Set(3, "Kills", Num(kills))
+            lvlCard:Set(4, "Deaths", Num(dead))
+            lvlCard:Rows(4)
+        end
 
         -- Played with
         local shown = 0

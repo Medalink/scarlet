@@ -550,6 +550,7 @@ local function XpRead()
 end
 
 local function XpSoon()
+    ns.Cap.Refresh() -- experience on or off decides whether levelling work runs
     if started then C_Timer.After(0.5, XpRead) end
 end
 

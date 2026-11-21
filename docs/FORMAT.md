@@ -71,7 +71,7 @@ A field the client marked secret is written as `?`. Missing values are empty.
 
 | Code | Fields | Meaning |
 | --- | --- | --- |
-| `S` | build, classFile, raceFile, level, faction, addonVersion, serverID, serverName, region, toc, xp, xpMax, money | Session started (login or reload). region is the client's region id, toc its interface number, xp and xpMax the experience bar at login (empty when the client hides them), money the copper you carry (`GetMoney`). serverID and serverName are the client's realm ID and name; Forever has no realms and reports `0` and empty. Lines from before 2026-11-20 14:00 end at addonVersion or have one empty field after it; lines from before money was added end at xpMax |
+| `S` | build, classFile, raceFile, level, faction, addonVersion, serverID, serverName, region, toc, xp, xpMax, money, levelCap | Session started (login or reload). region is the client's region id, toc its interface number, xp and xpMax the experience bar at login (empty when the client hides them, and at the level cap or with experience turned off, where the addon reads no bar), money the copper you carry (`GetMoney`), levelCap the max level the client reports for the character (`GameRulesUtil.GetEffectiveMaxLevelForPlayer`, else the lower of `GetMaxLevelForPlayerExpansion` and `GetMaxPlayerLevel`; empty when the client does not say). serverID and serverName are the client's realm ID and name; Forever has no realms and reports `0` and empty. Lines from before 2026-11-20 14:00 end at addonVersion or have one empty field after it; lines from before money was added end at xpMax; lines from before levelCap was added end at money |
 | `ES` | | Session ended (logout or reload) |
 | `Z` | uiMapID, instanceMapID, instanceType, difficultyID, zone, subzone | Area changed. instanceType is `none`, `party`, `raid`, `pvp`, `arena` or `scenario` |
 | `P` | uiMapID, x, y, facing | Path point while moving. x and y are map coordinates times 10000, as integers. facing is the way you face as one of 16 directions (0 is north, counting counter-clockwise like the client's radians), empty when the client gives none. Older lines have no facing |
@@ -96,7 +96,7 @@ A field the client marked secret is written as `?`. Missing values are empty.
 | `E` | 0, encounterID, success, seconds | Boss encounter ended. success is `1` or `0` |
 | `B` | encounterID, name | Boss killed |
 | `L` | level | You reached a new level |
-| `X` | amount, xp, xpMax, source, id | Experience gained. xp and xpMax are the experience bar after the gain (a level up shows the new level's bar). source: `k` a kill (id the npcID), `q` a quest turn-in (id the questID), `e` an area discovery, `o` none found. The source is the nearest one noted within 1.5 s of the gain, used once, with a quest or discovery winning over a kill; the line is written 0.8 s after the client reports the gain (or at logout, whichever is first) so a source that arrives just after it is still found, such as a `K` with by `2`. A kill that gives no experience near a gain can be taken for its source. Older lines have the amount only |
+| `X` | amount, xp, xpMax, source, id | Experience gained. Not written once the character is at the level cap (the S line's levelCap) or has experience turned off; the addon unregisters the experience events then, and the last line of the final level is still written. xp and xpMax are the experience bar after the gain (a level up shows the new level's bar). source: `k` a kill (id the npcID), `q` a quest turn-in (id the questID), `e` an area discovery, `o` none found. The source is the nearest one noted within 1.5 s of the gain, used once, with a quest or discovery winning over a kill; the line is written 0.8 s after the client reports the gain (or at logout, whichever is first) so a source that arrives just after it is still found, such as a `K` with by `2`. A kill that gives no experience near a gain can be taken for its source. Older lines have the amount only |
 | `M` | copper, transfer, balance | Money changed, signed. transfer is the part mailed to (negative) or taken from (positive) one of your own characters; it is neither earned nor spent. Empty for other changes and on older lines. balance is the copper you carry after the change (`GetMoney`); the transfer field is written empty when a balance follows. Older lines have one or two fields |
 | `O` | itemID, count, suffixID, bonusIDs, upgrade | You received an item from a loot or push message, created items included (`LT`, the others' receipts, has no created items). suffixID is the link's random suffix (empty for none), bonusIDs its bonus IDs comma-joined, upgrade the client's upgrade level for the link (`C_Item.GetItemUpgradeInfo`, only asked for links with bonus IDs). The link's unique ID is not kept. Older lines stop after count |
 | `Q` | 1, questID | Quest accepted |
@@ -113,7 +113,7 @@ A field the client marked secret is written as `?`. Missing values are empty.
 | `CP` | 1, spellID, continued | Camp visit started: the first camp aura (Forever camp spells, or any aura named "Camp...") appeared. continued `1` after a reload at the same camp |
 | `CP` | 0, seconds | Camp visit ended: the last camp aura went away, or the session ended |
 | `RS` | 0 or 1 | Resting state (inn, city, camp) changed |
-| `RX` | 1, xp or 0 | Rested XP started or ran out |
+| `RX` | 1, xp or 0 | Rested XP started or ran out. Not written at the level cap or with experience off |
 | `AFK` | 0 or 1 | You went AFK or came back |
 | `I` | itemID, delta, where, npcID, sellPrice | Bag contents changed. where: `v` vendor, `b` bank, `m` mail, `t` trade, `l` loot, `a` auction house, `c` profession window, `g` guild bank, empty otherwise. At a vendor (`v`) npcID is the vendor and, for items that left the bags, sellPrice is the item's vendor sell price per unit in copper (empty when the client had no price); both fields are not written for other places |
 | `GP` | 1, size or 0, size | You joined a group or went solo |
@@ -130,7 +130,7 @@ A field the client marked secret is written as `?`. Missing values are empty.
 | `DU` | name | Someone asked you to duel |
 | `DW` | 1 or 0, opponent | You won or lost a duel |
 | `EX` | area, xp | You discovered an area |
-| `XR` | amount | Rested bonus XP on a kill |
+| `XR` | amount | Rested bonus XP on a kill. Not written at the level cap or with experience off |
 | `MT` | 1, timer or 0, timer, seconds | Breath, fatigue or feign death timer started or ended (`BREATH`, `EXHAUSTION`, `FEIGNDEATH`) |
 | `DB` | averagePct, lowestPct, broken | Gear durability moved 5 points or an item broke |
 | `RE` | copper | You repaired at a vendor |

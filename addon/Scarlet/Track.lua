@@ -672,7 +672,11 @@ function H.TIME_PLAYED_MSG(total, thisLevel)
     lastPlayed = total
     Emit("TP", total, thisLevel)
     ns.Ov.Played(total)
-    if ns.char then ns.char.played = total end
+    if ns.char then
+        ns.char.played = total
+        -- At the cap, the client's seconds on this level are the time at max level.
+        if ns.Cap.atCap and type(thisLevel) == "number" and Plain(thisLevel) then ns.char.capSecs = thisLevel end
+    end
 end
 
 -- Loot rolls you make: 0 pass, 1 need, 2 greed -------------------------------------
@@ -732,4 +736,6 @@ function H.PLAYER_LOGOUT()
     end
 end
 
-ns.Listen(frame, H, "Track")
+-- The rested bonus line only exists while levelling (ns.Cap, Core.lua).
+ns.Listen(frame, H, "Track", { CHAT_MSG_COMBAT_XP_GAIN = true })
+ns.Cap.Watch(frame, { "CHAT_MSG_COMBAT_XP_GAIN" })

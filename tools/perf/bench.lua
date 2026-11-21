@@ -3,7 +3,7 @@
 --   sh tools/perf/build-lua51.sh <dir>          once: stock Lua 5.1.5 plus os.hires (a 0.03 us clock)
 --   python -I tools/perf/svdecode.py <Scarlet.lua SavedVariables> <history.txt>     (read only; keep both out of git)
 --   <dir>/lua5.1 tools/perf/bench.lua [--addon DIR] [--history history.txt] [--sv <Scarlet.lua copy>]
---       [--scenario NAME|all] [--out FILE] [--passes time,gc,api] [--scale N] [--perf] [--list]
+--       [--scenario NAME|all] [--cap N] [--out FILE] [--passes time,gc,api] [--scale N] [--perf] [--list]
 --
 -- Before and after a change: run with --addon <old copy> --out a.txt and --addon <new> --out b.txt, then cmp.
 --
@@ -504,6 +504,7 @@ end
 local function Boot(countApi, withSV)
     collectgarbage()
     Env.countApi = countApi or false
+    Env.cap = tonumber(opt.cap) -- --cap N: the client reports N as the level cap; without it the cap is unreadable
     local ns = Env.load(opt.addon)
     if withSV and savedVars then InstallSV(ns) end
     Env.login()

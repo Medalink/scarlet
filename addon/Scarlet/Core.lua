@@ -65,6 +65,117 @@ function ns.Plain(v)
     return not issecretvalue(v) and v ~= nil
 end
 
+-- Max level -----------------------------------------------------------------------
+-- The one place that knows whether the character is still levelling. The cap comes from the
+-- client (never a constant here): the effective max level Blizzard's own UI uses, else the lower of
+-- the expansion's and the player's cap. A character at the cap, or with experience turned off, is not
+-- levelling: the levelling-only events are unregistered (not just ignored) and levelling-only
+-- functions are swapped for no-ops, both in Apply below. An unreadable cap leaves the character
+-- levelling, so a bad read never stops XP recording.
+
+local Cap = { level = nil, atCap = false, xpOff = false }
+ns.Cap = Cap
+local capWatch, capSwap, capHooks = {}, {}, {}
+local capApplied -- levelling state last applied; nil before the first Refresh
+local function Noop() end
+
+-- A client value through pcall; a secret or failed call reads as nil.
+local function Probe(fn, ...)
+    if type(fn) ~= "function" then return nil end
+    local ok, v = pcall(fn, ...)
+    if ok and not issecretvalue(v) then return v end
+    return nil
+end
+
+local function PlainNum(v)
+    if type(v) == "number" and v == v and not issecretvalue(v) then return v end
+    return nil
+end
+
+-- The level cap this character levels to, nil when the client does not say.
+function Cap.Read()
+    local rules = _G.GameRulesUtil
+    local cap = rules and PlainNum(Probe(rules.GetEffectiveMaxLevelForPlayer))
+    if not cap then
+        local a, b = PlainNum(Probe(_G.GetMaxLevelForPlayerExpansion)), PlainNum(Probe(_G.GetMaxPlayerLevel))
+        cap = (a and b and math.min(a, b)) or a or b
+    end
+    if cap and cap > 0 then return cap end
+    return nil
+end
+
+-- True while levelling work should run.
+function Cap.Levelling()
+    return not (Cap.atCap or Cap.xpOff)
+end
+
+local function ValidEvent(event)
+    local valid = C_EventUtils and C_EventUtils.IsEventValid
+    return not valid or valid(event)
+end
+
+local function Apply()
+    local levelling = Cap.Levelling()
+    if capApplied == levelling then return end
+    capApplied = levelling
+    for _, w in ipairs(capWatch) do
+        for _, event in ipairs(w.events) do
+            if levelling then
+                if ValidEvent(event) then w.frame:RegisterEvent(event) end
+            else
+                w.frame:UnregisterEvent(event)
+            end
+        end
+    end
+    for _, s in ipairs(capSwap) do s.tbl[s.key] = levelling and s.real or Noop end
+    for _, fn in ipairs(capHooks) do fn(levelling) end
+end
+
+-- Reads the cap and the experience switches and applies the result. level is the level the
+-- client just reported (PLAYER_LEVEL_UP carries it before UnitLevel does). grace, in seconds,
+-- keeps the events registered a little longer when levelling just ended, so the last
+-- experience line of the final level is still written.
+function Cap.Refresh(level, grace)
+    local lv = PlainNum(level) or PlainNum(UnitLevel("player"))
+    Cap.level = Cap.Read() or Cap.level
+    Cap.atCap = Cap.level ~= nil and lv ~= nil and lv >= Cap.level
+    local off = Probe(_G.IsXPUserDisabled) == true
+    if not off then
+        local rules, enum = _G.C_GameRules, _G.Enum and _G.Enum.GameRule
+        if rules and enum and enum.ExperienceBarDisabled then
+            off = Probe(rules.IsGameRuleActive, enum.ExperienceBarDisabled) == true
+        end
+    end
+    Cap.xpOff = off
+    if capApplied ~= nil and not Cap.Levelling() and grace then
+        C_Timer.After(grace, function() if not Cap.Levelling() then Apply() end end)
+    else
+        Apply()
+    end
+end
+
+-- Events only a levelling character needs: registered while levelling, unregistered otherwise.
+-- The handlers stay in the file's table; Listen's lazy set keeps them unregistered at load.
+function Cap.Watch(frame, events)
+    capWatch[#capWatch + 1] = { frame = frame, events = events }
+    if capApplied then
+        for _, event in ipairs(events) do
+            if ValidEvent(event) then frame:RegisterEvent(event) end
+        end
+    end
+end
+
+-- tbl[key] runs while levelling and is a no-op otherwise.
+function Cap.Swap(tbl, key)
+    capSwap[#capSwap + 1] = { tbl = tbl, key = key, real = tbl[key] }
+    if capApplied == false then tbl[key] = Noop end
+end
+
+-- fn(levelling) runs each time the state is applied.
+function Cap.OnChange(fn)
+    capHooks[#capHooks + 1] = fn
+end
+
 local function Prune()
     local total = 0
     for i = 1, #chunks do total = total + #chunks[i].z end
@@ -371,7 +482,11 @@ function Ov.Zone(name, kind, inst)
     local run = ov.run
     if kind == "party" or kind == "raid" then
         local same = type(run) == "table" and run.inst == inst and (run.left == nil or time() - run.left < RUN_GAP)
-        if not same then Bump(cur, "r", 1) end
+        if not same then
+            Bump(cur, "r", 1)
+            local l = Slots()
+            if l then Bump(l, "r", 1) end
+        end
         if type(run) ~= "table" then run = {}; ov.run = run end
         run.inst, run.left = inst, nil
     elseif type(run) == "table" and run.left == nil then
@@ -413,7 +528,15 @@ function Ov.Quest() Count("q") end        -- Q 2
 -- M: net is the change minus the part transferred between your own characters; balance what you carry now.
 function Ov.Money(net, balance)
     if not Active() then return end
-    if net > 0 then Bump(cur, "g", net) elseif net < 0 then Bump(cur, "s", -net) end
+    cur.last = time()
+    local l = Slots()
+    if net > 0 then
+        Bump(cur, "g", net)
+        if l then Bump(l, "g", net) end
+    elseif net < 0 then
+        Bump(cur, "s", -net)
+        if l then Bump(l, "s", -net) end
+    end
     if type(balance) == "number" then cur.m = balance end
 end
 

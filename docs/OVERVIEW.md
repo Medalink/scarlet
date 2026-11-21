@@ -64,7 +64,7 @@ Short keys, so the SavedVariables stay small. All numbers; missing means 0.
 | `g`, `s` | copper earned, copper spent (both positive) |
 | `m` | balance at the end, copper (absent when unknown) |
 | `z` | distinct zones |
-| `lv` | `{ [level] = { p, xk, xd, xq, xe, xo, k, dd, q } }`, the session's share of each level |
+| `lv` | `{ [level] = { p, xk, xd, xq, xe, xo, k, dd, q, g, s, r } }`, the session's share of each level (`g` and `s` copper earned and spent, `r` runs started, counted as the row's own) |
 | `zn` | `{ [zone name] = { p, k, dd, x } }`, the session's share of each zone (`x` all XP) |
 
 The addon keeps the last 120 rows in `ov.sess` (oldest first) and the open session in
@@ -93,7 +93,7 @@ ScarletDigest = {
       sessions = { <session rows, newest first: the last 60, or all from the last 14 days if more;
                     trimmed further when the file would pass 200 KB> },
       recent = { { t, p, x }, ... },                    -- for the level estimates, see below
-      levels = { [level] = { p, xk, xd, xq, xe, xo, k, dd, q, at = <epoch s reached, 0 if before recording>, zone = <zone with the most time> } },
+      levels = { [level] = { p, xk, xd, xq, xe, xo, k, dd, q, g, s, r, at = <epoch s reached, 0 if before recording>, zone = <zone with the most time> } },
       zones = { { name, p, k, dd, x }, ... },          -- top 40 by time
       runs = { { inst, name, n, last }, ... },          -- by n, top 10; last = epoch s
       runsTotal = <n>,
@@ -101,6 +101,9 @@ ScarletDigest = {
       killers = { { name, n }, ... },                   -- DR pos 1 source, top 10
       deathZones = { { name, n }, ... },                -- top 10
       gold = { { t, m }, ... },                         -- balance at each session end, last 30
+      cap = { level, reached, p, bosses, loot, honor, hks, skillups, ldone, ltotal, lpoints, ilvl,
+              rep = { { name, n } }, runs = { { name, n, p, b } }, killers = { { name, n } }, dz = { { name, n } } },
+                                                        -- present once a session reported the level cap, see Max level
       before = { kills, deaths, dungeons, bosses, quests, xp, earned, spent, loot, tracked },
                                                         -- totals over the sessions the addon did not record
                                                         -- itself (an `S` line whose version field is not a number);
@@ -135,6 +138,8 @@ zones tile and no killer. Empty cards say what is missing in plain words
 
 The old stat grids stay, renamed "Stats".
 
+Once the character has been at the cap for an hour of played time, the page changes, see Max level.
+
 In game the Stats cards count from the install (`ScarletDB.chars[key]`). When the digest has
 `before` for the character, Kills, Deaths, Dungeons, Bosses, Quests, Items looted, Experience, Gold
 earned, Gold spent and Time recorded add it, so they hold the whole history the app and the website
@@ -144,7 +149,7 @@ adds it.
 
 ## Level estimates
 
-Time to the next level, to the next multiple of 10 and to level 60, from how the character has
+Time to the next level, to the next multiple of 10 and to the level cap, from how the character has
 actually gained XP at each level. The game and the app show the same numbers, so both follow
 this section exactly. The pace reads the per-level history; the date reads the merged rows
 `{ t, p, x }`, newest first by `t`: the digest's `recent`, the addon's own rows with `t` after
@@ -205,9 +210,10 @@ The current level uses the client's `xpMax` instead of its table value. Observed
 (level 41: 95,800 in 131 `X` and `S` lines; level 7: 4,500 on the digest) match the table. If a
 level is ever seen to differ, the observed value replaces that table entry.
 
-**Targets**, for `L` below 60: the next level `L + 1`; the next multiple of 10 above `L`,
-`(floor(L / 10) + 1) * 10`, only when it differs from `L + 1` and from 60; and 60. At level 60
-and above nothing is shown. At 59 the only target is 60.
+**Targets**, for `L` below the cap `C`: the next level `L + 1`; the next multiple of 10 above `L`,
+`(floor(L / 10) + 1) * 10`, only when it differs from `L + 1` and from `C`; and `C`. `C` is the level cap the
+client reported (see Max level), at most 60 because `NEED` ends there, and 60 when no session reported one.
+At the cap and above nothing is shown and nothing is fitted. One level below the cap the only target is the cap.
 
 **Time** is `time(T)`, in played time. Written as minutes `m = max(1, round(seconds / 60))`
 (halves round up): `d` days and `h` hours (`m div 1440`, `m mod 1440 div 60`) as `3d 4h` when
@@ -229,3 +235,51 @@ muted line with the basis, `Based on 38 levels played: 11,278 XP an hour at leve
 decimal. A flat pace says `Based on 2 levels played: 6,120 XP an hour`, the number being the
 levels with played time. With no estimate the rows are empty and the muted line says what is
 missing.
+
+## Max level
+
+A character at the level cap has no levels to estimate, so nothing levelling-related is worked out for
+it, and the page leads with what it does at the cap.
+
+**The cap** is the client's, never a constant. The addon reads it at login (`ns.Cap` in Core.lua:
+`GameRulesUtil.GetEffectiveMaxLevelForPlayer`, else the lower of `GetMaxLevelForPlayerExpansion` and
+`GetMaxPlayerLevel`) and writes it as field 14 of `S`. The companion keeps the latest one it saw as the
+character's cap and writes it as `cap.level`; sessions from older addons have none, and a character
+without one is never treated as capped. A character is *at the cap* when its level is at least the cap.
+The level changes into the cap at `L` while playing.
+
+**What stops at the cap.** In the addon, once a character is at the cap, or has experience turned off
+(`IsXPUserDisabled`, the `ExperienceBarDisabled` game rule): `PLAYER_XP_UPDATE`, `UPDATE_EXHAUSTION` and
+`CHAT_MSG_COMBAT_XP_GAIN` are unregistered, the XP source tracking is a no-op, the rested timers
+are off, and the Character page runs no pace fit or estimate. The events come back if experience is
+turned on again. The `X`, `RX` and `XR` lines are therefore not written there, and `S` carries no bar. The
+companion reports no bar (`xp` and `xpMax` 0) and no estimates for a character at the cap.
+
+**Played time at the cap** is the largest of: the cap level's `p` summed over the rows, the digest's
+`cap.p`, and the addon's last `TP` levelSeconds read while at the cap (`ScarletDB.chars[key].capSecs`).
+The companion's `cap.p` is the larger of the cap level's share and its latest `TP` levelSeconds read at
+the cap. The last of the three covers time played before Scarlet was installed.
+
+**The switch.** With one hour (3,600 s) of played time at the cap, the page leads with max level data
+and moves the levelling content down. Below the cap, and in the first hour at it, the page is the one
+described above. The app, the game and the companion apply the same rule.
+
+**Level shares.** Each level's share also holds `g` and `s` (copper earned and spent, the same net of
+transfers as the row's) and `r` (runs started). The cap level's share therefore holds time, gold, runs,
+kills, deaths and quests at the cap.
+
+**The `cap` block** holds what the shares do not, all counted while at the cap except where noted:
+`reached` (when the `L` line into the cap was written), `bosses` (`B`), `loot` (`O` counts), `honor` (`HN`
+amounts), `hks` (`HK` gained), `skillups` (`SK` lines), `rep` (positive `RP` amounts by faction, top 5),
+`runs` (per dungeon or raid: runs started, seconds inside and boss kills, top 5 by runs), `killers` and `dz`
+(killing blow sources and death zones, top 5). `ldone`, `ltotal` and `lpoints` are the latest `AP` line and
+`ilvl` the latest `SX` `ilvlall` or `ST` item level, at any level.
+
+**The page at the cap, after the hour.** Header without a bar. A strip: time at max level, gold an hour,
+dungeons and raids, deaths, item level, items looted. Then Gold (balance, earned and spent at the cap,
+net an hour), Dungeons and raids (runs with time and bosses), Deaths, Reputation and professions,
+Legacy and PvP, Played with, play time by day and by zone. Then a Levelling section (XP by source, time per
+level) and the play history. The game's page shows the same figures in cards: At max level, Gold,
+Dungeons and raids, Deaths, Reputation and professions, Legacy and PvP, Levelling (time to reach the
+cap and XP by source), Played with. The `cap` block is as of the last export; the cap level's share
+adds the addon's own rows and the open session.

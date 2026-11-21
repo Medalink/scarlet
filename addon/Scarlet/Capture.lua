@@ -1046,6 +1046,7 @@ function ns.XPSource(kind, id)
     xpSources[#xpSources + 1] = { kind = kind, id = id, t = GetTime() }
     while #xpSources > 8 do table.remove(xpSources, 1) end
 end
+ns.Cap.Swap(ns, "XPSource") -- a no-op at max level, so a kill costs nothing for XP
 
 local function TakeXPSource(t)
     local best, bestD, bestRank
@@ -1072,9 +1073,14 @@ local function FlushXP(p)
     while xpPending[1] and xpPending[1].done do table.remove(xpPending, 1) end
 end
 
+-- Registered only while the character levels (ns.Cap in Core.lua); at max level the client's bar is empty.
 function H.PLAYER_XP_UPDATE()
     local cur, max = UnitXP("player"), UnitXPMax("player")
     if not Plain(cur) or not Plain(max) then return end
+    if not max or max <= 0 then
+        lastXP, lastMax = nil, nil
+        return
+    end
     if lastXP then
         local gain = cur >= lastXP and cur - lastXP or (lastMax - lastXP) + cur
         if gain > 0 then
@@ -1088,6 +1094,8 @@ function H.PLAYER_XP_UPDATE()
 end
 
 function H.PLAYER_LEVEL_UP(level)
+    -- Into the cap: the last X line of the level is still waiting on its timer, and the events stay registered for 2 seconds.
+    ns.Cap.Refresh(level, XP_WAIT + 1.2)
     Emit("L", level)
     Ov.Level(Num(level))
     Add("levels")
@@ -1267,6 +1275,7 @@ H.PLAYER_FLAGS_CHANGED = SetAFK
 
 local rested
 local function SetRested()
+    if not ns.Cap.Levelling() then return end
     local x = GetXPExhaustion()
     if not Plain(x) then return end
     local r = (x or 0) > 0
@@ -1276,6 +1285,20 @@ local function SetRested()
     TimerSet("restedTime", "unrestedTime", r)
 end
 H.UPDATE_EXHAUSTION = SetRested
+
+-- Levelling ends (the cap, or experience turned off): the rested timers and the XP bar baseline
+-- are dropped. It starts again: both are read fresh.
+ns.Cap.OnChange(function(levelling)
+    if levelling then
+        local x, m = UnitXP("player"), UnitXPMax("player")
+        if Plain(x) and Plain(m) and m and m > 0 then lastXP, lastMax = x, m end
+        if entered then SetRested() end
+    else
+        TimerOff("restedTime")
+        TimerOff("unrestedTime")
+        rested, lastXP, lastMax = nil, nil, nil
+    end
+end)
 
 -- Group members by Name-Realm: GM 1 when they join (or are there when the
 -- session starts), GM 0 with seconds together when they leave. Per-person
@@ -1421,15 +1444,22 @@ function H.PLAYER_LOGIN()
     -- server: the realm ID of the server you picked at login (PvE or PvP; 91 in
     -- the client's WTF folder), so data from different servers stays apart.
     -- Forever's realm name is empty, so the ID is the field that tells them apart.
-    lastXP, lastMax = UnitXP("player"), UnitXPMax("player")
-    if not Plain(lastXP) or not Plain(lastMax) then lastXP, lastMax = nil, nil end
-    -- Appended to S: region (the client's region id), toc (the interface number), and the
-    -- experience bar (xp, xpMax), and money (the copper you carry).
+    -- The cap decides whether any levelling work runs this session (Core.lua, ns.Cap).
+    ns.Cap.Refresh()
+    if ns.Cap.Levelling() then
+        lastXP, lastMax = UnitXP("player"), UnitXPMax("player")
+        if not Plain(lastXP) or not Plain(lastMax) then lastXP, lastMax = nil, nil end
+    else
+        lastXP, lastMax = nil, nil
+    end
+    -- Appended to S: region (the client's region id), toc (the interface number), the
+    -- experience bar (xp, xpMax), money (the copper you carry), and the level cap the client reports
+    -- (empty when it does not say). At the cap or with experience off the bar fields are empty.
     lastMoney = GetMoney()
     Emit("S", (GetBuildInfo()), class, race, UnitLevel("player"), (UnitFactionGroup("player")), ns.VERSION,
         _G.GetRealmID and _G.GetRealmID() or "", GetRealmName(),
         _G.GetCurrentRegion and _G.GetCurrentRegion() or "", select(4, GetBuildInfo()), lastXP or "", lastMax or "",
-        lastMoney)
+        lastMoney, ns.Cap.level or "")
     Ov.Start(ns.session, Num(UnitLevel("player")), Num(lastMoney))
     dead = UnitIsDeadOrGhost("player") and true or false
     if ns.OnLogin then ns.OnLogin() end
@@ -1474,4 +1504,6 @@ end
 ns.SpellName, ns.ItemName, ns.MapPoint, ns.NpcID, ns.Pattern = SpellName, ItemName, MapPoint, NpcID, Pattern
 ns.Round1, ns.TimerOn, ns.TimerOff = Round1, TimerOn, TimerOff
 
-ns.Listen(frame, H, "Capture", { UNIT_HEALTH = true })
+local LEVELLING_EVENTS = { "PLAYER_XP_UPDATE", "UPDATE_EXHAUSTION" }
+ns.Listen(frame, H, "Capture", { UNIT_HEALTH = true, PLAYER_XP_UPDATE = true, UPDATE_EXHAUSTION = true })
+ns.Cap.Watch(frame, LEVELLING_EVENTS)
