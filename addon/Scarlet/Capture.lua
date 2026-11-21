@@ -1550,7 +1550,7 @@ function H.PLAYER_LOGIN()
         _G.GetRealmID and _G.GetRealmID() or "", GetRealmName(),
         _G.GetCurrentRegion and _G.GetCurrentRegion() or "", select(4, GetBuildInfo()), lastXP or "", lastMax or "",
         lastMoney, ns.Cap.level or "")
-    Ov.Start(ns.session, Num(UnitLevel("player")), Num(lastMoney))
+    Ov.Start(ns.session, Num(UnitLevel("player")), Num(lastMoney), Num(lastXP), Num(lastMax))
     dead = UnitIsDeadOrGhost("player") and true or false
     if ns.OnLogin then ns.OnLogin() end
 end
@@ -1574,7 +1574,9 @@ end
 
 function H.PLAYER_LOGOUT()
     while xpPending[1] do FlushXP(table.remove(xpPending, 1)) end
-    Ov.End()
+    local xpNow, xpMaxNow
+    if ns.Cap.Levelling() then xpNow, xpMaxNow = Num(UnitXP("player")), Num(UnitXPMax("player")) end
+    Ov.End(xpNow, xpMaxNow)
     EndSegment()
     StopTicker()
     if campT0 then

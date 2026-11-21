@@ -4,6 +4,7 @@ local ADDON, ns = ...
 _G.Scarlet = ns
 
 local floor, select, type, tostring, concat, wipe = math.floor, select, type, tostring, table.concat, wipe
+local min, max = math.min, math.max
 local format = string.format
 local GetTime, time = GetTime, time
 local issecretvalue = issecretvalue or function(_) return false end
@@ -334,8 +335,15 @@ local mark, level, zone, instType      -- clock, level, zone name and instance t
 local zoneN                            -- zones with a split in the open row
 local seen = {}                        -- distinct zone names in the open row
 local readAt, readTotal, credited       -- the latest /played read of the open session (epoch s, total), whether its start was credited
+local holed
+local GAP_SECS, XP_GAP_DIV, DING_READ = 120, 50, 1800
 
 local function Bump(t, k, n) t[k] = (t[k] or 0) + n end
+
+local function MarkHole(from, to)
+    local lo, hi = min(from, to), max(from, to)
+    for l = lo, min(hi, lo + 120) do ov.hole[l] = true end
+end
 
 -- The open row's share of the current level and of the current zone.
 local function Slots()
@@ -394,12 +402,15 @@ local function Active() return cur ~= nil and not ns.opt.paused end
 
 -- The session starts: t is the S line's time. A row left open by a session that never closed
 -- (an error in the logout handler) is closed first, with what it has.
-function Ov.Start(t, lv, money)
+function Ov.Start(t, lv, money, xp, xpMax)
     local ch = ns.char
     if not ch then return end
     if type(ch.ov) ~= "table" then ch.ov = {} end
     ov = ch.ov
     if type(ov.sess) ~= "table" then ov.sess = {} end
+    if type(ov.ding) ~= "table" then ov.ding = {} end
+    if type(ov.hole) ~= "table" then ov.hole = {} end
+    ov.dl = nil
     local stale = ov.cur
     if type(stale) == "table" and type(stale.t) == "number" then
         -- Left open by a disconnect or an error at logout: its time runs to the last change seen.
@@ -408,7 +419,22 @@ function Ov.Start(t, lv, money)
         if type(ov.run) == "table" and ov.run.left == nil then ov.run.left = last end
     end
     if stale ~= nil then Push(stale) end
+    local prev = ov.sess[#ov.sess]
+    if not ov.f0 then
+        local oldest = ov.sess[1]
+        ov.f0 = type(oldest) == "table" and tonumber(oldest.l0) or lv
+    end
+    local ahead = false
+    if type(prev) == "table" and type(lv) == "number" and type(prev.l1) == "number" then
+        if lv ~= prev.l1 then
+            ahead = lv > prev.l1
+        elseif xp and xpMax and xpMax == ov.xm and type(ov.xe) == "number" then
+            ahead = xp > ov.xe + max(1, floor(xpMax / XP_GAP_DIV))
+        end
+        if ahead then MarkHole(prev.l1, lv) end
+    end
     cur = { t = t, p = 0, l0 = lv, l1 = lv, m = money, z = 0, lv = {}, zn = {} }
+    holed = ahead
     ov.cur = cur
     readAt, readTotal, credited = nil, nil, false
     mark, level, zone, instType, zoneN = GetTime(), lv, nil, nil, 0
@@ -416,10 +442,11 @@ function Ov.Start(t, lv, money)
 end
 
 -- The session ends (logout or reload).
-function Ov.End()
+function Ov.End(xp, xpMax)
     if not cur then return end
     Tick()
     cur.l1 = level or cur.l1
+    ov.xe, ov.xm = xp, xpMax
     -- Where the client's played counter stood now, for the next session to credit the reload between.
     local now = time()
     if readAt and readTotal then
@@ -446,6 +473,11 @@ function Ov.Played(total)
     if not cur or type(total) ~= "number" then return end
     local now = time()
     readAt, readTotal = now, total
+    local dl, ding = ov.dl, ov.dl and ov.ding[ov.dl]
+    if dl and type(ding) == "table" and dl == level and now - ding.t <= DING_READ then
+        ding.p = total - (now - ding.t)
+        ov.dl = nil
+    end
     if credited then return end
     credited = true
     local pe, row = ov.pe, ov.sess[#ov.sess]
@@ -453,6 +485,11 @@ function Ov.Played(total)
     if not pe or type(row) ~= "table" or row.t ~= ov.pt then return end
     -- Both sides are whole seconds: under 2 is rounding.
     local gap = total - (now - cur.t) - pe
+    if gap > GAP_SECS then
+        if not holed then MarkHole(tonumber(ov.pl) or level or 0, level or tonumber(ov.pl) or 0) end
+        holed = true
+        return
+    end
     if gap < 2 then return end
     local credit = floor(math.min(gap, cur.t - (tonumber(ov.pw) or cur.t) + 2) + 0.5)
     if credit <= 0 then return end
@@ -466,6 +503,10 @@ end
 function Ov.Level(lv)
     if not cur or type(lv) ~= "number" then return end
     Tick()
+    if lv ~= level then
+        ov.ding[lv] = { t = time(), p = 0 }
+        ov.dl = lv
+    end
     level = lv
     cur.l1 = lv
 end

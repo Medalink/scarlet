@@ -81,6 +81,32 @@ function ns.History(key)
     return out
 end
 
+function ns.LevelFacts(key, level)
+    local d = DigestFor(key)
+    local dl = d and type(d.levels) == "table" and d.levels[level]
+    if type(dl) ~= "table" then dl = nil end
+    local chars = ns.db and ns.db.chars
+    local ch = key == ns.charKey and ns.char or (type(chars) == "table" and chars[key]) or nil
+    local o = type(ch) == "table" and type(ch.ov) == "table" and ch.ov or nil
+    local ding = o and type(o.ding) == "table" and o.ding or nil
+    local hole = o and type(o.hole) == "table" and o.hole[level] or false
+    local seenIn = (dl and dl.whole == true) or (ding and type(ding[level]) == "table") or false
+    local whole = seenIn and not hole
+    local seenOut = (dl and dl.complete == true) or (ding and type(ding[level + 1]) == "table") or false
+    local pd = dl and N(dl.pd) or 0
+    if ding and type(ding[level]) == "table" and N(ding[level].p) > 0 then pd = N(ding[level].p) end
+    return whole, whole and seenOut, pd
+end
+
+function ns.FirstLevel(key)
+    local d = DigestFor(key)
+    if d and N(d.firstLevel) > 0 then return d.firstLevel end
+    local chars = ns.db and ns.db.chars
+    local ch = key == ns.charKey and ns.char or (type(chars) == "table" and chars[key]) or nil
+    local o = type(ch) == "table" and ch.ov
+    return type(o) == "table" and N(o.f0) > 0 and o.f0 or nil
+end
+
 local function AddWeek(b, row)
     b.wp = b.wp + N(row.p)
     b.wq = b.wq + N(row.q)
@@ -425,7 +451,11 @@ local function CapSeconds(b, live)
     local secs = b.cap.p
     local lv = live and b.cap.level and live.lv[b.cap.level]
     if type(lv) == "table" then secs = secs + N(lv.p) end
-    return max(secs, N(b.extra.p), N(ns.char and ns.char.capSecs))
+    local ding = b.cap.level and ns.char and ns.char.ov and ns.char.ov.ding and ns.char.ov.ding[b.cap.level]
+    if N(b.extra.reached) > 0 or type(ding) == "table" then
+        secs = max(secs, N(b.extra.p), N(ns.char and ns.char.capSecs))
+    end
+    return secs
 end
 
 -- Page -----------------------------------------------------------------------------
@@ -636,8 +666,10 @@ function ns.OverviewPage(parent, ui)
         local net = g - s
         local m = maxCards
 
+        local capDing = cap.level and ns.char and ns.char.ov and ns.char.ov.ding and ns.char.ov.ding[cap.level]
         local reached = N(x.reached)
-        m.atMax:Set(1, "Time at max level", Duration(secs))
+        if reached == 0 and type(capDing) == "table" then reached = N(capDing.t) end
+        m.atMax:Set(1, reached > 0 and "Time at max level" or "Recorded at max level", Duration(secs))
         m.atMax:Set(2, "Reached", reached > 0 and date("%d %b %Y", reached) or "Before recording")
         m.atMax:Set(3, "Item level", N(x.ilvl) > 0 and Num(x.ilvl) or "")
         m.atMax:Set(4, "Items looted", Num(N(x.loot)))
@@ -695,7 +727,12 @@ function ns.OverviewPage(parent, ui)
         m.legacy:Rows(4)
 
         local bl = b.below
-        m.levelling:Set(1, "Time to reach max level", Duration(bl.p))
+        local first = ns.FirstLevel(b.key)
+        local sawLevelling = not (first and cap.level and first >= cap.level)
+        m.levelling:SetShown(sawLevelling)
+        m.levelling.title:SetText(first and first > 1 and ("Levelling from level " .. first) or "Levelling")
+        local _, _, toCap = ns.LevelFacts(b.key, cap.level or 0)
+        m.levelling:Set(1, "Time to reach max level", toCap > 0 and Duration(toCap) or "Not recorded")
         m.levelling:Set(2, "XP from kills", Num(bl.xk))
         m.levelling:Set(3, "XP from quests", Num(bl.xq))
         m.levelling:Set(4, "XP from other", Num(bl.xo))
@@ -740,6 +777,7 @@ function ns.OverviewPage(parent, ui)
 
         local lv = live and lvl and live.lv[lvl]
         local levelTime = base.lp + (lv and N(lv.p) or 0)
+        local wholeLevel = lvl ~= nil and ns.LevelFacts(key, lvl)
 
         -- An hour at the cap: the page leads with max level data and the levelling moves down.
         local focus = base.capped and CapSeconds(base, live) >= FOCUS_SECONDS
@@ -759,12 +797,15 @@ function ns.OverviewPage(parent, ui)
             local ratio = math.min(1, max(0, xp / xpMax))
             barFill:SetWidth(max(1, ratio * (bar:GetWidth() or 0)))
             local text = format("%d%% to %d", floor(ratio * 100), (lvl or 0) + 1)
-            if levelTime > 0 then text = text .. " \194\183 this level " .. Duration(levelTime) .. " so far" end
+            if levelTime > 0 then
+                text = text .. " \194\183 " .. (wholeLevel and ("this level " .. Duration(levelTime) .. " so far")
+                    or (Duration(levelTime) .. " of this level recorded"))
+            end
             progress:SetText(text)
         else
             barFill:SetWidth(1)
             progress:SetText(levelTime > 0 and ((base.capped and "At max level " or "This level ") .. Duration(levelTime)
-                .. " so far") or "")
+                .. (wholeLevel and " so far" or " recorded")) or "")
         end
         if levelling then
             ShowEta(base, live, clientLevel, xp, xpMax)
@@ -790,7 +831,8 @@ function ns.OverviewPage(parent, ui)
             xk, xq = xk + N(lv.xk) + N(lv.xd), xq + N(lv.xq)
             kills, dead = kills + N(lv.k), dead + N(lv.dd)
         end
-        lvlCard.title:SetText(lvl and format("Level %d so far", lvl) or "This level so far")
+        lvlCard.title:SetText(lvl and format(wholeLevel and "Level %d so far" or "Level %d, recorded part", lvl)
+            or "This level so far")
         if base.capped then
             lvlCard:Set(1, "Kills", Num(kills))
             lvlCard:Set(2, "Deaths", Num(dead))

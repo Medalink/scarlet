@@ -774,7 +774,9 @@ local function Show(key)
     local home = key == "overview"
     window.pageTitle:SetShown(not home)
     local title = navButtons[key].label
-    if FROM_INSTALL[key] and ns.char and ns.History(ns.charKey) then title = title .. ", since install" end
+    if ns.char and (FROM_INSTALL[key] or (key == "stats" and not ns.History(ns.charKey))) then
+        title = title .. ", since install"
+    end
     window.pageTitle:SetText(title)
     window.body:ClearAllPoints()
     window.body:SetPoint("TOPLEFT", 0, home and 0 or -TITLE_H)

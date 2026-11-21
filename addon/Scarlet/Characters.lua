@@ -77,6 +77,7 @@ local function Gather(key, c, ch, weekStart, folderOf, here)
     local through = -1
     if type(c) == "table" then
         r.class, r.level, r.zone, r.played = c.class, N(c.level), c.zone, N(c.played)
+        r.known = r.played > 0
         r.money = type(c.money) == "number" and c.money or nil
         r.xp, r.xpMax = N(c.xp), N(c.xpMax)
         through = N(c.through)
@@ -94,13 +95,11 @@ local function Gather(key, c, ch, weekStart, folderOf, here)
     end
     local o = type(ch) == "table" and ch.ov
     if type(o) == "table" and type(o.sess) == "table" then
-        local sum = 0
         for _, s in ipairs(o.sess) do
             if type(s) == "table" then
                 local t = N(s.t)
-                sum = sum + N(s.p)
                 if t > through + 3 then
-                    r.played = r.played + N(s.p)
+                    if r.known then r.played = r.played + N(s.p) end
                     if type(s.m) == "number" then r.money = s.m end
                     if N(s.l1) > 0 then r.level = s.l1 end
                     r.last = max(r.last, t + N(s.p))
@@ -108,7 +107,9 @@ local function Gather(key, c, ch, weekStart, folderOf, here)
                 end
             end
         end
-        if type(c) ~= "table" then r.played = max(N(ch.played), sum) end
+    end
+    if not r.known and type(ch) == "table" and N(ch.played) > 0 then
+        r.played, r.known, r.counter, r.readAt = ch.played, true, true, N(ch.playedAt)
     end
     return r
 end
@@ -416,12 +417,14 @@ function ns.CharactersPage(parent, ui)
         local s = shown[r] or {}
         shown[r] = s
         s.played, s.money, s.level, s.zone = r.played, r.money, r.level, r.zone
+        s.known = r.known == true
         s.wp, s.wq, s.wg, s.wr = r.wp, r.wq, r.wg, r.wr
         if r.live then
             local level, money, zone = CNum(UnitLevel("player")), CNum(GetMoney()), CStr(GetRealZoneText())
             s.level, s.money, s.zone = level or s.level, money or s.money, zone or s.zone
+            if r.counter and r.readAt > 0 then s.played = s.played + max(0, time() - r.readAt) end
             if live then
-                s.played = s.played + N(live.p)
+                if s.known and not r.counter then s.played = s.played + N(live.p) end
                 if N(live.t) >= weekStart then
                     s.wp, s.wq, s.wg, s.wr = s.wp + N(live.p), s.wq + N(live.q), s.wg + N(live.g) - N(live.s),
                         s.wr + N(live.r)
@@ -453,7 +456,8 @@ function ns.CharactersPage(parent, ui)
         local list = {}
         for i, r in ipairs(rows) do
             list[i] = Show(r, live, weekStart)
-            played, gold = played + list[i].played, gold + N(list[i].money)
+            if list[i].known then played = played + list[i].played end
+            gold = gold + N(list[i].money)
         end
         cells[1].value:SetText(Num(n))
         cells[2].value:SetText(Duration(played))
@@ -521,7 +525,7 @@ function ns.CharactersPage(parent, ui)
             Tint(c[1], s.class, T.fg)
             c[2]:SetText(s.level and s.level > 0 and Num(s.level) or "")
             c[3]:SetText(s.zone or "")
-            c[4]:SetText(Duration(s.played))
+            c[4]:SetText(s.known and Duration(s.played) or "")
             c[5]:SetText(Ago(r.last, now, r.live))
             c[6]:SetText(s.money and Money(s.money) or "")
             line.wash:SetShown(r.live)

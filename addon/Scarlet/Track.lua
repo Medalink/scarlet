@@ -663,17 +663,53 @@ function H.SCREENSHOT_FAILED()
     ns.shotTrigger = nil
 end
 
+local mutedFrames, ownRequest = {}, false
+
+local function RestoreChat()
+    for i = #mutedFrames, 1, -1 do
+        mutedFrames[i]:RegisterEvent("TIME_PLAYED_MSG")
+        mutedFrames[i] = nil
+    end
+end
+
+if type(_G.RequestTimePlayed) == "function" then
+    hooksecurefunc("RequestTimePlayed", function()
+        if not ownRequest then RestoreChat() end
+    end)
+end
+
+local function AskPlayed()
+    local request = _G.RequestTimePlayed
+    if type(request) ~= "function" or not ns.charKey then return end
+    if #mutedFrames == 0 then
+        for i = 1, _G.NUM_CHAT_WINDOWS or 10 do
+            local f = _G["ChatFrame" .. i]
+            if f and f.IsEventRegistered and f:IsEventRegistered("TIME_PLAYED_MSG") then
+                f:UnregisterEvent("TIME_PLAYED_MSG")
+                mutedFrames[#mutedFrames + 1] = f
+            end
+        end
+    end
+    ownRequest = true
+    request()
+    ownRequest = false
+    C_Timer.After(5, RestoreChat)
+end
+ns.AskPlayed = AskPlayed
+
 -- Other addons ask for /played too, so one login can answer three times;
 -- an answer within a few seconds of the last one written is dropped.
-local lastPlayed
+local lastPlayed, lastLevelSecs
 function H.TIME_PLAYED_MSG(total, thisLevel)
+    RestoreChat()
     if not Plain(total) or type(total) ~= "number" then return end
-    if lastPlayed and math.abs(total - lastPlayed) < 5 then return end
-    lastPlayed = total
+    local levelSecs = type(thisLevel) == "number" and Plain(thisLevel) and thisLevel or 0
+    if lastPlayed and math.abs(total - lastPlayed) < 5 and math.abs(levelSecs - (lastLevelSecs or 0)) < 5 then return end
+    lastPlayed, lastLevelSecs = total, levelSecs
     Emit("TP", total, thisLevel)
     ns.Ov.Played(total)
     if ns.char then
-        ns.char.played = total
+        ns.char.played, ns.char.playedAt = total, time()
         -- At the cap, the client's seconds on this level are the time at max level.
         if ns.Cap.atCap and type(thisLevel) == "number" and Plain(thisLevel) then ns.char.capSecs = thisLevel end
     end
@@ -706,6 +742,11 @@ end
 
 function H.PLAYER_LEVEL_UP()
     C_Timer.After(1, Snapshot)
+    C_Timer.After(1.5, ns.AskPlayed)
+end
+
+function H.PLAYER_CAMPING()
+    ns.AskPlayed()
 end
 
 local entered = false
@@ -726,6 +767,7 @@ function H.PLAYER_ENTERING_WORLD()
     H.UNIT_PET()
     Durability()
     C_Timer.After(2, Snapshot)
+    C_Timer.After(4, ns.AskPlayed)
     C_Timer.After(10, function() titlesReady = true end)
 end
 

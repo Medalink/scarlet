@@ -71,6 +71,43 @@ The addon keeps the last 120 rows in `ov.sess` (oldest first) and the open sessi
 `ov.cur`, the same shape, with `last`: the epoch seconds of its latest change, so a row a crash
 leaves open keeps its time up to then.
 
+## Lifetime and observed numbers
+
+A character's first session can be at any level, and Scarlet misses play later (another PC, the addon off,
+a lost SavedVariables). Every figure is one of two kinds, and the two are never added together.
+
+- **Lifetime**: what the game itself reports. The `/played` total (`played`), the level, the money, the
+  Statistics panel values, Legacy Challenges, reputation, item level, and the talents held now.
+- **Observed**: what Scarlet counted from its own lines since it first saw the character. Kills, deaths, gold
+  earned and spent, quests, dungeons, loot, XP by source, time on a level, time at the cap. Pages that show
+  them where a lifetime total could be assumed say so ("since install", "recorded part", "since first seen").
+
+`before` (below) is not a Statistics reading. It sums the sessions that came from imported history, which the
+addon did not record itself; the in-game Stats cards add it to the addon's own counters, which cover the
+sessions after the install, so no session is in both.
+
+**Unrecorded play.** The addon asks the game for `/played` a few seconds after login, 1.5 seconds after each
+level up and when the logout countdown starts (`TP` lines). The companion compares the counter at a session's
+start with where the session before it ended (its last read plus the seconds since). More than 120 seconds
+above is play Scarlet did not record: it is credited to no session, level or zone, and every level from the
+one the last session ended on to the one this session starts on has a hole. Below that it is a reload and is
+credited as before. Without a `/played` read on either side, a session that starts on a higher level than the
+last one ended on, or at the same level with the bar more than 2% ahead, has a hole too. `gaps` counts the
+holes and `gapSecs` holds the seconds the counter says they held.
+
+**Complete levels.** A level has a duration only when the ding into it and the ding out of it were both seen
+and no hole falls inside it. `whole` on a `levels` row means the ding in was seen and no hole falls inside the level,
+`complete` adds the ding out. The level a character was first seen at is never whole, nor is a level with a
+hole, and the level in progress is never complete. `pd` is the game's own played seconds at the ding into the level
+(the first `TP` read after it, less the seconds since); 0 when none was read. Time to reach level X is `pd` of
+X, and a character first seen above X has none. In the addon, `ov.ding[level] = { t, p }`, `ov.hole[level]`
+and `ov.f0` (the first level) carry the same for rows after `through`; a digest that lacks the flags makes
+nothing whole.
+
+**Rates** (XP an hour, gold an hour) use recorded play only, never `played`. Time per level, the level
+history and the Characters page's time per level draw only complete levels. `recorded` is the seconds the
+sessions hold and `firstLevel` the level of the first session. `played` is 0 when no `/played` was read.
+
 ## Digest.lua
 
 Written by the companion after each export, to
@@ -92,13 +129,16 @@ ScarletDigest = {
       through = <t of the newest session included>,
       class = "WARLOCK", race = "Troll", faction = "Horde",
       level = 41, xp = 34632, xpMax = 95800, zone = "Riverglades",
-      played = <seconds: the client's counter at the end of the last session, see Played>,
+      played = <seconds: the client's counter at the end of the last session, see Played; 0 when never read>,
+      recorded = <seconds the sessions hold>, firstLevel = <level of the first session>,
+      gaps = <unrecorded stretches>, gapSecs = <seconds they held>,   -- both absent when 0
       money = <copper, latest known balance>,
       first = <t of the character's first recorded session>,
       sessions = { <session rows, newest first: the last 60, or all from the last 14 days if more;
                     trimmed further when the file would pass 200 KB> },
       recent = { { t, p, x }, ... },                    -- for the level estimates, see below
-      levels = { [level] = { p, xk, xd, xq, xe, xo, k, dd, q, g, s, r, at = <epoch s reached, 0 if before recording>, zone = <zone with the most time> } },
+      levels = { [level] = { p, xk, xd, xq, xe, xo, k, dd, q, g, s, r, at = <epoch s reached, 0 if before recording>, zone = <zone with the most time>,
+                             whole = true, complete = true, pd = <played seconds at the ding in> } },  -- flags absent when false
       zones = { { name, p, k, dd, x }, ... },          -- top 40 by time
       runs = { { inst, name, n, last }, ... },          -- by n, top 10; last = epoch s
       runsTotal = <n>,
@@ -162,8 +202,8 @@ In game the Stats cards count from the install (`ScarletDB.chars[key]`). When th
 `before` for the character, Kills, Deaths, Dungeons, Bosses, Quests, Items looted, Experience, Gold
 earned, Gold spent and Time recorded add it, so they hold the whole history the app and the website
 show; every other card on that page says "since install", and the Time, Combat and more and People
-pages carry it in their title. Without `before` nothing is added or labelled. The session page never
-adds it.
+pages carry it in their title. Without `before` nothing is added, and the Stats page says "since install" in
+its title, since every card on it is counted from the install. The session page never adds it.
 
 ## Characters page
 
@@ -297,10 +337,14 @@ are off, and the Character page runs no pace fit or estimate. The events come ba
 turned on again. The `X`, `RX` and `XR` lines are therefore not written there, and `S` carries no bar. The
 companion reports no bar (`xp` and `xpMax` 0) and no estimates for a character at the cap.
 
-**Played time at the cap** is the largest of: the cap level's `p` summed over the rows, the digest's
-`cap.p`, and the addon's last `TP` levelSeconds read while at the cap (`ScarletDB.chars[key].capSecs`).
-The companion's `cap.p` is the larger of the cap level's share and its latest `TP` levelSeconds read at
-the cap. The last of the three covers time played before Scarlet was installed.
+**Played time at the cap.** When the ding into the cap was seen (`cap.reached` is set), it is the largest of:
+the cap level's `p` summed over the rows, the digest's `cap.p`, and the addon's last `TP` levelSeconds read
+while at the cap (`ScarletDB.chars[key].capSecs`); the game's level seconds count from that ding, so they
+also cover unrecorded play. The companion's `cap.p` is then the larger of the cap level's share and its
+latest `TP` levelSeconds read at the cap. Without that ding, levelSeconds hold time before Scarlet saw the
+character, and only the recorded time counts: the pages say "since first seen" and a character first seen
+at the cap switches after an hour of recorded play. Its page has no Levelling section, and "Time to reach
+max level" is the `pd` of the cap level, "Not recorded" when the ding was not seen.
 
 **The switch.** With one hour (3,600 s) of played time at the cap, the page leads with max level data
 and moves the levelling content down. Below the cap, and in the first hour at it, the page is the one
