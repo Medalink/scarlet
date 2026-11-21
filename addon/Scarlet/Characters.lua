@@ -37,7 +37,23 @@ end
 local ITEMS = {
     { x = 0, w = 240 }, { x = 250, w = 170 }, { x = 430, w = 100, just = "RIGHT" }, { x = 540, w = 115, just = "RIGHT" },
 }
+local IMPORTED = {
+    { x = 0, w = 170 }, { x = 176, w = 100 }, { x = 282, w = 70, just = "RIGHT" }, { x = 358, w = 100, just = "RIGHT" },
+    { x = 466, w = 70, just = "RIGHT" }, { x = 542, w = 113, just = "RIGHT" },
+}
+local IMPORTED_DAYS = {
+    { x = 0, w = 120 }, { x = 130, w = 90, just = "RIGHT" }, { x = 230, w = 140, just = "RIGHT" },
+    { x = 380, w = 90, just = "RIGHT" }, { x = 480, w = 175, just = "RIGHT" },
+}
+local IMPORTED_ITEMS = {
+    { x = 0, w = 260 }, { x = 270, w = 80, just = "RIGHT" }, { x = 360, w = 100, just = "RIGHT" },
+    { x = 470, w = 100, just = "RIGHT" }, { x = 580, w = 75, just = "RIGHT" },
+}
+local IMPORTED_GOLD = { { x = 0, w = 180 }, { x = 190, w = 180, just = "RIGHT" } }
 local MIN_QUERY, MAX_HITS, BOX_H = 2, 40, 28
+local IMPORTED_DAYS_SHOWN, IMPORTED_ITEMS_SHOWN, IMPORTED_GOLD_SHOWN = 14, 12, 14
+
+local imported = {}
 
 local rows, pairsList = {}, {}
 local liveBags = {}
@@ -145,6 +161,15 @@ local function Collect()
         end
     end
     table.sort(rows, ByOrder)
+
+    wipe(imported)
+    for _, r in ipairs(rows) do
+        local c = chars[r.key]
+        local v = type(c) == "table" and c.imported
+        if type(v) == "table" and type(v.sources) == "table" and #v.sources > 0 then
+            imported[#imported + 1] = { key = r.key, v = v }
+        end
+    end
 
     local seen = {}
     for key, c in pairs(chars) do
@@ -313,6 +338,11 @@ function ns.CharactersPage(parent, ui)
     local togetherSec = Section("Played together", TOGETHER,
         { "Character", "Character", "Online together", "Grouped", "Last" })
     local findSec = Section("Item search", ITEMS, { "Item", "Character", "Bags", "Bank" })
+    local impSec = Section("Imported history", IMPORTED,
+        { "Character", "Source", "Sales", "Sold for", "Purchases", "Bought for" })
+    local impDaysSec = Section("Imported sales by day", IMPORTED_DAYS, { "Day", "Sold", "Sold for", "Bought", "Bought for" })
+    local impItemsSec = Section("Imported item prices", IMPORTED_ITEMS, { "Item", "Sold", "Lowest", "Highest", "Bought" })
+    local impGoldSec = Section("Imported gold by day", IMPORTED_GOLD, { "Day", "Gold at the end of the day" })
 
     local query = ""
     local box = CreateFrame("Frame", nil, child)
@@ -563,6 +593,89 @@ function ns.CharactersPage(parent, ui)
             Close(togetherSec, #pairsList)
         else
             Hide(togetherSec)
+        end
+        if #imported > 0 then
+            local pick = imported[1]
+            for _, e in ipairs(imported) do
+                if e.key == ns.charKey then pick = e end
+            end
+            local v = pick.v
+            local source = table.concat(v.sources, " and ")
+            impSec.title:SetText("Imported from " .. source)
+            Open(impSec)
+            for i, e in ipairs(imported) do
+                local c = Place(impSec, i).cols
+                c[1]:SetText(e.key)
+                c[2]:SetText(table.concat(e.v.sources, " and "))
+                c[3]:SetText(Num(N(e.v.sales)))
+                c[4]:SetText(Money(N(e.v.sales_copper)))
+                c[5]:SetText(Num(N(e.v.buys)))
+                c[6]:SetText(Money(N(e.v.buys_copper)))
+            end
+            for i = #impSec.rows, #imported + 1, -1 do impSec.rows[i].frame:Hide() end
+            Close(impSec, #imported)
+
+            local days = type(v.days) == "table" and v.days or {}
+            local shownDays = 0
+            impDaysSec.title:SetText(format("%s: sales by day", pick.key))
+            Open(impDaysSec)
+            for _, d in ipairs(days) do
+                if type(d) == "table" and shownDays < IMPORTED_DAYS_SHOWN then
+                    shownDays = shownDays + 1
+                    local c = Place(impDaysSec, shownDays).cols
+                    c[1]:SetText(date("!%d %b", N(d.d)))
+                    c[2]:SetText(Num(N(d.sold)))
+                    c[3]:SetText(Money(N(d.sold_copper)))
+                    c[4]:SetText(Num(N(d.bought)))
+                    c[5]:SetText(Money(N(d.bought_copper)))
+                end
+            end
+            for i = #impDaysSec.rows, shownDays + 1, -1 do impDaysSec.rows[i].frame:Hide() end
+            Close(impDaysSec, shownDays)
+
+            local items = type(v.items) == "table" and v.items or {}
+            local shownItems = 0
+            impItemsSec.title:SetText(format("%s: item prices", pick.key))
+            Open(impItemsSec)
+            for _, it in ipairs(items) do
+                if type(it) == "table" and N(it.sold) > 0 and shownItems < IMPORTED_ITEMS_SHOWN then
+                    shownItems = shownItems + 1
+                    local id = N(it.id)
+                    local name = CStr(it.name)
+                    if not name and id > 0 and C_Item and C_Item.GetItemNameByID then
+                        name = CStr(C_Item.GetItemNameByID(id))
+                    end
+                    local c = Place(impItemsSec, shownItems).cols
+                    c[1]:SetText(name or ("Item " .. id))
+                    c[2]:SetText(Num(N(it.sold)))
+                    c[3]:SetText(Money(N(it.low)))
+                    c[4]:SetText(Money(N(it.high)))
+                    c[5]:SetText(N(it.bought) > 0 and Num(N(it.bought)) or "")
+                end
+            end
+            for i = #impItemsSec.rows, shownItems + 1, -1 do impItemsSec.rows[i].frame:Hide() end
+            Close(impItemsSec, shownItems)
+
+            local gold = type(v.gold) == "table" and v.gold or {}
+            local shownGold = 0
+            impGoldSec.title:SetText(format("%s: gold by day", pick.key))
+            Open(impGoldSec)
+            for i = #gold, 1, -1 do
+                local g = gold[i]
+                if type(g) == "table" and shownGold < IMPORTED_GOLD_SHOWN then
+                    shownGold = shownGold + 1
+                    local c = Place(impGoldSec, shownGold).cols
+                    c[1]:SetText(date("!%d %b", N(g.t)))
+                    c[2]:SetText(Money(N(g.m)))
+                end
+            end
+            for i = #impGoldSec.rows, shownGold + 1, -1 do impGoldSec.rows[i].frame:Hide() end
+            Close(impGoldSec, shownGold)
+        else
+            Hide(impSec)
+            Hide(impDaysSec)
+            Hide(impItemsSec)
+            Hide(impGoldSec)
         end
         child:SetHeight(-y)
     end

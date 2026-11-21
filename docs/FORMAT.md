@@ -229,6 +229,10 @@ A field the client marked secret is written as `?`. Missing values are empty.
 | `TK` | kind, value | WoW Token. kind `p` the market price changed (copper), `b` and `s` the client's result code for a buy or a sell, `a` your token sold (value empty) |
 | `LP` | specID | Loot specialization changed. `0` follows your current spec |
 | `DI` | itemID, count | You destroyed an item with the delete command. The item is the last one you picked up from your bags and still held |
+| `YG` | source, copper | Imported history: a gold balance another addon logged (`source` is `TSM`). Written by the companion into `imports/payloads/import.scl`, never by the addon. Group `imports` |
+| `YS` | source, via, itemID, count, copper | Imported history: a sale another addon booked. via is `auction`, `vendor`, `trade` or `other`; copper is the whole amount received after the house's cut. No buyer is named. Group `imports` |
+| `YB` | source, via, itemID, count, copper | Imported history: a purchase another addon booked, as `YS`. Group `imports` |
+| `YM` | source, kind, copper | Imported history: other income or expense another addon booked (`money-transfer`, `repair-bill`, `postage`), copper signed. Group `imports` |
 | `RF` | factionID, reaction, standing, floor, ceiling, atWar, accountWide, why | A faction's standing differs from the last `RF` line for it. reaction is the client's tier (`1` hated, `2` hostile, `3` unfriendly, `4` neutral, `5` friendly, `6` honored, `7` revered, `8` exalted). standing is the client's number; floor and ceiling bound the tier. atWar and accountWide are `1` or `0`. why `s` on the first read of the session. Written from a scan 3 seconds after the client reports a change, with the standing, so a gain shows here once and `RP` keeps the amount by name. Each day starts with every faction again. Factions the player has never had expanded in the reputation list are found only after they change |
 | `FN` | factionID, name | Faction name, once per session, before the first `RF` or `RV` line for it |
 | `RG` | factionID, value, threshold, rewardPending, level, why | A paragon track (a faction at exalted) changed its reward-pending flag or its level. value and threshold are the progress toward the next reward. why `s` on the first read of the session |
@@ -447,6 +451,27 @@ comments, friend notes, and anything from the Battle.net friend list or a
 Battle.net community (only counts in `FC` and an unnamed `CM`).
 Nobody else is named: not auction bidders, not the roll winners of other
 groups. Your own chat is reduced to counts of a few words.
+
+## Imported history
+
+Imported history is a third kind of record beside lifetime and observed numbers (the data rule of
+2026-11-21). The companion reads TradeSkillMaster's saved variables (`TradeSkillMaster.lua`: the sales,
+purchases, income and expense accounting and each character's gold log) and Auctioneer's BeanCounter
+(`BeanCounter.lua`: `completedAuctions` and `completedBidsBuyouts`) from every game account folder, and writes
+what Scarlet did not record itself as `YG`, `YS`, `YB` and `YM` lines.
+
+- A record is dropped when Scarlet has the same thing from its own lines or from history read in earlier: an auction
+  sale or purchase that matches an `AV` invoice (item, count, amount within a copper a unit, 48 hours), a purchase that
+  matches an `AU y` line, a vendor sale or purchase whose counts match `I` and `VB` lines within a minute, money that
+  matches an `M` line within 90 seconds, and a gold point within 15 minutes of a balance Scarlet recorded.
+- Imported records are never added to earned, spent, kills or any other observed number, and no public board reads
+  them. They have their own sharing group, `imports`.
+- Per character, `imports/view.json` (the pages' view of the records) and `imports/payloads/import.scl` (the upload
+  payload, header `scarletimports	1	<Name-Surname>`, then `<epoch ms>	<code>	<fields...>`) replace themselves on
+  every export. `overview.json` and `Digest.lua` carry the view as `imported`: `sources`, `first`, `last`, `sales`,
+  `sales_copper`, `buys`, `buys_copper`, `dropped`, `gold` (one point a UTC day), `recent`, `items` and `days`.
+- The BeanCounter reader follows the order BeanCounter packs a completed auction in (stack, money, deposit, fee,
+  buyout, bid, buyer or seller, time, reason, house); an entry in another layout is counted and left out.
 
 ## Companion output
 
