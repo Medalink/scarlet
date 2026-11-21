@@ -21,7 +21,7 @@ local START_DELAY = 1            -- seconds after login or an addon loading befo
 local RETRY_SECONDS, RETRIES = 2, 5
 local LINES_PER_CHECK = 50      -- most step lines one Attune check can write
 
-local A = { lines = {} }
+local A = {}
 ns.Addons = A
 
 -- Client and third-party values ---------------------------------------------------------
@@ -105,6 +105,35 @@ local function Seal(force)
     Prune()
 end
 
+-- The text of a sealed chunk, or nil when this client cannot read it.
+local function ChunkText(c)
+    if c.e == "txt" then return type(c.z) == "string" and c.z or nil end
+    if c.e ~= "d64" or type(c.z) ~= "string" then return nil end
+    local util = _G.C_EncodingUtil
+    if not util or not util.DecodeBase64 or not util.DecompressString then return nil end
+    local ok, packed = pcall(util.DecodeBase64, c.z)
+    if not ok or type(packed) ~= "string" then return nil end
+    local ok2, text = pcall(util.DecompressString, packed, Enum.CompressionMethod.Deflate)
+    if ok2 and type(text) == "string" then return text end
+    return nil
+end
+
+-- Lines per integration in the chunks already stored. Run once, for a store written before
+-- ScarletAddonsDB.totals existed; from then on Emit keeps the totals.
+local function CountStored()
+    local totals = {}
+    for i = 1, #chunks do
+        local text = ChunkText(chunks[i])
+        if text then
+            for line in text:gmatch("[^\n]+") do
+                local key = line:match("^[^\t]*\t([^\t]*)\t")
+                if key and key ~= "" then totals[key] = (totals[key] or 0) + 1 end
+            end
+        end
+    end
+    return totals
+end
+
 local function InitDB()
     local saved = _G.ScarletAddonsDB
     saved = type(saved) == "table" and saved or {}
@@ -124,6 +153,7 @@ local function InitDB()
             e = enc, z = z, r = 1 }
         Prune()
     end
+    if type(db.totals) ~= "table" then db.totals = CountStored() end
     db.buf = buf
     db.bufT, db.bufC, db.bufS = nil, nil, nil
 end
@@ -153,7 +183,8 @@ end
 local function Emit(key, code, ...)
     if not db or ns.opt.paused or db.opt[key] == false then return end
     Write(key, code, ...)
-    A.lines[key] = (A.lines[key] or 0) + 1
+    local totals = db.totals
+    totals[key] = (totals[key] or 0) + 1
 end
 
 -- Integrations -------------------------------------------------------------------------
@@ -221,21 +252,50 @@ end
 -- Polestar: the guide you follow, through its message bus.
 local polestar = { handles = {} }
 
+-- Polestar announces the guide it opens at login before this integration starts (one second
+-- after login), so the guide and step it is on are read from its Engine as well.
+local function PolestarEngine()
+    local ps = _G.Polestar
+    return type(ps) == "table" and Tab(ps.Engine) or nil
+end
+
+local function PolestarGuide()
+    local eng = PolestarEngine()
+    if not eng or type(eng.GetGuide) ~= "function" then return nil end
+    local ok, g = pcall(eng.GetGuide)
+    g = ok and Tab(g) or nil
+    return g and Id(g.id) or nil
+end
+
+local function PolestarStep()
+    local eng = PolestarEngine()
+    if not eng or type(eng.GetStepIndex) ~= "function" then return nil end
+    local ok, n = pcall(eng.GetStepIndex)
+    return ok and Int(n) or nil
+end
+
 local function StartPolestar(emit)
     local ps = _G.Polestar
     if type(ps) ~= "table" or type(ps.On) ~= "function" or type(ps.Off) ~= "function" then return false end
     if #polestar.handles > 0 then return true end
-    local guide, step
+    -- What the guide is on now is not news: only a change from here is written.
+    local guide, step = PolestarGuide(), nil
+    if guide then step = PolestarStep() end
     local function On(msg, fn)
         polestar.handles[#polestar.handles + 1] = ps.On(msg, Safe(fn))
     end
     On("GUIDE_CHANGED", function(id)
         id = Id(id)
-        if not id or id == guide then return end
+        if not id then
+            guide, step = nil, nil
+            return
+        end
+        if id == guide then return end
         guide, step = id, nil
         emit("G", id)
     end)
     On("STEP_CHANGED", function(current)
+        guide = guide or PolestarGuide()
         current = Int(current)
         if not guide or not current or current == step then return end
         step = current
@@ -246,6 +306,7 @@ local function StartPolestar(emit)
         if id then emit("D", id) end
     end)
     On("STEP_SKIPPED", function(from, to)
+        guide = guide or PolestarGuide()
         if guide then emit("K", guide, Int(from), Int(to)) end
     end)
     On("ROUTE_CHOSEN", function(from, to)
@@ -438,15 +499,17 @@ function A.SetOn(key, on)
     end
 end
 
--- One row per integration: label, installed, loaded, on and the lines written this session.
+-- One row per integration: label, installed, loaded, on and the lines written in all, kept
+-- across sessions in ScarletAddonsDB.totals.
 function A.Rows(out)
     wipe(out)
+    local totals = db and db.totals or {}
     for i, e in ipairs(REGISTRY) do
         local row = out[i] or {}
         out[i] = row
         row.key, row.label = e.key, e.label
         row.installed, row.loaded = Installed(e), Loaded(e)
-        row.on, row.lines = IsOn(e.key), A.lines[e.key] or 0
+        row.on, row.lines = IsOn(e.key), totals[e.key] or 0
     end
     return out
 end

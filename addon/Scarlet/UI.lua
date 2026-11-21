@@ -577,7 +577,7 @@ local function SettingsPage(parent)
 end
 
 -- One row per integration in Addons.lua: the addon's name, whether it is installed and loaded, the
--- toggle, and the lines it wrote this session. An addon that is not installed is greyed out.
+-- toggle, and the lines it has written in all (kept across sessions in ScarletAddonsDB.totals). An addon that is not installed is greyed out.
 local ADDON_ROW_H = 44
 
 local function AddonsPage(parent)

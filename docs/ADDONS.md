@@ -16,6 +16,7 @@ ScarletAddonsDB = {
   ["chunks"] = { ... },         -- oldest first; same fields and encodings as FORMAT.md (q, c, s, t, n, e, z, r)
   ["buf"] = { "...", ... },     -- lines not yet sealed; bufT, bufC and bufS are its time base, character and session
   ["gaps"] = { ... },           -- chunk numbers dropped for space
+  ["totals"] = { gm = 12, ... } -- lines written per integration, kept across sessions; counted from the stored chunks once, when a store has none
   ["opt"] = { gm = false, ... } -- one flag per integration; a missing flag is on
 }
 ```
@@ -40,7 +41,7 @@ The companion writes these lines under `out/<Name-Surname>/addons/` (`addons.txt
 
 Every integration has a flag in `ScarletAddonsDB.opt[key]`, on unless it is `false`. The Addons page in the Scarlet
 window shows one row per integration with its addon's name, whether it is installed and loaded, the toggle and the lines
-written this session. Turning a flag off stops its lines at once and keeps what it already wrote. An integration starts
+written in all (`totals`, not only this session). Turning a flag off stops its lines at once and keeps what it already wrote. An integration starts
 only when its addon is loaded and its flag is on.
 
 ## Integrations
@@ -84,7 +85,9 @@ only when its addon is loaded and its flag is on.
 | `R` | fromGuideId, toGuideId | You chose a route from one guide to another |
 
 Read from Polestar's message bus (`GUIDE_CHANGED`, `STEP_CHANGED`, `GUIDE_COMPLETED`, `STEP_SKIPPED`, `ROUTE_CHOSEN`). A
-repeated message for the same guide or step is written once.
+repeated message for the same guide or step is written once. Polestar opens its guide at login, before this integration
+starts, so the guide and step it is on then are read from `Polestar.Engine.GetGuide()` and `GetStepIndex()` and not
+written; the next step change is.
 
 ### `pl` Profession Shopping List
 
