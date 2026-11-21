@@ -98,12 +98,13 @@ ScarletDigest = {
 }
 ```
 
-`recent` is a compact list for the level estimates: one `{ t, p, x }` per session (start,
-played seconds, total XP: `xk + xd + xq + xe + xo`), newest first, covering every session from
-the 14 days before `made` and more until their `p` add up to 36,000. It is built from all the
-character's sessions before `sessions` is trimmed and is never trimmed itself, so the pace is
-measured on the same history whatever the size of `sessions`. `first` is `t` of the oldest
-session the companion has.
+`recent` is a compact list for the dates of the level estimates: one `{ t, p, x }` per session
+(start, played seconds, total XP: `xk + xd + xq + xe + xo`), newest first, covering every
+session from the 14 days before `made` and more until their `p` add up to 36,000. It is built
+from all the character's sessions before `sessions` is trimmed and is never trimmed itself, so
+the dates are measured on the same history whatever the size of `sessions`. `levels` is never
+trimmed either, and holds `p` and the XP sources `xk`, `xd`, `xq`, `xe`, `xo` of every level
+(a source that is 0 is left out). `first` is `t` of the oldest session the companion has.
 
 Every string is escaped (`\\`, `\"`, newlines as `\n`); no long brackets, no NaN or inf. The
 file stays under 200 KB.
@@ -125,29 +126,43 @@ The old stat grids stay, renamed "Stats".
 ## Level estimates
 
 Time to the next level, to the next multiple of 10 and to level 60, from how the character has
-actually gained XP. The game and the app show the same numbers, so both follow this section
-exactly. All sums use the merged rows `{ t, p, x }`, newest first by `t`: the digest's `recent`,
-the addon's own rows with `t` after `through` (their `x` is `xk + xd + xq + xe + xo`) and the
-open session. Two keys within 3 seconds are one row. `sessions` is not read here. A digest
-without `recent` (written by an older companion) falls back to its `sessions`, and without
-`first` to the oldest merged row. The app has no addon rows or open session: it merges nothing,
-and reads `recent` as the companion builds it from all sessions.
+actually gained XP at each level. The game and the app show the same numbers, so both follow
+this section exactly. The pace reads the per-level history; the date reads the merged rows
+`{ t, p, x }`, newest first by `t`: the digest's `recent`, the addon's own rows with `t` after
+`through` (their `x` is `xk + xd + xq + xe + xo`) and the open session. Two keys within 3
+seconds are one row. `sessions` is not read here. A digest without `recent` (written by an
+older companion) falls back to its `sessions`, and without `first` to the oldest merged row.
+The app has no addon rows or open session: it merges nothing, reads `recent` as the companion
+builds it from all sessions, and takes the per-level history from its full history.
 
-**Pace.** Take rows newest first, the open session included, and stop after the row that brings
-the running total of `p` to 36,000 seconds (10 hours) or more; use all rows when they add up to
-less. `played` is the sum of `p` over the rows taken and `xp` the sum of `xk + xd + xq + xe + xo`.
-There is no estimate when `played` is under 900 seconds (15 minutes) or `xp` is 0. Otherwise
-`pace = xp / played` (XP per played second); the page shows `round(pace * 3600)` as XP an hour.
+**Pace.** A character gets stronger as it levels, so the pace is a fit over levels, not an
+average over the latest hours.
 
-**XP left to reach level T**, for a character at level `L` with `xp` of `xpMax` on the bar
+- Points. For each level `n <= L` (the current level), `p_n` is the played seconds at level `n`
+  and `x_n` the XP gained at level `n` (`xk + xd + xq + xe + xo`). They come from the per-level
+  history: the digest's `levels` table, plus the `lv` shares of the addon's own rows with `t`
+  after `through`, plus the open session's `lv` unless a merged row already holds it (the same
+  start within 3 seconds). A level is a point when `p_n >= 900` and `x_n > 0`; its
+  `y_n = ln(x_n / p_n)`.
+- Fit. A weighted least squares of `y` on `n` with weights `p_n`. With `W = sum p_n`,
+  `mn = sum(p_n * n) / W` and `my = sum(p_n * y_n) / W`:
+  `b = sum(p_n * (n - mn) * (y_n - my)) / sum(p_n * (n - mn)^2)` and `a = my - b * mn`.
+  Clamp `b` to `[0, ln(1.05)]`; when `b` was clamped, `a = sum(p_n * (y_n - b * n)) / W`.
+- Fewer than 3 points: a flat pace, `b = 0` and `a = ln(sum x / sum p)`, the sums over all levels
+  `n <= L`.
+- No estimate when the total `p` over levels `n <= L` is under 900 seconds (15 minutes) or the
+  total `x` is 0.
+- `rate(n) = exp(a + b * n)` is XP per played second at level `n`.
+
+**Seconds to reach level T**, for a character at level `L` with `xp` of `xpMax` on the bar
 (the client's numbers; the digest's `level`, `xp` and `xpMax` on the companion side):
 
 ```
-left(T) = max(0, xpMax - xp) + sum of NEED[n] for n = L+1 .. T-1
+time(T) = max(0, xpMax - xp) / rate(L) + sum of NEED[n] / rate(n) for n = L+1 .. T-1
 ```
 
-The empty sum is 0, so the next level needs only what is left on the bar. `NEED[n]` is the XP
-that level `n` needs to reach level `n+1`:
+The empty sum is 0, so the next level needs only what is left on the bar, at the pace of the
+current level. `NEED[n]` is the XP that level `n` needs to reach level `n+1`:
 
 | Level | XP | Level | XP | Level | XP | Level | XP |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -175,7 +190,7 @@ level is ever seen to differ, the observed value replaces that table entry.
 `(floor(L / 10) + 1) * 10`, only when it differs from `L + 1` and from 60; and 60. At level 60
 and above nothing is shown. At 59 the only target is 60.
 
-**Time** is `left(T) / pace`, in played time. Written as minutes `m = max(1, round(seconds / 60))`
+**Time** is `time(T)`, in played time. Written as minutes `m = max(1, round(seconds / 60))`
 (halves round up): `d` days and `h` hours (`m div 1440`, `m mod 1440 div 60`) as `3d 4h` when
 `d > 0`; hours and minutes as `1h 52m` when `h > 0`; otherwise `41m`.
 
@@ -189,6 +204,9 @@ Leave the date out when `rate` is 0 or when `time / rate` is more than 3,650 day
 writes "about" before it.
 
 **The page.** Under the level bar: one row per target, `Level T`, the time and the date, and one
-muted line with the basis, `At your pace over the last 5h 35m played: 12,564 XP an hour`, where
-the duration is `played` in the time format above. With no estimate the rows are empty and the
-muted line says what is missing.
+muted line with the basis, `Based on 38 levels played: 11,278 XP an hour at level 41, rising
+2.1% a level`. The number of levels is the points of the fit (`1 level` for one); the rate is
+`round(rate(L) * 3600)` with thousands separators and the rise is `(exp(b) - 1) * 100` to one
+decimal. A flat pace says `Based on 2 levels played: 6,120 XP an hour`, the number being the
+levels with played time. With no estimate the rows are empty and the muted line says what is
+missing.

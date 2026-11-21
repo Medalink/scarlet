@@ -12,8 +12,9 @@ local ETA_TOP, ETA_ROW_H = 86, 17
 local MATES, DEATHS = 3, 3
 
 -- Level estimates, see "Level estimates" in docs/OVERVIEW.md.
-local PACE_SECONDS = 36000 -- played time the pace is measured over
-local MIN_PLAYED = 900     -- less played time than this gives no estimate
+local MIN_PLAYED = 900       -- less played time than this gives no estimate
+local MIN_LEVEL_PLAYED = 900 -- a level needs this much played time to count as a point of the fit
+local MAX_GROWTH = math.log(1.05) -- most the pace may rise a level, as a log
 local DAY_WINDOW = 14      -- most days the calendar rate is measured over
 local MAX_DAYS = 3650      -- a date further away than this is left out
 local MAX_LEVEL = 60
@@ -73,6 +74,22 @@ local function AddLevel(b, s)
     b.ldd = b.ldd + N(s.dd)
 end
 
+-- All XP of a row or a level's share: kills, dungeons, quests, exploration and other.
+local function XPOf(row)
+    return N(row.xk) + N(row.xd) + N(row.xq) + N(row.xe) + N(row.xo)
+end
+
+-- Every level's played seconds and XP, for the level estimates: the same tables, level by level.
+local function AddLevels(b, levels)
+    if type(levels) ~= "table" then return end
+    for n, s in pairs(levels) do
+        if type(n) == "number" and n >= 1 and n < MAX_LEVEL and n == floor(n) and type(s) == "table" then
+            b.levelP[n] = (b.levelP[n] or 0) + N(s.p)
+            b.levelX[n] = (b.levelX[n] or 0) + XPOf(s)
+        end
+    end
+end
+
 -- The n largest values of map, largest first, ties by name.
 local function Top(map, n, names, vals)
     for i = 1, n do names[i], vals[i] = nil, nil end
@@ -94,40 +111,78 @@ end
 
 -- Level estimates -----------------------------------------------------------------
 
-local function XPOf(row)
-    return N(row.xk) + N(row.xd) + N(row.xq) + N(row.xe) + N(row.xo)
-end
-
--- Played seconds and XP of the newest rows until PACE_SECONDS are played (rows are newest first,
--- the open session counts as the newest), and the played seconds of the last DAY_WINDOW days.
-local pace = { played = 0, xp = 0, day = 0, full = false }
-
-local function Take(t, p, x, dayStart)
-    if not pace.full then
-        pace.played, pace.xp = pace.played + p, pace.xp + x
-        pace.full = pace.played >= PACE_SECONDS
-    end
-    if t >= dayStart then pace.day = pace.day + p end
-end
-
-local function Pace(rows, live, now)
-    pace.played, pace.xp, pace.day, pace.full = 0, 0, 0, false
-    local dayStart = now - DAY_WINDOW * 86400
-    if live then
-        local t, held = N(live.t), false
-        for i = 1, #rows do
-            local rt = rows[i].t
-            if rt < t - 3 then break end
-            if rt <= t + 3 then held = true; break end
-        end
-        if not held then Take(t, N(live.p), XPOf(live), dayStart) end
-    end
+-- Does a row already hold the open session (the same start, within 3 seconds)? Rows are newest first.
+local function LiveHeld(rows, live)
+    local t = N(live.t)
     for i = 1, #rows do
-        local r = rows[i]
-        if pace.full and r.t < dayStart then break end
-        Take(r.t, r.p, r.x, dayStart)
+        local rt = rows[i].t
+        if rt < t - 3 then break end
+        if rt <= t + 3 then return true end
     end
+    return false
 end
+
+-- Played seconds of the last DAY_WINDOW days, the open session counting as the newest row.
+local function DayPlayed(rows, live, held, now)
+    local dayStart, day = now - DAY_WINDOW * 86400, 0
+    if live and not held and N(live.t) >= dayStart then day = N(live.p) end
+    for i = 1, #rows do
+        if rows[i].t >= dayStart then day = day + rows[i].p end
+    end
+    return day
+end
+
+-- The level-weighted pace: XP per played second at level n is exp(a + b * n).
+local pace = { a = 0, b = 0, levels = 0, flat = true }
+local pn, pp, py = {}, {}, {} -- the levels the fit uses: n, played seconds, ln(XP / played second)
+
+-- Fits the pace from played seconds lp[n] and XP lx[n] on each level up to lvl, plus the open
+-- session's share of each level unless a row already holds it. False when there is nothing to fit.
+local function FitPace(lp, lx, live, held, lvl)
+    local lv = live and not held and live.lv
+    local played, gained, count, levels = 0, 0, 0, 0
+    for n = 1, lvl do
+        local p, x = lp[n] or 0, lx[n] or 0
+        local s = lv and lv[n]
+        if type(s) == "table" then p, x = p + N(s.p), x + XPOf(s) end
+        played, gained = played + p, gained + x
+        if p > 0 then levels = levels + 1 end
+        if p >= MIN_LEVEL_PLAYED and x > 0 then
+            count = count + 1
+            pn[count], pp[count], py[count] = n, p, math.log(x / p)
+        end
+    end
+    if played < MIN_PLAYED or gained <= 0 then return false end
+    if count < 3 then
+        pace.a, pace.b, pace.levels, pace.flat = math.log(gained / played), 0, levels, true
+        return true
+    end
+    local w, sn, sy = 0, 0, 0
+    for i = 1, count do
+        w, sn, sy = w + pp[i], sn + pp[i] * pn[i], sy + pp[i] * py[i]
+    end
+    local meanN, meanY = sn / w, sy / w
+    local sxx, sxy = 0, 0
+    for i = 1, count do
+        local dn = pn[i] - meanN
+        sxx, sxy = sxx + pp[i] * (dn * dn), sxy + pp[i] * dn * (py[i] - meanY)
+    end
+    local raw = sxy / sxx
+    local b = math.min(math.max(raw, 0), MAX_GROWTH)
+    local a
+    if b == raw then
+        a = meanY - b * meanN
+    else
+        a = 0
+        for i = 1, count do a = a + pp[i] * (py[i] - b * pn[i]) end
+        a = a / w
+    end
+    pace.a, pace.b, pace.levels, pace.flat = a, b, count, b == 0
+    return true
+end
+
+-- XP per played second at level n.
+local function Rate(n) return math.exp(pace.a + pace.b * n) end
 
 -- The levels to show for a character at level lvl: the next, the next multiple of 10, 60.
 local function Targets(lvl, out)
@@ -140,11 +195,11 @@ local function Targets(lvl, out)
     return n
 end
 
--- XP still to earn before reaching level target, from level lvl with xp of xpMax on the bar.
-local function XPLeft(lvl, xp, xpMax, target)
-    local left = max(0, xpMax - xp)
-    for n = lvl + 1, target - 1 do left = left + (NEED[n] or 0) end
-    return left
+-- Played seconds to reach level target, from level lvl with xp of xpMax on the bar, at the fitted pace.
+local function SecondsTo(lvl, xp, xpMax, target)
+    local secs = max(0, xpMax - xp) / Rate(lvl)
+    for n = lvl + 1, target - 1 do secs = secs + (NEED[n] or 0) / Rate(n) end
+    return secs
 end
 
 -- "3d 4h", "1h 52m", "41m".
@@ -170,7 +225,7 @@ end
 -- `through`, the addon's closed rows after it. The open session is added on each refresh.
 local function Collect(key, lvl, weekStart)
     local b = { key = key, level = lvl, weekStart = weekStart, wp = 0, wq = 0, wg = 0, ws = 0, wr = 0,
-        lp = 0, lxk = 0, lxq = 0, lk = 0, ldd = 0, zd = {}, mn = {}, mv = {}, dt = {} }
+        lp = 0, lxk = 0, lxq = 0, lk = 0, ldd = 0, zd = {}, mn = {}, mv = {}, dt = {}, levelP = {}, levelX = {} }
     local d = DigestFor(key)
     local through = -1
     local mates = {}
@@ -188,6 +243,7 @@ local function Collect(key, lvl, weekStart)
             end
         end
         if lvl and type(d.levels) == "table" then AddLevel(b, d.levels[lvl]) end
+        AddLevels(b, d.levels)
         if type(d.deathZones) == "table" then
             for _, z in ipairs(d.deathZones) do
                 if type(z) == "table" and type(z.name) == "string" then b.zd[z.name] = (b.zd[z.name] or 0) + N(z.n) end
@@ -216,6 +272,7 @@ local function Collect(key, lvl, weekStart)
             if t > through + 3 then
                 if N(row.t) >= weekStart then AddWeek(b, row) end
                 if lvl and type(row.lv) == "table" then AddLevel(b, row.lv[lvl]) end
+                AddLevels(b, row.lv)
                 if type(row.zn) == "table" then
                     for name, z in pairs(row.zn) do
                         if type(name) == "string" and type(z) == "table" then
@@ -313,7 +370,8 @@ function ns.OverviewPage(parent, ui)
 
     -- Fills the rows for a character at level lvl; no rows (and no basis line) at level 60 or when
     -- the client hides the experience bar.
-    local function ShowEta(rows, first, live, lvl, xp, xpMax)
+    local function ShowEta(b, live, lvl, xp, xpMax)
+        local rows, first = b.rows, b.first
         local n = 0
         local basis = ""
         if lvl and xp and xpMax and xpMax > 0 then
@@ -321,17 +379,16 @@ function ns.OverviewPage(parent, ui)
         end
         if n > 0 then
             local now = time()
-            Pace(rows, live, now)
-            if pace.played < MIN_PLAYED or pace.xp <= 0 then
+            local held = live ~= nil and LiveHeld(rows, live)
+            if not FitPace(b.levelP, b.levelX, live, held, lvl) then
                 n = 0
                 basis = "No level times yet: they need 15m played with XP recorded"
             else
-                local perSecond = pace.xp / pace.played
                 -- Played seconds per calendar day over the days recorded, at most DAY_WINDOW and at least 1.
                 local oldest = first or (rows[#rows] and rows[#rows].t) or (live and N(live.t)) or now
-                local rate = pace.day / math.min(DAY_WINDOW, max(1, (now - oldest) / 86400))
+                local rate = DayPlayed(rows, live, held, now) / math.min(DAY_WINDOW, max(1, (now - oldest) / 86400))
                 for i = 1, n do
-                    local secs = XPLeft(lvl, xp, xpMax, targets[i]) / perSecond
+                    local secs = SecondsTo(lvl, xp, xpMax, targets[i])
                     local when
                     if rate > 0 and secs / rate <= MAX_DAYS then
                         when = DateText(floor(now + secs / rate * 86400), now)
@@ -340,8 +397,11 @@ function ns.OverviewPage(parent, ui)
                     etaTime[i]:SetText(Span(secs))
                     etaDate[i]:SetText(when and ("about " .. when) or "")
                 end
-                basis = format("At your pace over the last %s played: %s XP an hour",
-                    Span(pace.played), Num(perSecond * 3600))
+                basis = format("Based on %s played: %s XP an hour",
+                    pace.levels == 1 and "1 level" or (pace.levels .. " levels"), Num(Rate(lvl) * 3600))
+                if not pace.flat then
+                    basis = format("%s at level %d, rising %.1f%% a level", basis, lvl, (math.exp(pace.b) - 1) * 100)
+                end
             end
         end
         etaBasis:SetText(basis)
@@ -453,7 +513,7 @@ function ns.OverviewPage(parent, ui)
             barFill:SetWidth(1)
             progress:SetText(levelTime > 0 and ("This level " .. Duration(levelTime) .. " so far") or "")
         end
-        ShowEta(base.rows, base.first, live, clientLevel, xp, xpMax)
+        ShowEta(base, live, clientLevel, xp, xpMax)
 
         -- This week
         local wp, wq, wg, ws, wr = base.wp, base.wq, base.wg, base.ws, base.wr
