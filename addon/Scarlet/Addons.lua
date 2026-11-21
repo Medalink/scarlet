@@ -378,9 +378,8 @@ local function StartAutoLayer(emit)
     Hook(al, "SendLayerRequest", function() emit("R") end)
     -- The system message's text is never read; the addon's own lifetime counter says it counted one.
     Hook(al, "ProcessSystemMessages", function()
-        if not IsOn("al") then return end
         local now = LayeredCount(al)
-        if now and last and now > last then emit("J", now) end
+        if IsOn("al") and now and last and now > last then emit("J", now) end
         last = now or last
     end)
     return true

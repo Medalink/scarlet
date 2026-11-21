@@ -124,7 +124,7 @@ Resolve = function()
         how = "m"
     end
     if not how then
-        w.last = a
+        if a.wx then w.last = a end
         Arm(CHECK_EVERY)
         return
     end
