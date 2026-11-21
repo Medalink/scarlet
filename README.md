@@ -45,6 +45,10 @@ areas discovered, and camps. Flights and teleports, the trail, deaths, gathering
 by default; NPC windows and quests are off. Scarlet uses only OpenMap's public `OpenMapAPI` and needs a version with
 API major 1, version 2 or later; OpenMap is an optional dependency and Scarlet works without it.
 
+Without OpenMap, or while it shows the game's own map, the same layers are drawn on the game's world map for the
+map being shown (a continent shows the places recorded in its zones). A small "Scarlet" switch in the top left of
+the map turns them on, off by default; the arrow next to it lists the layers.
+
 The layers show where this character was recorded, read from the same lines in SavedVariables that the companion
 reads: nothing extra is recorded, and nothing is drawn or read until the map is open with a layer on. The history is
 decoded a few milliseconds per frame and kept in memory only. The switches are saved as `ScarletDB.opt.map`.

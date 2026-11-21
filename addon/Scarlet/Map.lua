@@ -1,7 +1,9 @@
 -- Map.lua: the character's own recorded places on the world map.
 -- With the OpenMap addon loaded (thanks to its author; MIT code, its map art is Blizzard's), the layers are
 -- switches in OpenMap's menu under "Scarlet" and are drawn on OpenMap's stitched map, above its art. Only
--- OpenMap's public API (the global OpenMapAPI, major 1, version 2 or later) is used. Positions come from MapData.lua, which reads what Scarlet
+-- OpenMap's public API (the global OpenMapAPI, major 1, version 2 or later) is used. Without OpenMap, or while
+-- it shows the game's own map, the same layers are drawn on the game's map for the map being shown, behind a
+-- small "Scarlet" switch on the map (off until it is turned on). Positions come from MapData.lua, which reads what Scarlet
 -- already recorded; nothing new is captured here and nothing is written but the switches in ScarletDB.opt.map.
 --
 -- Cost while off: after login this file does nothing but wait for the world map to open. Once it opens
@@ -31,6 +33,7 @@ local LAYERS = {
 }
 local DEFAULT = {}
 for _, L in ipairs(LAYERS) do DEFAULT[L.id] = L.on end
+DEFAULT.blizzard = false -- the switch on the game's own map (no OpenMap): off until the player turns it on
 
 local ICON = "Interface\\AddOns\\Scarlet\\Media\\Icon"
 local SKULLS = "Interface\\TargetingFrame\\UI-RaidTargetingIcons"
@@ -206,9 +209,24 @@ end
 -- places every zone in one stitched world: WorldFromMap puts a recorded point on it and MapFromWorld puts
 -- that on the map the stitched view sits on (the canvas). A map outside the stitched world has none.
 
-local aff, affHost = {}, nil
+-- Without OpenMap's stitched map the layers sit on the game's own map: the canvas is the shown map, and
+-- C_Map.GetMapRectOnMap gives where a child map lies on it (the shown map itself is the identity). A map
+-- that is not the shown map or one of its children has none.
 
-local function ComputeAffine(api, host, mapID)
+local aff, affHost, affMode = {}, nil, nil
+
+local function ComputeAffine(mode, api, host, mapID)
+    if mode ~= "openmap" then
+        if mapID == host then return { 0, 0, 1, 1 } end
+        local C = _G.C_Map
+        if not C or not C.GetMapRectOnMap then return end
+        local ok, l, r, t, b = pcall(C.GetMapRectOnMap, mapID, host)
+        if not (ok and type(l) == "number" and type(r) == "number" and type(t) == "number" and type(b) == "number") then
+            return
+        end
+        if not (r > l and b > t) then return end
+        return { l, t, r - l, b - t }
+    end
     local u0, v0 = api.WorldFromMap(mapID, 0, 0)
     local u1, v1 = api.WorldFromMap(mapID, 1, 1)
     if not (u0 and v0 and u1 and v1) then return end
@@ -220,10 +238,10 @@ local function ComputeAffine(api, host, mapID)
     return { x0, y0, sx, sy }
 end
 
-local function Affine(api, host, mapID)
+local function Affine(mode, api, host, mapID)
     local a = aff[mapID]
     if a == nil then
-        a = ComputeAffine(api, host, mapID) or false
+        a = ComputeAffine(mode, api, host, mapID) or false
         aff[mapID] = a
     end
     return a
@@ -340,10 +358,20 @@ local function Hide()
     if ov then ov:Hide() end
 end
 
-local function Draw()
+-- Which map the layers go on: OpenMap's stitched map when it is up, else the game's own (OpenMap absent,
+-- or loaded but showing Blizzard's map). The game's map takes them only with its switch on.
+local function ModeNow()
     local api = OM()
+    if api and api.IsStitched() then return "openmap", api end
+    return "blizzard"
+end
+
+local function Draw()
     local map = _G.WorldMapFrame
-    if not (api and map and map:IsShown() and api.IsStitched() and AnyOn()) then return Hide() end
+    if not (map and map:IsShown() and AnyOn()) then return Hide() end
+    local mode, api = ModeNow()
+    M.mode = mode
+    if mode == "blizzard" and not On("blizzard") then return Hide() end
     local canvas = map:GetCanvas()
     local host = map:GetMapID()
     if not canvas or not host then return Hide() end
@@ -358,16 +386,27 @@ local function Draw()
         ov:EnableMouse(false)
     end
     if ov:GetParent() ~= canvas then ov:SetParent(canvas) end
-    if host ~= affHost then
+    if host ~= affHost or mode ~= affMode then
         wipe(aff)
-        affHost = host
+        affHost, affMode = host, mode
     end
     -- The overlay is scaled against the canvas, so pins, lines and text keep their size on screen.
     inv = 1 / scale
     ov:SetScale(inv)
     ov:ClearAllPoints()
     ov:SetPoint("TOPLEFT", canvas, "TOPLEFT", 0, 0)
-    local level = (api.ArtTopLevel() or canvas:GetFrameLevel()) + 1
+    local level
+    if mode == "openmap" then
+        level = api.ArtTopLevel()
+    else
+        -- above the game's exploration art, below its pins
+        local fl = map.GetPinFrameLevelsManager and map:GetPinFrameLevelsManager()
+        if fl then
+            local ok, v = pcall(fl.GetValidFrameLevel, fl, "PIN_FRAME_LEVEL_MAP_EXPLORATION")
+            if ok and type(v) == "number" then level = v end
+        end
+    end
+    level = (level or canvas:GetFrameLevel()) + 1
     if level > 9990 then level = 9990 end
     if ov:GetFrameLevel() ~= level then ov:SetFrameLevel(level) end
     ov:Show()
@@ -388,7 +427,7 @@ local function Draw()
             nLines, capped = 0, false
             for s = 1, #stores do
                 for mapID, ms in pairs(stores[s].maps) do
-                    local a = Affine(api, host, mapID)
+                    local a = Affine(mode, api, host, mapID)
                     if a and ms.trail and a[1] + a[3] >= vx0 and a[1] <= vx1 and a[2] + a[4] >= vy0 and a[2] <= vy1 then
                         TrailOf(TrailTier(ms, a), a)
                     end
@@ -405,7 +444,7 @@ local function Draw()
     local npcs, quests, found, camps = On("npcs"), On("quests"), On("found"), On("camps")
     for s = 1, #stores do
         for mapID, ms in pairs(stores[s].maps) do
-            local a = Affine(api, host, mapID)
+            local a = Affine(mode, api, host, mapID)
             if a and a[1] + a[3] >= vx0 and a[1] <= vx1 and a[2] + a[4] >= vy0 and a[2] <= vy1 then
                 if trips then
                     SegsOf(ms.flights, "flights", a)
@@ -440,9 +479,30 @@ local running, dirty, busy, acc = false, false, false, 0
 local armed = false
 local lastDraw = -10
 local BUILD_REDRAW = 0.5  -- while the history is still being read, draw what is there this often
+local WATCH_EVERY = 0.1   -- the game's own map says nothing when it pans or zooms: look this often
+local sigS, sigL, sigT, wacc = 0, 0, 0, 0
+
+-- Whether the game's map was panned or zoomed since the last look (its canvas scale or position moved).
+local function Moved()
+    local map = _G.WorldMapFrame
+    local canvas = map and map:GetCanvas()
+    if not canvas then return false end
+    local s = map.GetCanvasScale and map:GetCanvasScale() or 1
+    local l, t = canvas:GetLeft() or 0, canvas:GetTop() or 0
+    if s == sigS and l == sigL and t == sigT then return false end
+    sigS, sigL, sigT = s, l, t
+    return true
+end
 
 local function Tick(_, elapsed)
     acc = acc + elapsed
+    if M.mode == "blizzard" then
+        wacc = wacc + elapsed
+        if wacc >= WATCH_EVERY then
+            wacc = 0
+            if Moved() then dirty = true end
+        end
+    end
     if busy then
         local changed, more = ns.MapData.Pump(4)
         busy = more
@@ -486,9 +546,11 @@ function M:OnView()
     dirty = true
 end
 
+local Refresh
+
 function M:OnStitched()
     wipe(aff)
-    dirty = true
+    Refresh()
 end
 
 local function Arm()
@@ -500,12 +562,114 @@ local function Arm()
     api.RegisterCallback(M, "OpenMap_StitchedChanged", "OnStitched")
 end
 
--- Called when the map opens, and when a switch changes.
-local function Refresh()
+-- The switch on the game's own map -------------------------------------------------------------------------
+-- Shown only while the game's map is the one up (never over OpenMap's stitched map, which has the menu).
+-- All of it is Scarlet's own frames: a check button for the whole set, and a short list of the layers behind
+-- a small arrow. No dropdown template, which would taint.
+
+local sw, pop, popRows
+
+local function SetMaster(v)
+    if not ns.opt then return end
+    if type(ns.opt.map) ~= "table" then ns.opt.map = {} end
+    ns.opt.map.blizzard = v and true or false
+    dirty = true
+    Refresh()
+end
+
+local function SetLayer(id, v)
+    if not ns.opt then return end
+    if type(ns.opt.map) ~= "table" then ns.opt.map = {} end
+    ns.opt.map[id] = v and true or false
+    dirty = true
+    Refresh()
+end
+
+local function SyncPop()
+    if not popRows then return end
+    for i = 1, #popRows do popRows[i]:SetChecked(On(popRows[i].layer)) end
+end
+
+local function BuildPop(map)
+    pop = CreateFrame("Frame", nil, map)
+    pop:SetSize(200, 8 + #LAYERS * 22)
+    pop:SetPoint("TOPLEFT", sw, "BOTTOMLEFT", 0, -2)
+    pop:SetFrameLevel(sw:GetFrameLevel() + 5)
+    local bg = pop:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0.06, 0.06, 0.08, 0.92)
+    popRows = {}
+    for i, L in ipairs(LAYERS) do
+        local cb = CreateFrame("CheckButton", nil, pop, "UICheckButtonTemplate")
+        cb:SetSize(22, 22)
+        cb:SetPoint("TOPLEFT", pop, "TOPLEFT", 6, -4 - (i - 1) * 22)
+        local fs = cb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        fs:SetPoint("LEFT", cb, "RIGHT", 2, 1)
+        fs:SetText(L.label)
+        cb.layer = L.id
+        cb:SetScript("OnClick", function(self) SetLayer(self.layer, self:GetChecked() and true or false) end)
+        popRows[i] = cb
+    end
+    pop:Hide()
+end
+
+local function TogglePop()
     local map = _G.WorldMapFrame
-    if map and map:IsShown() and AnyOn() and OM() then
-        Arm()
-        if ns.db and ns.charKey then Start() end
+    if not (sw and map) then return end
+    if not pop then BuildPop(map) end
+    if pop:IsShown() then
+        pop:Hide()
+    else
+        SyncPop()
+        pop:Show()
+    end
+end
+
+local function BuildSwitch(map)
+    local anchor = map.ScrollContainer or map
+    sw = CreateFrame("CheckButton", nil, map, "UICheckButtonTemplate")
+    sw:SetSize(24, 24)
+    sw:SetPoint("TOPLEFT", anchor, "TOPLEFT", 6, -6)
+    sw:SetFrameLevel(anchor:GetFrameLevel() + 80)
+    local fs = sw:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fs:SetPoint("LEFT", sw, "RIGHT", 0, 1)
+    fs:SetText("Scarlet")
+    sw:SetScript("OnClick", function(self) SetMaster(self:GetChecked() and true or false) end)
+    local more = CreateFrame("Button", nil, sw)
+    more:SetSize(16, 20)
+    more:SetPoint("LEFT", fs, "RIGHT", 4, 0)
+    local mt = more:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    mt:SetAllPoints()
+    mt:SetText("v")
+    more:SetScript("OnClick", TogglePop)
+end
+
+local function UpdateSwitch(map, mode)
+    if mode == "blizzard" and map and map:IsShown() then
+        if not sw then BuildSwitch(map) end
+        sw:SetChecked(On("blizzard"))
+        sw:Show()
+        if pop and pop:IsShown() then SyncPop() end
+    elseif sw then
+        sw:Hide()
+        if pop then pop:Hide() end
+    end
+end
+
+-- Called when the map opens, when OpenMap's map switches, and when a switch changes.
+Refresh = function()
+    local map = _G.WorldMapFrame
+    if not (map and map:IsShown()) then
+        M.Stop()
+        Hide()
+        UpdateSwitch(map, nil)
+        return
+    end
+    Arm()
+    local mode = ModeNow()
+    UpdateSwitch(map, mode)
+    if AnyOn() and (mode == "openmap" or On("blizzard")) and ns.db and ns.charKey then
+        Start()
     else
         M.Stop()
         Hide()
@@ -533,13 +697,6 @@ end
 -- The menu in OpenMap -------------------------------------------------------------------------------------
 
 local registered = false
-local function SetLayer(id, v)
-    if not ns.opt then return end
-    if type(ns.opt.map) ~= "table" then ns.opt.map = {} end
-    ns.opt.map[id] = v and true or false
-    dirty = true
-    Refresh()
-end
 
 local function Register()
     if registered then return end
