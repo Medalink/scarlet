@@ -9,7 +9,7 @@
 -- Positions are the recorded unit divided by 10000: 0..1 across and down the map they were recorded on.
 local _, ns = ...
 
-local type, tonumber, pairs, floor, HUGE = type, tonumber, pairs, math.floor, math.huge
+local type, tonumber, pairs, floor, min, HUGE = type, tonumber, pairs, math.floor, math.min, math.huge
 local find, sub, match, gmatch = string.find, string.sub, string.match, string.gmatch
 local strsplit, wipe = strsplit, wipe
 local cocreate, coresume, costatus, coyield = coroutine.create, coroutine.resume, coroutine.status, coroutine.yield
@@ -219,20 +219,31 @@ local function ThinArray(t, box, lim)
     return cnt
 end
 
+local Pause -- the build's yield (below); ThinFinest runs only inside the build coroutines
+
 -- The finest tier is full: double its step (until it is at most three quarters full) and thin what is there,
--- so the newest walking is kept at the cost of some detail in the oldest. Once the step is the second tier's
--- there is nothing finer to give up and the tier takes no more points; the other two tiers go on.
+-- so the newest walking is kept at the cost of some detail in the oldest. The step goes no coarser than the
+-- second tier's: when the tier fills again at that step it is dropped, the second tier draws in its place
+-- (Map.lua) and the other two tiers go on taking every point.
 local function ThinFinest(store)
-    repeat
-        store.s1 = store.s1 * 4
-        local lim, total = store.s1 / 1e8, 0
+    if store.s1 < TRAIL_STEP2[2] then
+        repeat
+            store.s1 = min(store.s1 * 4, TRAIL_STEP2[2])
+            local lim, total = store.s1 / 1e8, 0
+            for _, ms in pairs(store.maps) do
+                local t, box = ms[TRAIL_KEYS[1]], ms[BOX_KEYS[1]]
+                if t and box and #t > 0 then total = total + ThinArray(t, box, lim) end
+            end
+            store.trailN = total
+            Pause()
+        until total <= TRAIL_CAP * 0.75 or store.s1 >= TRAIL_STEP2[2]
+    end
+    if store.trailN >= TRAIL_CAP then
+        store.full = true
         for _, ms in pairs(store.maps) do
-            local t, box = ms[TRAIL_KEYS[1]], ms[BOX_KEYS[1]]
-            if t and box and #t > 0 then total = total + ThinArray(t, box, lim) end
+            ms[TRAIL_KEYS[1]], ms[BOX_KEYS[1]] = nil, nil
         end
-        store.trailN = total
-    until total <= TRAIL_CAP * 0.75 or store.s1 >= TRAIL_STEP2[2]
-    if store.trailN >= TRAIL_CAP then store.full = true end
+    end
 end
 
 local function TrailPoint(st, store, m, x, y)
@@ -445,7 +456,7 @@ local function NextChunk(chunks, last)
 end
 
 local budget, started = 4, 0
-local function Pause(force)
+function Pause(force)
     if force or debugprofilestop() - started > budget then coyield() end
 end
 

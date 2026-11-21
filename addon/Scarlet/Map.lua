@@ -325,7 +325,8 @@ local function TrailTier(ms, a)
         local arr = ms[TRAIL_KEYS[i]]
         if arr and TRAIL_STEPS[i] * unit <= trailStep then return arr, ms[BOX_KEYS[i]] end
     end
-    return ms[TRAIL_KEYS[1]], ms[BOX_KEYS[1]]
+    if ms[TRAIL_KEYS[1]] then return ms[TRAIL_KEYS[1]], ms[BOX_KEYS[1]] end
+    return ms[TRAIL_KEYS[2]], ms[BOX_KEYS[2]] -- the finest tier was dropped when full (MapData.lua)
 end
 
 -- The walked path: points further apart than the step, broken where a stretch ended (x = -1). The points
@@ -456,7 +457,7 @@ local function Draw()
             for s = 1, #stores do
                 for mapID, ms in pairs(stores[s].maps) do
                     local a = Affine(mode, api, host, mapID)
-                    if a and ms.trail and a[1] + a[3] >= vx0 and a[1] <= vx1 and a[2] + a[4] >= vy0 and a[2] <= vy1 then
+                    if a and (ms.trail or ms.trail2) and a[1] + a[3] >= vx0 and a[1] <= vx1 and a[2] + a[4] >= vy0 and a[2] <= vy1 then
                         local arr, box = TrailTier(ms, a)
                         TrailOf(arr, box, a)
                     end
