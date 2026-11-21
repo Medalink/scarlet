@@ -98,6 +98,8 @@ end
 
 local ov                      -- the overlay frame, child of the map's canvas
 local pins, nPins, shownPins = {}, 0, 0
+-- shownLines is the highest line a draw has touched since the last HideRest: the trail is drawn in up to four
+-- passes that each start again at line 1, so it can be higher than the lines the final pass leaves in use.
 local lines, nLines, shownLines = {}, 0, 0
 local labels, nLabels, shownLabels = {}, 0, 0
 local occ = {}                -- GRID_N * GRID_N cells, each holding the stamp of the last pin put in it
@@ -107,7 +109,9 @@ local serial = 0
 -- Per draw: canvas size in overlay pixels, the view in the same, the step between trail points.
 local PW, PH, X0, Y0, X1, Y1, cellX, cellY, stamp, inv
 local trailStep = STEP_MIN
+local trailHost, trailPW, trailPH   -- the map and size the step was worked out for; it starts over when they change
 local capped = false
+local dirty = false                 -- a redraw is due (set by the callbacks below, and by a draw that wants another)
 
 local function NewPin()
     return ov:CreateTexture(nil, "OVERLAY")
@@ -146,6 +150,7 @@ end
 local function Seg(kind, x1, y1, x2, y2)
     if nLines >= MAX_LINES then return end
     nLines = nLines + 1
+    if nLines > shownLines then shownLines = nLines end
     local ln = lines[nLines]
     if not ln then
         ln = ov:CreateLine(nil, "OVERLAY")
@@ -200,7 +205,7 @@ local function HideRest()
         labels[i]:Hide()
         labels[i].on = false
     end
-    shownPins, shownLines, shownLabels = nPins, nLines, nLabels
+    shownPins, shownLines, shownLabels = nPins, nLines, nLabels -- from here on, only these are on
 end
 
 -- Where a map's own 0..1 lands on the canvas -------------------------------------------------------
@@ -313,41 +318,59 @@ end
 -- The coarsest tier of a map's trail whose own step, at the size the map is drawn now, is still below the
 -- step between drawn points, so a map drawn small does not walk every point it has.
 local TRAIL_KEYS, TRAIL_STEPS = ns.MapData.TRAIL_KEYS, ns.MapData.TRAIL_STEPS
+local BOX_KEYS, BLOCK2 = ns.MapData.BOX_KEYS, ns.MapData.TRAIL_BLOCK * 2
 local function TrailTier(ms, a)
     local unit = max(a[3] * PW, a[4] * PH) / 10000   -- screen pixels per recorded unit
     for i = 3, 2, -1 do
         local arr = ms[TRAIL_KEYS[i]]
-        if arr and TRAIL_STEPS[i] * unit <= trailStep then return arr end
+        if arr and TRAIL_STEPS[i] * unit <= trailStep then return arr, ms[BOX_KEYS[i]] end
     end
-    return ms[TRAIL_KEYS[1]]
+    return ms[TRAIL_KEYS[1]], ms[BOX_KEYS[1]]
 end
 
--- The walked path: points further apart than the step, broken where a stretch ended (x = -1).
+-- The walked path: points further apart than the step, broken where a stretch ended (x = -1). The points
+-- come in blocks with a bounding box each (MapData.lua); a block outside the view is not read, and the
+-- stretch goes on from the point before the next block that is in view.
 -- Sets `capped` when the pool of lines ran out, so the caller can draw again with a coarser step.
-local function TrailOf(arr, a)
-    if not arr then return end
+local function TrailOf(arr, box, a)
+    if not (arr and box) then return end
     local ox, oy, sx, sy = a[1], a[2], a[3], a[4]
     local step2 = trailStep * trailStep
     local have, lx, ly = false, 0, 0
-    for i = 1, #arr, 2 do
-        local x = arr[i]
-        if x < -0.5 then
+    local n = #arr
+    for b = 0, #box / 4 - 1 do
+        local k = b * 4
+        if (ox + box[k + 3] * sx) * PW < X0 or (ox + box[k + 1] * sx) * PW > X1
+            or (oy + box[k + 4] * sy) * PH < Y0 or (oy + box[k + 2] * sy) * PH > Y1 then
             have = false
         else
-            local cx, cy = (ox + x * sx) * PW, (oy + arr[i + 1] * sy) * PH
-            if not have then
-                have, lx, ly = true, cx, cy
-            else
-                local dx, dy = cx - lx, cy - ly
-                if dx * dx + dy * dy >= step2 then
-                    if not ((lx < X0 and cx < X0) or (lx > X1 and cx > X1) or (ly < Y0 and cy < Y0) or (ly > Y1 and cy > Y1)) then
-                        if nLines >= TRAIL_LINES then
-                            capped = true
-                            return
+            local s = b * BLOCK2 + 1
+            if not have and s > 1 and arr[s - 2] > -0.5 then
+                have, lx, ly = true, (ox + arr[s - 2] * sx) * PW, (oy + arr[s - 1] * sy) * PH
+            end
+            local e = s + BLOCK2 - 1
+            if e > n then e = n end
+            for i = s, e, 2 do
+                local x = arr[i]
+                if x < -0.5 then
+                    have = false
+                else
+                    local cx, cy = (ox + x * sx) * PW, (oy + arr[i + 1] * sy) * PH
+                    if not have then
+                        have, lx, ly = true, cx, cy
+                    else
+                        local dx, dy = cx - lx, cy - ly
+                        if dx * dx + dy * dy >= step2 then
+                            if not ((lx < X0 and cx < X0) or (lx > X1 and cx > X1) or (ly < Y0 and cy < Y0) or (ly > Y1 and cy > Y1)) then
+                                if nLines >= TRAIL_LINES then
+                                    capped = true
+                                    return
+                                end
+                                Seg("trail", lx, ly, cx, cy)
+                            end
+                            lx, ly = cx, cy
                         end
-                        Seg("trail", lx, ly, cx, cy)
                     end
-                    lx, ly = cx, cy
                 end
             end
         end
@@ -412,6 +435,11 @@ local function Draw()
     ov:Show()
 
     PW, PH = W * scale, H * scale
+    if host ~= trailHost or PW ~= trailPW or PH ~= trailPH then
+        -- another map or another zoom: the step worked out for the last view says nothing about this one
+        trailHost, trailPW, trailPH = host, PW, PH
+        trailStep = STEP_MIN
+    end
     local vx0, vy0, vx1, vy1 = ViewOf(map, canvas, W, H)
     if not vx0 then vx0, vy0, vx1, vy1 = 0, 0, 1, 1 end
     X0, Y0, X1, Y1 = vx0 * PW, vy0 * PH, vx1 * PW, vy1 * PH
@@ -429,7 +457,8 @@ local function Draw()
                 for mapID, ms in pairs(stores[s].maps) do
                     local a = Affine(mode, api, host, mapID)
                     if a and ms.trail and a[1] + a[3] >= vx0 and a[1] <= vx1 and a[2] + a[4] >= vy0 and a[2] <= vy1 then
-                        TrailOf(TrailTier(ms, a), a)
+                        local arr, box = TrailTier(ms, a)
+                        TrailOf(arr, box, a)
                     end
                 end
             end
@@ -438,6 +467,7 @@ local function Draw()
         end
         if not capped and nLines < TRAIL_LINES * 0.4 and trailStep > STEP_MIN then
             trailStep = max(STEP_MIN, trailStep / 1.3)
+            dirty = true -- one more draw with the finer step, until it is back at the least
         end
     end
     local trips, deaths, gather = On("trips"), On("deaths"), On("gather")
@@ -475,7 +505,7 @@ M.Draw = Draw
 -- When to draw ----------------------------------------------------------------------------------------
 
 local driver = CreateFrame("Frame")
-local running, dirty, busy, acc = false, false, false, 0
+local running, busy, acc = false, false, 0
 local armed = false
 local lastDraw = -10
 local BUILD_REDRAW = 0.5  -- while the history is still being read, draw what is there this often

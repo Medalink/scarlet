@@ -4,11 +4,12 @@
 -- app's Survey look reads them, and keeps the result in memory only. Nothing derived is saved.
 -- It runs only when Map.lua asks, once the world map is open with a layer on. Sealed chunks are decoded in
 -- a coroutine that Map.lua resumes from an OnUpdate with a time budget, so a long history never stalls a
--- frame. The open buffers are re-read in one go (a thousand lines at most) into a separate store.
+-- frame. The open buffers (Core.lua seals them at 4000 lines at the latest) are re-read the same way, into
+-- a spare store that replaces the shown one when it is complete.
 -- Positions are the recorded unit divided by 10000: 0..1 across and down the map they were recorded on.
 local _, ns = ...
 
-local type, tonumber, pairs, floor = type, tonumber, pairs, math.floor
+local type, tonumber, pairs, floor, HUGE = type, tonumber, pairs, math.floor, math.huge
 local find, sub, match, gmatch = string.find, string.sub, string.match, string.gmatch
 local strsplit, wipe = strsplit, wipe
 local cocreate, coresume, costatus, coyield = coroutine.create, coroutine.resume, coroutine.status, coroutine.yield
@@ -19,14 +20,21 @@ ns.MapData = MD
 -- The trail is kept in three tiers, so a map drawn small does not walk every point: a point closer than
 -- the tier's step (units of 1/10000) to the last one kept in that tier is dropped. Map.lua draws the
 -- coarsest tier whose step is still below its own pixel step.
+-- Each tier is cut into blocks of TRAIL_BLOCK points (a stretch break counts as one), and a block's bounding
+-- box (minx, miny, maxx, maxy, plus the point before the block so a line into it is inside) is kept next to
+-- it, so Map.lua skips the blocks outside the view without reading their points.
 local TRAIL_KEYS = { "trail", "trail2", "trail3" }
+local BOX_KEYS = { "trailB", "trail2B", "trail3B" }
 MD.TRAIL_KEYS = TRAIL_KEYS
+MD.BOX_KEYS = BOX_KEYS
+local TRAIL_BLOCK = 512
+MD.TRAIL_BLOCK = TRAIL_BLOCK
 MD.TRAIL_STEPS = { 8, 64, 512 }
 local TRAIL_STEP2 = { 8 * 8, 64 * 64, 512 * 512 }
 local TRAIL_LX = { "lx1", "lx2", "lx3" }
 local TRAIL_LY = { "ly1", "ly2", "ly3" }
 local TRAIL_JUMP2 = 800 * 800  -- farther than 800 units (8% of a map) between two points is not a walk: the trail breaks
-local TRAIL_CAP = 250000       -- path points kept per store in the finest tier (16 bytes each)
+local TRAIL_CAP = 250000       -- path points kept per store in the finest tier (16 bytes each); past it the tier is thinned
 local FISH_MS = 6000           -- a loot window this soon after a fishing channel ended is a catch
 local FISH_SPELLS = { 7620, 18248, 7731 } -- Fishing (18248 is the one Forever casts); a spell with that name counts too
 local LIVE_MAX_AGE = 3         -- seconds before the open buffers are read again
@@ -40,9 +48,14 @@ local debugprofilestop = _G.debugprofilestop or function() return 0 end
 -- camps, flights, teleports, found, foundName, foundIdx, npcs, npcN, npcIdx, seen }. The arrays are flat
 -- (x, y, x, y ...); the trail holds -1, -1 where a stretch ends; flights and teleports hold x1, y1, x2, y2.
 
-local function NewStore() return { maps = {}, trailN = 0 } end
-local sealed, live = NewStore(), NewStore()
-MD.stores = { sealed, live }
+-- s1 is the finest tier's squared step in this store (it doubles each time the tier is thinned); full is set
+-- when thinning can go no further, and the tier then takes no more points.
+local function NewStore() return { maps = {}, trailN = 0, s1 = TRAIL_STEP2[1], full = false } end
+local sealed = NewStore()
+-- The open buffers go into one of two stores while the other is shown, so a read in several frames never
+-- shows half a result.
+local liveSet, liveShown = { NewStore(), NewStore() }, 1
+MD.stores = { sealed, liveSet[1] }
 
 local function Reset(store)
     for _, ms in pairs(store.maps) do
@@ -54,7 +67,7 @@ local function Reset(store)
             end
         end
     end
-    store.trailN = 0
+    store.trailN, store.s1, store.full = 0, TRAIL_STEP2[1], false
 end
 
 local function MapOf(store, m)
@@ -146,8 +159,85 @@ local function AddFound(ms, name, x, y)
     a[i * 2 - 1], a[i * 2] = x, y
 end
 
+-- Writes the pair x, y after the n values already in t (n is even) and widens the box of the block it lands
+-- in. A block's box starts with the pair before it, when that is a point, so a line that enters the block
+-- is inside the box. A stretch break (x = -1) widens nothing.
+local function Put(t, box, n, x, y)
+    t[n + 1], t[n + 2] = x, y
+    local k = floor(n / 2 / TRAIL_BLOCK) * 4
+    if not box[k + 1] then
+        box[k + 1], box[k + 2], box[k + 3], box[k + 4] = HUGE, HUGE, -HUGE, -HUGE
+        if n > 0 and t[n - 1] > -0.5 then
+            local px, py = t[n - 1], t[n]
+            box[k + 1], box[k + 2], box[k + 3], box[k + 4] = px, py, px, py
+        end
+    end
+    if x > -0.5 then
+        if x < box[k + 1] then box[k + 1] = x end
+        if y < box[k + 2] then box[k + 2] = y end
+        if x > box[k + 3] then box[k + 3] = x end
+        if y > box[k + 4] then box[k + 4] = y end
+    end
+end
+
+-- Drops the points of one tier-1 array that are closer than lim (squared, 0..1 units) to the last one kept,
+-- keeping the end of each stretch, and rebuilds its boxes. Works in place: it writes behind where it reads.
+-- Returns the number of points left.
+local function ThinArray(t, box, lim)
+    local n = #t
+    wipe(box)
+    local w, cnt = 0, 0
+    local have, lx, ly, px, py, pend = false, 0, 0, 0, 0, false
+    for i = 1, n, 2 do
+        local x, y = t[i], t[i + 1]
+        if x < -0.5 then
+            if pend then
+                Put(t, box, w, px, py)
+                w, cnt, pend = w + 2, cnt + 1, false
+            end
+            Put(t, box, w, -1, -1)
+            w, have = w + 2, false
+        else
+            local keep = not have
+            if have then
+                local dx, dy = x - lx, y - ly
+                keep = dx * dx + dy * dy >= lim
+            end
+            if keep then
+                Put(t, box, w, x, y)
+                w, cnt, have, lx, ly, pend = w + 2, cnt + 1, true, x, y, false
+            else
+                px, py, pend = x, y, true
+            end
+        end
+    end
+    if pend then
+        Put(t, box, w, px, py)
+        w, cnt = w + 2, cnt + 1
+    end
+    for j = n, w + 1, -1 do t[j] = nil end
+    return cnt
+end
+
+-- The finest tier is full: double its step (until it is at most three quarters full) and thin what is there,
+-- so the newest walking is kept at the cost of some detail in the oldest. Once the step is the second tier's
+-- there is nothing finer to give up and the tier takes no more points; the other two tiers go on.
+local function ThinFinest(store)
+    repeat
+        store.s1 = store.s1 * 4
+        local lim, total = store.s1 / 1e8, 0
+        for _, ms in pairs(store.maps) do
+            local t, box = ms[TRAIL_KEYS[1]], ms[BOX_KEYS[1]]
+            if t and box and #t > 0 then total = total + ThinArray(t, box, lim) end
+        end
+        store.trailN = total
+    until total <= TRAIL_CAP * 0.75 or store.s1 >= TRAIL_STEP2[2]
+    if store.trailN >= TRAIL_CAP then store.full = true end
+end
+
 local function TrailPoint(st, store, m, x, y)
-    if st.flying or store.trailN >= TRAIL_CAP then return end
+    if st.flying then return end
+    if store.trailN >= TRAIL_CAP and not store.full then ThinFinest(store) end
     local ms = MapOf(store, m)
     local same, jump = st.lastM == m, true
     if same then
@@ -155,26 +245,28 @@ local function TrailPoint(st, store, m, x, y)
         jump = dx * dx + dy * dy > TRAIL_JUMP2
     end
     for i = 1, 3 do
-        local t = List(ms, TRAIL_KEYS[i])
-        local n = #t
-        local lx, ly = TRAIL_LX[i], TRAIL_LY[i]
-        if same and not jump then
-            local dx, dy = x - st[lx], y - st[ly]
-            if dx * dx + dy * dy < TRAIL_STEP2[i] then
-                n = nil
-            elseif n == 0 then
-                -- a store that starts mid-stretch (the open buffer) joins the last point of the one before
-                t[1], t[2] = st[lx] / 10000, st[ly] / 10000
-                n = 2
+        if i > 1 or not store.full then
+            local t, box = List(ms, TRAIL_KEYS[i]), List(ms, BOX_KEYS[i])
+            local n = #t
+            local lx, ly = TRAIL_LX[i], TRAIL_LY[i]
+            if same and not jump then
+                local dx, dy = x - st[lx], y - st[ly]
+                if dx * dx + dy * dy < (i == 1 and store.s1 or TRAIL_STEP2[i]) then
+                    n = nil
+                elseif n == 0 then
+                    -- a store that starts mid-stretch (the open buffer) joins the last point of the one before
+                    Put(t, box, 0, st[lx] / 10000, st[ly] / 10000)
+                    n = 2
+                end
+            elseif n > 0 and t[n - 1] > -0.5 then
+                Put(t, box, n, -1, -1)
+                n = n + 2
             end
-        elseif n > 0 and t[n - 1] > -0.5 then
-            t[n + 1], t[n + 2] = -1, -1
-            n = n + 2
-        end
-        if n then
-            t[n + 1], t[n + 2] = x / 10000, y / 10000
-            st[lx], st[ly] = x, y
-            if i == 1 then store.trailN = store.trailN + 1 end
+            if n then
+                Put(t, box, n, x / 10000, y / 10000)
+                st[lx], st[ly] = x, y
+                if i == 1 then store.trailN = store.trailN + 1 end
+            end
         end
     end
     st.lastM, st.rx, st.ry = m, x, y
@@ -402,6 +494,7 @@ end
 
 local co
 local liveN, liveA, liveT = -1, -1, -100
+local liveCo, liveDst, snapN, snapA, snapT   -- the read of the open buffers in progress, and the sizes it started from
 
 local function HasNew()
     local db = ns.db
@@ -419,21 +512,63 @@ local function BufSizes()
         type(adb) == "table" and type(adb.buf) == "table" and #adb.buf or 0
 end
 
-local function RebuildLive()
+-- Reads the open buffers into `dst` in the same budgeted way as Build. The buffers go on growing (and are
+-- sealed, which empties them) between two resumes, so the length is taken once and every line is checked.
+local function LiveBuild(dst)
     local db = ns.db
-    Reset(live)
+    Reset(dst)
     CopyState(stL, stS)
     stL.ms = (tonumber(db and db.bufT) or 0) * 1000
     local buf = db and db.buf
     if type(buf) == "table" then
-        for i = 1, #buf do Main(stL, live, buf[i]) end
+        for i = 1, #buf do
+            local line = buf[i]
+            if type(line) == "string" then Main(stL, dst, line) end
+            if i % 128 == 0 then Pause() end
+        end
     end
     local adb = _G.ScarletAddonsDB
-    if type(adb) == "table" and type(adb.buf) == "table" and adb.bufC == ns.charKey then
-        for i = 1, #adb.buf do AddonLine(live, adb.buf[i]) end
+    local abuf = type(adb) == "table" and adb.bufC == ns.charKey and adb.buf
+    if type(abuf) == "table" then
+        for i = 1, #abuf do
+            local line = abuf[i]
+            if type(line) == "string" then AddonLine(dst, line) end
+            if i % 128 == 0 then Pause() end
+        end
     end
-    liveN, liveA = BufSizes()
-    liveT = GetTime()
+end
+
+-- Whether the open buffers are worth reading again: they changed, and the last read is old enough (or was
+-- made before the buffers were sealed).
+local function LiveDue()
+    local n, a = BufSizes()
+    if n == liveN and a == liveA then return false end
+    return GetTime() - liveT >= LIVE_MAX_AGE or liveN < 0 or n < liveN
+end
+
+-- Resumes the read of the open buffers, starting one when due. Returns changed (the shown store was
+-- replaced) and more (the read is not finished).
+local function StepLive()
+    if not liveCo then
+        if not LiveDue() then return false, false end
+        liveDst = liveSet[liveShown == 1 and 2 or 1]
+        snapN, snapA = BufSizes()
+        snapT = GetTime()
+        liveCo = cocreate(LiveBuild)
+    end
+    local ok, err = coresume(liveCo, liveDst)
+    if not ok then
+        liveCo = nil
+        liveN, liveA, liveT = snapN, snapA, snapT -- not again until the buffers change
+        geterrorhandler()(err)
+        return false, false
+    end
+    if costatus(liveCo) ~= "dead" then return false, true end
+    liveCo = nil
+    liveShown = liveShown == 1 and 2 or 1
+    MD.stores[2] = liveDst
+    liveN, liveA, liveT = snapN, snapA, snapT
+    return true, false
 end
 
 -- Brings the index up to date, spending about `ms` milliseconds of this frame on sealed chunks.
@@ -442,7 +577,11 @@ function MD.Pump(ms)
     if not ns.db or not ns.charKey then return false, false end
     budget, started = ms or 4, debugprofilestop()
     local changed = false
-    if not co and HasNew() then co = cocreate(Build) end
+    if not co and HasNew() then
+        co = cocreate(Build)
+        -- the open buffers start from the state the sealed chunks leave: read them again once those are in
+        liveCo, liveN = nil, -1
+    end
     if co then
         local ok, err = coresume(co)
         changed = true
@@ -454,28 +593,25 @@ function MD.Pump(ms)
         if costatus(co) == "dead" then co = nil else return true, true end
     end
     -- The sealed chunks are all read: the open buffers follow, again when they have grown.
-    local n, a = BufSizes()
-    if n ~= liveN or a ~= liveA then
-        if GetTime() - liveT >= LIVE_MAX_AGE or liveN < 0 or n < liveN then
-            RebuildLive()
-            changed = true
-        end
-    end
-    return changed, false
+    local swapped, more = StepLive()
+    return changed or swapped, more
 end
 
 -- Whether the open buffers or unread chunks could hold more than what is drawn (cheap; for polling).
 function MD.Stale()
-    if co or HasNew() then return true end
+    if co or liveCo or HasNew() then return true end
     local n, a = BufSizes()
     return n ~= liveN or a ~= liveA
 end
 
 -- The index is rebuilt from scratch for another character (a different charKey).
 function MD.Forget()
-    co = nil
+    co, liveCo = nil, nil
     Reset(sealed)
-    Reset(live)
+    Reset(liveSet[1])
+    Reset(liveSet[2])
+    liveShown = 1
+    MD.stores[2] = liveSet[1]
     stS, stL = NewState(), NewState()
     liveN, liveA, liveT = -1, -1, -100
 end
