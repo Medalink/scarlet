@@ -711,7 +711,32 @@ local NAV = {
 -- Pages that change only when you click them, not on the refresh ticker.
 local STATIC_PAGES = { settings = true, fonts = true }
 
+-- A page is built the first time it is shown, so opening the window pays for one page, not ten.
+local BUILDERS = {
+    overview = function(body) return ns.OverviewPage(body, ns.UI) end,
+    stats = function(body)
+        return StatsPage(body, function() return Snapshot(ns.char or ns.sess, true) end)
+    end,
+    session = function(body)
+        return StatsPage(body, function() return Snapshot(ns.sess, true) end)
+    end,
+    time = function(body)
+        return StatsPage(body, function() return Snapshot(ns.char or ns.sess, true) end, TIME_CARDS)
+    end,
+    more = function(body)
+        return StatsPage(body, function() return Snapshot(ns.char or ns.sess, true) end, MORE_CARDS)
+    end,
+    people = function(body)
+        return PeoplePage(body, function() return Snapshot(ns.char or ns.sess, true) end)
+    end,
+    live = LivePage,
+    addons = AddonsPage,
+    settings = SettingsPage,
+    fonts = FontsPage,
+}
+
 local function Show(key)
+    if not pages[key] then pages[key] = BUILDERS[key](window.body) end
     current = key
     for k, page in pairs(pages) do page:SetShown(k == key) end
     for _, b in ipairs(navButtons) do b:SetActive(b.key == key) end
@@ -858,18 +883,7 @@ local function Build()
     body:SetPoint("TOPLEFT", 0, -TITLE_H)
     body:SetPoint("BOTTOMRIGHT")
 
-    pages = {
-        overview = ns.OverviewPage(body, ns.UI),
-        stats = StatsPage(body, function() return Snapshot(ns.char or ns.sess, true) end),
-        session = StatsPage(body, function() return Snapshot(ns.sess, true) end),
-        time = StatsPage(body, function() return Snapshot(ns.char or ns.sess, true) end, TIME_CARDS),
-        more = StatsPage(body, function() return Snapshot(ns.char or ns.sess, true) end, MORE_CARDS),
-        people = PeoplePage(body, function() return Snapshot(ns.char or ns.sess, true) end),
-        live = LivePage(body),
-        addons = AddonsPage(body),
-        settings = SettingsPage(body),
-        fonts = FontsPage(body),
-    }
+    pages = {}
     navButtons = {}
     for i, def in ipairs(NAV) do
         local b = NavButton(sidebar, i, def)
