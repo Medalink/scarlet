@@ -1,4 +1,5 @@
 -- Economy.lua: the Economy-and-items trackers beyond Capture and Track (I, M, O, CU, RE):
+--   AV  an auction house invoice in the inbox: read when shown, opened or taken from
 --   VB  a vendor purchase or buyback: item, count, price, which NPC
 --   AU  auction house: posted, bid, bought, cancelled, sold, expired, outbid
 --   ML  mail: sent, money taken, items taken, returned
@@ -13,7 +14,7 @@
 --   TK  WoW Token market price and sale or purchase results
 --   LP  loot specialization changed
 --   DI  you deleted an item
--- Codes are in docs/FORMAT.md. Event driven only, nothing on a timer; every client
+-- Codes are in docs/FORMAT.md. Event driven only, nothing on a timer but short debounces; every client
 -- value goes through Plain() before it is compared or indexed. Chat, mail text,
 -- mail subjects and auction text are never read.
 local _, ns = ...
@@ -462,25 +463,82 @@ local function Inbox(index)
     return Str(r[4]) or "", Num(r[6]) or 0, Num(r[7]) or 0, Num(r[9]) or 0
 end
 
--- AV <invoiceType> <itemName> <count> <bid> <buyout> <deposit> <cut>: the auction house invoice
--- attached to a mail you take from, with the numbers the client gives (invoiceType `seller`
--- when something of yours sold, `buyer` when you won one, `seller_temp_invoice` while the sale
--- is pending). bid is what it sold or was bought for, buyout the buyout price, deposit the
--- deposit you paid and cut the auction house's consignment. The buyer's or seller's name and the
--- mail's subject are never read. At most once per mail per second, since the money and the
--- items are taken by separate calls.
-local lastInvoice, lastInvoiceAt = nil, 0
+-- AV <invoiceType> <itemName> <count> <bid> <buyout> <deposit> <cut> <why>: an auction house invoice in
+-- your inbox, with the numbers the client gives (invoiceType `seller` when something of yours sold,
+-- `buyer` when you won one, `seller_temp_invoice` while the sale is pending). bid is what it sold or was
+-- bought for, buyout the buyout price, deposit the deposit you paid and cut the auction house's
+-- consignment. why: `i` read when the inbox was shown, `o` read when you opened the mail, `t` read when
+-- you took from it. The buyer's or seller's name and the mail's subject are never read, and neither is
+-- the mail's text: GetInboxText is not called, only watched when the client's own mail window calls it.
+-- A mail's index changes as mail is taken, so an invoice is told apart by its numbers and the time its
+-- mail expires (daysLeft turned into a clock time, in one hour steps; the steps either side count as the
+-- same), kept per character (AV_CAP of them). One invoice is written once, whichever way it is read first.
 
-local function Invoice(index)
+local AV_CAP = 400
+
+local function InvoiceSeen(base, hour)
+    local ch = ns.char
+    if not ch then return false end
+    local av = ch.av
+    if type(av) ~= "table" or type(av.set) ~= "table" or type(av.order) ~= "table" then
+        av = { set = {}, order = {} }
+        ch.av = av
+    end
+    for d = -1, 1 do
+        if av.set[base .. "@" .. (hour + d)] then return true end
+    end
+    local key = base .. "@" .. hour
+    av.set[key] = true
+    av.order[#av.order + 1] = key
+    if #av.order > AV_CAP then av.set[table.remove(av.order, 1)] = nil end
+    return false
+end
+
+local function Invoice(index, why)
     if type(_G.GetInboxInvoiceInfo) ~= "function" then return end
-    local now = GetTime()
-    if lastInvoice == index and now - lastInvoiceAt < 1 then return end
     local r = Pack(_G.GetInboxInvoiceInfo, index)
     local kind = r and Str(r[2])
     if not kind then return end
-    lastInvoice, lastInvoiceAt = index, now
-    Emit("AV", kind, Str(r[3]) or "", Num(r[12]) or "", Num(r[5]) or "", Num(r[6]) or "", Num(r[7]) or "",
-        Num(r[8]) or "")
+    local item, count = Str(r[3]) or "", Num(r[12]) or ""
+    local bid, buyout, deposit, cut = Num(r[5]) or "", Num(r[6]) or "", Num(r[7]) or "", Num(r[8]) or ""
+    local head = Pack(_G.GetInboxHeaderInfo, index)
+    local days = head and Num(head[8])
+    local hour = floor(((days and (time() + days * 86400)) or time()) / 3600)
+    local base = concat({ kind, item, count, bid, buyout, deposit, cut }, "|")
+    if InvoiceSeen(base, hour) then return end
+    Emit("AV", kind, item, count, bid, buyout, deposit, cut, why)
+end
+
+-- Every invoice in the inbox, once it is shown or changes. The client may hand out an invoice only for
+-- a mail it has loaded, so the ones it holds back are read when you open them.
+local mailOpen, scanDue = false, false
+
+local function InboxScan()
+    scanDue = false
+    if not mailOpen then return end
+    local n = Num(Call(_G.GetInboxNumItems))
+    if not n then return end
+    for i = 1, math.min(n, 50) do Invoice(i, "i") end
+end
+
+local function ScanSoon()
+    if scanDue then return end
+    scanDue = true
+    C_Timer.After(0.7, InboxScan)
+end
+
+function H.MAIL_SHOW()
+    mailOpen = true
+    ScanSoon()
+end
+
+function H.MAIL_CLOSED() mailOpen = false end
+H.MAIL_INBOX_UPDATE = ScanSoon
+
+if type(_G.GetInboxText) == "function" then
+    hooksecurefunc("GetInboxText", function(index)
+        if mailOpen and Num(index) then Invoice(index, "o") end
+    end)
 end
 
 -- itemID and count of one attachment, nil for an empty slot or a currency.
@@ -507,7 +565,7 @@ end
 if type(_G.TakeInboxMoney) == "function" then
     hooksecurefunc("TakeInboxMoney", function(index)
         if not Num(index) then return end
-        Invoice(index)
+        Invoice(index, "t")
         local who, money = Inbox(index)
         if money > 0 then Emit("ML", "m", who, money, "", "") end
     end)
@@ -516,7 +574,7 @@ end
 if type(_G.TakeInboxItem) == "function" then
     hooksecurefunc("TakeInboxItem", function(index, slot)
         if Num(index) and Num(slot) then
-            Invoice(index)
+            Invoice(index, "t")
             TakeItems(index, slot, slot)
         end
     end)
@@ -525,7 +583,7 @@ end
 if type(_G.AutoLootMailItem) == "function" then
     hooksecurefunc("AutoLootMailItem", function(index)
         if not Num(index) then return end
-        Invoice(index)
+        Invoice(index, "t")
         local who, money = Inbox(index)
         if money > 0 then Emit("ML", "m", who, money, "", "") end
         TakeItems(index, 1, Num(_G.ATTACHMENTS_MAX_RECEIVE) or 16)
