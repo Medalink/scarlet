@@ -3,23 +3,31 @@ local _, ns = ...
 
 local floor, format, max = math.floor, string.format, math.max
 
+-- The palette of the Scarlet site: a dark survey sheet. Hairlines are white at low alpha
+-- (the fourth value); scarlet marks the current page, recorded data and the main action.
 local T = {
-    bg = { 0x19 / 255, 0x1b / 255, 0x1d / 255 },
-    panel = { 0x1e / 255, 0x20 / 255, 0x22 / 255 },
-    card = { 0x22 / 255, 0x24 / 255, 0x27 / 255 },
-    line = { 0x37 / 255, 0x3b / 255, 0x40 / 255 },
+    win = { 0x10 / 255, 0x10 / 255, 0x12 / 255 },
+    bg = { 0x14 / 255, 0x14 / 255, 0x16 / 255 },
+    panel = { 0x1b / 255, 0x1b / 255, 0x1f / 255 },
+    card = { 0x23 / 255, 0x23 / 255, 0x28 / 255 },
+    line = { 1, 1, 1, 0.07 },
+    line2 = { 1, 1, 1, 0.13 },
     fg = { 0xf0 / 255, 0xf1 / 255, 0xf3 / 255 },
-    muted = { 0x9a / 255, 0x9e / 255, 0xa6 / 255 },
-    grey = { 0x3d / 255, 0x41 / 255, 0x46 / 255 },
+    text = { 0xcd / 255, 0xce / 255, 0xd4 / 255 },
+    muted = { 0x8a / 255, 0x8a / 255, 0x93 / 255 },
+    grey = { 1, 1, 1, 0.1 },
     accent = { 0xff / 255, 0x2d / 255, 0x55 / 255 },
     accentSoft = { 0xff / 255, 0x6b / 255, 0x8e / 255 },
     accentDeep = { 0xc0 / 255, 0x10 / 255, 0x2e / 255 },
+    ink = { 0x14 / 255, 0x14 / 255, 0x16 / 255 },
 }
 
 local WHITE = "Interface\\Buttons\\WHITE8X8"
 local W, H = 880, 560
-local HEADER_H, SIDEBAR_W, NAV_H, PAD = 56, 196, 34, 24
-local CARD_W, CARD_H, CARD_GAP, CARD_COLS = 151, 74, 10, 4
+local HEADER_H, SIDEBAR_W, NAV_H, PAD = 40, 176, 30, 24
+local CONTENT_W = W - SIDEBAR_W - 1 - 2 * PAD
+local TITLE_H = 46 -- page title and the gap under it; the Character page has none
+local CELL_COLS, CELL_H = 4, 84
 local STRIDE_YARDS = 2.5      -- running stride
 local WALK_STRIDE_YARDS = 1.4 -- walking stride
 local REFRESH_SECONDS = 0.5
@@ -27,19 +35,28 @@ local REFRESH_SECONDS = 0.5
 local window, pages, navButtons, current, refreshTicker
 
 -- Fonts ------------------------------------------------------------------------
--- The choices are the game's own fonts plus every font other addons registered
--- with LibSharedMedia (EllesmereUI and SharedMedia bring Expressway and more).
--- opt.font holds a name; nil means Expressway when one is registered.
+-- The choices are Sofia Sans (bundled in Media, the default), the game's own fonts and
+-- every font other addons registered with LibSharedMedia (EllesmereUI and SharedMedia
+-- bring Expressway and more). opt.font holds a name; nil means Sofia Sans.
+-- Sofia Sans is three static files, one per role: display (headings and big numbers),
+-- body and strong. Any other chosen font is used for every role.
 
+local MEDIA = "Interface\\AddOns\\Scarlet\\Media\\"
+local FACES = {
+    display = MEDIA .. "SofiaSansExtraCondensed-ExtraBold.ttf",
+    body = MEDIA .. "SofiaSans-Regular.ttf",
+    strong = MEDIA .. "SofiaSans-SemiBold.ttf",
+}
 local BUILTIN_FONTS = {
+    { "Sofia Sans", FACES.body },
     { "Arial Narrow", "Fonts\\ARIALN.TTF" },
     { "Friz Quadrata", "Fonts\\FRIZQT__.TTF" },
     { "Morpheus", "Fonts\\MORPHEUS.TTF" },
     { "Skurri", "Fonts\\SKURRI.TTF" },
 }
-local DEFAULT_FONT, FALLBACK_FONT = "Expressway", "Arial Narrow"
+local DEFAULT_FONT, FALLBACK_FONT = "Sofia Sans", "Arial Narrow"
 local fontList, fontPaths = {}, {}
-local followers = {} -- font string -> size, for every string that follows the chosen font
+local followers = {} -- font string -> { size, role }, for every string that follows the chosen font
 
 local function SharedMedia()
     local stub = _G.LibStub
@@ -86,9 +103,22 @@ local function SetFontSafe(fs, path, size)
     end
 end
 
+-- The file a role draws with: Sofia Sans picks its own face per role.
+local function FacePath(role)
+    local name, path = ChosenFont()
+    if name == DEFAULT_FONT then return FACES[role] or path end
+    return path
+end
+
+-- Display sizes are set for the extra condensed face; a wider font gets them smaller so
+-- a big number does not clip.
+local function FaceSize(role, size)
+    if role == "display" and ChosenFont() ~= DEFAULT_FONT then return floor(size * 0.68) end
+    return size
+end
+
 local function ApplyFont()
-    local _, path = ChosenFont()
-    for fs, size in pairs(followers) do SetFontSafe(fs, path, size) end
+    for fs, def in pairs(followers) do SetFontSafe(fs, FacePath(def[2]), FaceSize(def[2], def[1])) end
 end
 
 -- Fonts registered after login (an addon loaded on demand) join the list.
@@ -114,7 +144,22 @@ end
 local function Fill(parent, color, alpha, layer, sub)
     local t = parent:CreateTexture(nil, layer or "BACKGROUND", nil, sub)
     t:SetTexture(WHITE)
-    t:SetVertexColor(color[1], color[2], color[3], alpha or 1)
+    t:SetVertexColor(color[1], color[2], color[3], alpha or color[4] or 1)
+    return t
+end
+
+-- A one-pixel line along one edge of f ("TOP", "BOTTOM", "LEFT" or "RIGHT").
+local function Hair(f, edge, color, layer)
+    local t = Fill(f, color or T.line, nil, layer or "ARTWORK")
+    if edge == "TOP" or edge == "BOTTOM" then
+        t:SetPoint(edge .. "LEFT")
+        t:SetPoint(edge .. "RIGHT")
+        t:SetHeight(1)
+    else
+        t:SetPoint("TOP" .. edge)
+        t:SetPoint("BOTTOM" .. edge)
+        t:SetWidth(1)
+    end
     return t
 end
 
@@ -131,11 +176,12 @@ local function Border(f, color, alpha)
     Edge("TOPRIGHT", "BOTTOMRIGHT", 1)
 end
 
-local function Text(parent, size, color, justify)
+-- role: "body" (default), "strong" or "display"; see FACES.
+local function Text(parent, size, color, justify, role)
     local fs = parent:CreateFontString(nil, "OVERLAY")
-    local _, path = ChosenFont()
-    SetFontSafe(fs, path, size)
-    followers[fs] = size
+    role = role or "body"
+    SetFontSafe(fs, FacePath(role), FaceSize(role, size))
+    followers[fs] = { size, role }
     fs:SetTextColor(color[1], color[2], color[3])
     fs:SetJustifyH(justify or "LEFT")
     fs:SetWordWrap(false)
@@ -155,9 +201,9 @@ end
 local function Money(copper)
     copper = floor(copper)
     local g, s, c = floor(copper / 10000), floor(copper / 100) % 100, copper % 100
-    if g > 0 then return format("%s|cffe6cc80g|r %d|cffc7ccdbs|r", Num(g), s) end
-    if s > 0 then return format("%d|cffc7ccdbs|r %d|cffe0915ac|r", s, c) end
-    return format("%d|cffe0915ac|r", c)
+    if g > 0 then return format("%s|cffd9b25fg|r %d|cffc3c7cfs|r", Num(g), s) end
+    if s > 0 then return format("%d|cffc3c7cfs|r %d|cffc58a63c|r", s, c) end
+    return format("%d|cffc58a63c|r", c)
 end
 
 local function Duration(secs)
@@ -174,7 +220,8 @@ local function Distance(yards)
 end
 
 -- What Overview.lua draws with.
-ns.UI = { T = T, Fill = Fill, Border = Border, Text = Text, Num = Num, Money = Money, Duration = Duration }
+ns.UI = { T = T, Fill = Fill, Border = Border, Hair = Hair, Text = Text, Num = Num, Money = Money,
+    Duration = Duration }
 
 local CARDS = {
     { "Kills", function(s) return Num(s.kills) end },
@@ -277,57 +324,64 @@ local function Snapshot(src, addSession)
     return liveStats
 end
 
+-- Open cells split by hairlines, like the site's "This week" row: a small label over a
+-- big condensed number. The first row has a stronger rule above it.
+local CELL_W = floor(CONTENT_W / CELL_COLS)
+
 local function StatsPage(parent, source, defs)
     local page = CreateFrame("Frame", nil, parent)
     page:SetAllPoints()
-    local cards = {}
+    local cells = {}
     for i, def in ipairs(defs or CARDS) do
-        local col, row = (i - 1) % CARD_COLS, floor((i - 1) / CARD_COLS)
-        local card = CreateFrame("Frame", nil, page)
-        card:SetSize(CARD_W, CARD_H)
-        card:SetPoint("TOPLEFT", col * (CARD_W + CARD_GAP), -row * (CARD_H + CARD_GAP))
-        Fill(card, T.card):SetAllPoints()
-        Border(card, T.line, 0.8)
-        local rail = Fill(card, T.accent, 0.9, "ARTWORK")
-        rail:SetPoint("TOPLEFT", 1, -1)
-        rail:SetPoint("BOTTOMLEFT", 1, 1)
-        rail:SetWidth(2)
-        card.value = Text(card, 22, T.fg)
-        card.value:SetPoint("TOPLEFT", 14, -14)
-        card.value:SetPoint("RIGHT", -10, 0)
-        card.label = Text(card, 12, T.muted)
-        card.label:SetPoint("BOTTOMLEFT", 14, 12)
-        card.label:SetText(def[1])
-        card.def = def
-        cards[i] = card
+        local col, row = (i - 1) % CELL_COLS, floor((i - 1) / CELL_COLS)
+        local pad = col == 0 and 0 or 16
+        local cell = CreateFrame("Frame", nil, page)
+        cell:SetSize(CELL_W, CELL_H)
+        cell:SetPoint("TOPLEFT", col * CELL_W, -row * CELL_H)
+        Hair(cell, "BOTTOM")
+        if row == 0 then Hair(cell, "TOP", T.line2) end
+        if col > 0 then Hair(cell, "LEFT") end
+        cell.label = Text(cell, 13, T.muted)
+        cell.label:SetPoint("TOPLEFT", pad, -14)
+        cell.label:SetText(def[1])
+        cell.value = Text(cell, 34, T.fg, "LEFT", "display")
+        cell.value:SetPoint("TOPLEFT", pad, -34)
+        cell.value:SetPoint("RIGHT", -6, 0)
+        cell.def = def
+        cells[i] = cell
     end
     function page:Refresh()
         local s = source()
-        for i = 1, #cards do cards[i].value:SetText(cards[i].def[2](s)) end
+        for i = 1, #cells do cells[i].value:SetText(cells[i].def[2](s)) end
     end
     return page
 end
 
-local MATE_ROWS = 8
+local MATE_ROWS, MATE_ROW_H = 8, 24
 local mateList = {}
 local function PeoplePage(parent, source)
     local page = StatsPage(parent, source, PEOPLE_CARDS)
-    local top = -2 * (CARD_H + CARD_GAP) - 12
-    local heading = Text(page, 14, T.fg)
+    local top = -2 * CELL_H - 22
+    local heading = Text(page, 24, T.fg, "LEFT", "display")
     heading:SetPoint("TOPLEFT", 0, top)
     heading:SetText("Grouped with most")
     local rows = {}
     for i = 1, MATE_ROWS do
-        local name = Text(page, 13, T.fg)
-        name:SetPoint("TOPLEFT", 0, top - 28 - (i - 1) * 20)
+        local row = CreateFrame("Frame", nil, page)
+        row:SetHeight(MATE_ROW_H)
+        row:SetPoint("TOPLEFT", 0, top - 36 - (i - 1) * MATE_ROW_H)
+        row:SetPoint("TOPRIGHT", 0, top - 36 - (i - 1) * MATE_ROW_H)
+        Hair(row, "BOTTOM")
+        local name = Text(row, 14, T.fg)
+        name:SetPoint("LEFT")
         name:SetWidth(320)
-        local value = Text(page, 13, T.muted)
-        value:SetPoint("LEFT", name, "RIGHT", 12, 0)
+        local value = Text(row, 13, T.text, "RIGHT")
+        value:SetPoint("RIGHT")
         value:SetWidth(240)
-        rows[i] = { name = name, value = value }
+        rows[i] = { name = name, value = value, row = row }
     end
-    local empty = Text(page, 13, T.muted)
-    empty:SetPoint("TOPLEFT", 0, top - 28)
+    local empty = Text(page, 14, T.muted)
+    empty:SetPoint("TOPLEFT", 0, top - 42)
     empty:SetText("No groups yet.")
     local refreshCards = page.Refresh
     function page:Refresh()
@@ -341,6 +395,7 @@ local function PeoplePage(parent, source)
         empty:SetShown(#mateList == 0)
         for i = 1, MATE_ROWS do
             local key = mateList[i]
+            rows[i].row:SetShown(key ~= nil)
             rows[i].name:SetText(key or "")
             if key then
                 local m = mates[key]
@@ -354,22 +409,23 @@ local function PeoplePage(parent, source)
     return page
 end
 
+-- Log lines as the companion reads them: the event word in scarlet, the fields after it.
 local function LivePage(parent)
     local page = CreateFrame("Frame", nil, parent)
     page:SetAllPoints()
     local rows, lines = {}, {}
-    local ROW_H = 18
-    local count = floor((H - HEADER_H - PAD * 2 - 40) / ROW_H)
+    local ROW_H = 20
+    local count = floor((H - HEADER_H - PAD * 2 - TITLE_H) / ROW_H)
     for i = 1, count do
-        local word = Text(page, 12, T.accentSoft)
+        local word = Text(page, 13, T.accent, "LEFT", "strong")
         word:SetPoint("TOPLEFT", 0, -(i - 1) * ROW_H)
-        word:SetWidth(90)
-        local rest = Text(page, 12, T.fg)
+        word:SetWidth(96)
+        local rest = Text(page, 13, T.text)
         rest:SetPoint("LEFT", word, "RIGHT", 8, 0)
         rest:SetPoint("RIGHT", page, "RIGHT", 0, 0)
         rows[i] = { word = word, rest = rest }
     end
-    local empty = Text(page, 13, T.muted)
+    local empty = Text(page, 14, T.muted)
     empty:SetPoint("TOPLEFT")
     empty:SetText("Nothing recorded yet this session.")
     function page:Refresh()
@@ -399,24 +455,21 @@ local function Toggle(parent, y, label, get, set)
     local hover = Fill(row, T.fg, 0.03)
     hover:SetAllPoints()
     hover:Hide()
-    local divider = Fill(row, T.line, 0.6, "ARTWORK")
-    divider:SetPoint("BOTTOMLEFT")
-    divider:SetPoint("BOTTOMRIGHT")
-    divider:SetHeight(1)
-    local text = Text(row, 13, T.fg)
-    text:SetPoint("LEFT", 12, 0)
+    Hair(row, "BOTTOM")
+    local text = Text(row, 14, T.fg)
+    text:SetPoint("LEFT", 0, 0)
     text:SetText(label)
     local track = CreateFrame("Frame", nil, row)
-    track:SetSize(34, 16)
-    track:SetPoint("RIGHT", -12, 0)
+    track:SetSize(32, 14)
+    track:SetPoint("RIGHT", -2, 0)
     local trackFill = Fill(track, T.grey)
     trackFill:SetAllPoints()
     local knob = Fill(track, T.fg, 1, "ARTWORK")
-    knob:SetSize(12, 12)
+    knob:SetSize(10, 10)
     function row:Refresh()
         local on = get()
         local c = on and T.accent or T.grey
-        trackFill:SetVertexColor(c[1], c[2], c[3])
+        trackFill:SetVertexColor(c[1], c[2], c[3], c[4] or 1)
         knob:ClearAllPoints()
         knob:SetPoint(on and "RIGHT" or "LEFT", on and -2 or 2, 0)
     end
@@ -430,15 +483,15 @@ local function Toggle(parent, y, label, get, set)
     return row
 end
 
+-- The main action: scarlet with dark text, like the site's button.
 local function Button(parent, label, width, onClick)
     local b = CreateFrame("Button", nil, parent)
-    b:SetSize(width, 28)
-    local bg = Fill(b, T.accentDeep)
-    bg:SetAllPoints()
-    local sheen = Fill(b, T.accent, 1, "BORDER")
+    b:SetSize(width, 30)
+    Fill(b, T.accent):SetAllPoints()
+    local sheen = Fill(b, T.accentSoft, 1, "BORDER")
     sheen:SetAllPoints()
     sheen:Hide()
-    local text = Text(b, 13, T.fg, "CENTER")
+    local text = Text(b, 14, T.ink, "CENTER", "strong")
     text:SetPoint("CENTER")
     text:SetText(label)
     b:SetScript("OnEnter", function() sheen:Show() end)
@@ -486,12 +539,12 @@ local function AddonsPage(parent)
         local key = e.key
         local row = Toggle(page, -(i - 1) * ADDON_ROW_H, e.label, function() return ns.Addons.IsOn(key) end,
             function(v) ns.Addons.SetOn(key, v) end)
-        row.status = Text(row, 12, T.muted, "RIGHT")
+        row.status = Text(row, 13, T.muted, "RIGHT")
         row.status:SetPoint("RIGHT", -230, 0)
         row.status:SetWidth(170)
-        row.count = Text(row, 13, T.fg, "RIGHT")
-        row.count:SetPoint("RIGHT", -70, 0)
-        row.count:SetWidth(80)
+        row.count = Text(row, 22, T.fg, "RIGHT", "display")
+        row.count:SetPoint("RIGHT", -60, 0)
+        row.count:SetWidth(90)
         rows[i] = row
     end
     function page:Refresh()
@@ -509,7 +562,7 @@ local function AddonsPage(parent)
 end
 
 -- Each font's name is drawn in that font; the chosen one is marked like the nav.
-local FONT_ROW_H, FONT_SIZE = 34, 15
+local FONT_ROW_H, FONT_SIZE = 34, 16
 
 local function FontsPage(parent)
     local page = CreateFrame("Frame", nil, parent)
@@ -535,18 +588,15 @@ local function FontsPage(parent)
         local hover = Fill(row, T.fg, 0.03)
         hover:SetAllPoints()
         hover:Hide()
-        row.fill = Fill(row, T.accent, 0.14)
+        row.fill = Fill(row, T.accent, 0.1)
         row.fill:SetAllPoints()
         row.marker = Fill(row, T.accent, 1, "ARTWORK")
         row.marker:SetPoint("TOPLEFT")
         row.marker:SetPoint("BOTTOMLEFT")
-        row.marker:SetWidth(3)
-        local divider = Fill(row, T.line, 0.6, "ARTWORK")
-        divider:SetPoint("BOTTOMLEFT")
-        divider:SetPoint("BOTTOMRIGHT")
-        divider:SetHeight(1)
+        row.marker:SetWidth(2)
+        Hair(row, "BOTTOM")
         row.label = row:CreateFontString(nil, "OVERLAY")
-        row.label:SetPoint("LEFT", 16, 0)
+        row.label:SetPoint("LEFT", 14, 0)
         row.label:SetPoint("RIGHT", -12, 0)
         row.label:SetJustifyH("LEFT")
         row.label:SetWordWrap(false)
@@ -615,17 +665,24 @@ local function Show(key)
     current = key
     for k, page in pairs(pages) do page:SetShown(k == key) end
     for _, b in ipairs(navButtons) do b:SetActive(b.key == key) end
+    -- The Character page opens on the character's name; the others open on their title.
+    local home = key == "overview"
+    window.pageTitle:SetShown(not home)
     window.pageTitle:SetText(navButtons[key].label)
+    window.body:ClearAllPoints()
+    window.body:SetPoint("TOPLEFT", 0, home and 0 or -TITLE_H)
+    window.body:SetPoint("BOTTOMRIGHT")
     pages[key]:Refresh()
 end
 
+-- The current page carries a scarlet marker and a faint scarlet wash, as in the site's drawing.
 local function NavButton(parent, i, def)
     local b = CreateFrame("Button", nil, parent)
     b:SetHeight(NAV_H)
-    b:SetPoint("TOPLEFT", 8, -16 - (i - 1) * (NAV_H + 2))
-    b:SetPoint("TOPRIGHT", -8, -16 - (i - 1) * (NAV_H + 2))
+    b:SetPoint("TOPLEFT", 0, -12 - (i - 1) * NAV_H)
+    b:SetPoint("TOPRIGHT", -1, -12 - (i - 1) * NAV_H)
     b.key, b.label = def.key, def.label
-    local fill = Fill(b, T.accent, 0.14)
+    local fill = Fill(b, T.accent, 0.1)
     fill:SetAllPoints()
     local hover = Fill(b, T.fg, 0.04)
     hover:SetAllPoints()
@@ -633,8 +690,8 @@ local function NavButton(parent, i, def)
     local marker = Fill(b, T.accent, 1, "ARTWORK")
     marker:SetPoint("TOPLEFT")
     marker:SetPoint("BOTTOMLEFT")
-    marker:SetWidth(3)
-    local text = Text(b, 14, T.fg)
+    marker:SetWidth(2)
+    local text = Text(b, 14, T.muted)
     text:SetPoint("LEFT", 16, 0)
     text:SetText(def.label)
     function b:SetActive(on)
@@ -655,7 +712,7 @@ local function CloseButton(parent)
     local strokes = {}
     for i, angle in ipairs({ math.pi / 4, -math.pi / 4 }) do
         local t = Fill(b, T.muted, 1, "ARTWORK")
-        t:SetSize(14, 1.5)
+        t:SetSize(13, 1.5)
         t:SetPoint("CENTER")
         t:SetRotation(angle)
         strokes[i] = t
@@ -696,68 +753,55 @@ local function Build()
     window:SetScript("OnDragStop", window.StopMovingOrSizing)
     tinsert(UISpecialFrames, "ScarletWindow")
 
-    local shadow = Fill(window, { 0, 0, 0 }, 0.45, "BACKGROUND", -8)
+    local shadow = Fill(window, { 0, 0, 0 }, 0.5, "BACKGROUND", -8)
     shadow:SetPoint("TOPLEFT", -6, 6)
     shadow:SetPoint("BOTTOMRIGHT", 6, -6)
-    Fill(window, T.bg, 0.97):SetAllPoints()
-    Border(window, { 0, 0, 0 }, 1)
-
-    local strip = Fill(window, T.accent, 1, "ARTWORK")
-    strip:SetPoint("TOPLEFT", 1, -1)
-    strip:SetPoint("TOPRIGHT", -1, -1)
-    strip:SetHeight(2)
-    strip:SetGradient("HORIZONTAL", CreateColor(T.accentDeep[1], T.accentDeep[2], T.accentDeep[3], 1),
-        CreateColor(T.accentSoft[1], T.accentSoft[2], T.accentSoft[3], 1))
+    Fill(window, T.win, 0.98):SetAllPoints()
+    Border(window, T.line2)
 
     local header = CreateFrame("Frame", nil, window)
-    header:SetPoint("TOPLEFT", 1, -3)
-    header:SetPoint("TOPRIGHT", -1, -3)
-    header:SetHeight(HEADER_H - 3)
-    local divider = Fill(header, T.line, 1, "ARTWORK")
-    divider:SetPoint("BOTTOMLEFT")
-    divider:SetPoint("BOTTOMRIGHT")
-    divider:SetHeight(1)
+    header:SetPoint("TOPLEFT", 1, -1)
+    header:SetPoint("TOPRIGHT", -1, -1)
+    header:SetHeight(HEADER_H)
+    Hair(header, "BOTTOM")
 
     local mark = Fill(header, T.accent, 1, "ARTWORK")
-    mark:SetSize(10, 10)
-    mark:SetPoint("LEFT", 22, 0)
+    mark:SetSize(9, 9)
+    mark:SetPoint("LEFT", 20, 0)
     mark:SetRotation(math.pi / 4)
-    local title = Text(header, 20, T.fg)
-    title:SetPoint("LEFT", mark, "RIGHT", 12, 0)
-    title:SetText("SCARLET")
+    local title = Text(header, 24, T.fg, "LEFT", "display")
+    title:SetPoint("LEFT", mark, "RIGHT", 10, 0)
+    title:SetText("Scarlet")
     local version = Text(header, 12, T.muted)
-    version:SetPoint("BOTTOMLEFT", title, "BOTTOMRIGHT", 8, 2)
+    version:SetPoint("BOTTOMLEFT", title, "BOTTOMRIGHT", 8, 3)
     version:SetText("v" .. ns.VERSION)
 
     local close = CloseButton(header)
-    close:SetPoint("RIGHT", -12, 0)
-    window.status = Text(header, 13, T.muted, "RIGHT")
-    window.status:SetPoint("RIGHT", close, "LEFT", -12, 0)
+    close:SetPoint("RIGHT", -10, 0)
+    window.status = Text(header, 13, T.text, "RIGHT")
+    window.status:SetPoint("RIGHT", close, "LEFT", -8, 0)
     window.dot = Fill(header, T.accent, 1, "ARTWORK")
-    window.dot:SetSize(8, 8)
-    window.dot:SetPoint("RIGHT", window.status, "LEFT", -8, 0)
+    window.dot:SetSize(6, 6)
+    window.dot:SetPoint("RIGHT", window.status, "LEFT", -7, 0)
 
     local sidebar = CreateFrame("Frame", nil, window)
-    sidebar:SetPoint("TOPLEFT", 1, -HEADER_H)
+    sidebar:SetPoint("TOPLEFT", 1, -HEADER_H - 1)
     sidebar:SetPoint("BOTTOMLEFT", 1, 1)
     sidebar:SetWidth(SIDEBAR_W)
-    Fill(sidebar, T.panel):SetAllPoints()
-    local edge = Fill(sidebar, T.line, 1, "ARTWORK")
-    edge:SetPoint("TOPRIGHT")
-    edge:SetPoint("BOTTOMRIGHT")
-    edge:SetWidth(1)
-    window.store = Text(sidebar, 11, T.muted)
+    Hair(sidebar, "RIGHT")
+    window.store = Text(sidebar, 12, T.muted)
     window.store:SetPoint("BOTTOMLEFT", 16, 14)
     window.store:SetWordWrap(true)
     window.store:SetJustifyV("BOTTOM")
 
     local content = CreateFrame("Frame", nil, window)
-    content:SetPoint("TOPLEFT", SIDEBAR_W + 1 + PAD, -HEADER_H - PAD + 4)
+    content:SetPoint("TOPLEFT", SIDEBAR_W + 1 + PAD, -HEADER_H - PAD)
     content:SetPoint("BOTTOMRIGHT", -PAD, PAD)
-    window.pageTitle = Text(content, 18, T.fg)
-    window.pageTitle:SetPoint("TOPLEFT")
+    window.pageTitle = Text(content, 30, T.fg, "LEFT", "display")
+    window.pageTitle:SetPoint("TOPLEFT", 0, 2)
     local body = CreateFrame("Frame", nil, content)
-    body:SetPoint("TOPLEFT", 0, -40)
+    window.body = body
+    body:SetPoint("TOPLEFT", 0, -TITLE_H)
     body:SetPoint("BOTTOMRIGHT")
 
     pages = {
@@ -835,8 +879,8 @@ local function BuildIcon()
     icon:SetMovable(true)
     icon:RegisterForClicks("LeftButtonUp")
     icon:RegisterForDrag("LeftButton")
-    Fill(icon, T.bg, 0.92):SetAllPoints()
-    Border(icon, { 0, 0, 0 }, 1)
+    Fill(icon, T.bg, 0.94):SetAllPoints()
+    Border(icon, T.line2)
     local mark = Fill(icon, T.accent, 1, "ARTWORK")
     mark:SetSize(10, 10)
     mark:SetPoint("CENTER")
@@ -893,15 +937,15 @@ local function Toast()
     f:SetPoint("TOP", 0, -140)
     f:SetFrameStrata("HIGH")
     Fill(f, T.bg, 0.95):SetAllPoints()
-    Border(f, { 0, 0, 0 }, 1)
+    Border(f, T.line2)
     local rail = Fill(f, T.accent, 1, "ARTWORK")
     rail:SetPoint("TOPLEFT", 1, -1)
     rail:SetPoint("BOTTOMLEFT", 1, 1)
-    rail:SetWidth(3)
-    local title = Text(f, 15, T.fg)
-    title:SetPoint("TOPLEFT", 16, -11)
+    rail:SetWidth(2)
+    local title = Text(f, 22, T.fg, "LEFT", "display")
+    title:SetPoint("TOPLEFT", 16, -9)
     title:SetText("Scarlet is recording")
-    local sub = Text(f, 12, T.muted)
+    local sub = Text(f, 13, T.muted)
     sub:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -5)
     sub:SetText("v" .. ns.VERSION .. "   /scarlet opens the window")
     local fade = f:CreateAnimationGroup()

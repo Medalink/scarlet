@@ -6,7 +6,8 @@ local _, ns = ...
 local floor, format, max, abs = math.floor, string.format, math.max, math.abs
 local Plain = ns.Plain
 
-local CARD_H, CARD_GAP, CARD_TOP, ROW_H, ROWS = 104, 10, 70, 19, 4
+-- Page layout, in pixels: four panels in two rows under the name and level bar.
+local PANEL_H, PANEL_GAP, PANEL_TOP, ROW_H, ROWS = 146, 12, 96, 24, 4
 local MATES, DEATHS = 3, 3
 
 -- Readers for client values: a secret, missing or mistyped value reads as nil.
@@ -162,55 +163,51 @@ function ns.OverviewPage(parent, ui)
     local page = CreateFrame("Frame", nil, parent)
     page:SetAllPoints()
 
-    local name = Text(page, 20, T.fg)
-    name:SetPoint("TOPLEFT")
-    local where = Text(page, 13, T.muted, "RIGHT")
-    where:SetPoint("TOPRIGHT", 0, -5)
+    local name = Text(page, 40, T.fg, "LEFT", "display")
+    name:SetPoint("TOPLEFT", 0, 2)
+    local where = Text(page, 14, T.fg, "RIGHT")
+    where:SetPoint("BOTTOMRIGHT", page, "TOPRIGHT", 0, -34)
 
     local bar = CreateFrame("Frame", nil, page)
     bar:SetHeight(6)
-    bar:SetPoint("TOPLEFT", 0, -34)
-    bar:SetPoint("TOPRIGHT", 0, -34)
+    bar:SetPoint("TOPLEFT", 0, -50)
+    bar:SetPoint("TOPRIGHT", 0, -50)
     Fill(bar, T.grey):SetAllPoints()
     local barFill = Fill(bar, T.accent, 1, "ARTWORK")
     barFill:SetPoint("TOPLEFT")
     barFill:SetPoint("BOTTOMLEFT")
     barFill:SetWidth(1)
-    local progress = Text(page, 12, T.muted)
-    progress:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, -6)
+    local progress = Text(page, 13, T.text)
+    progress:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, -8)
 
     local function Card(col, row, title)
         local c = CreateFrame("Frame", nil, page)
-        c:SetHeight(CARD_H)
-        local y = -CARD_TOP - row * (CARD_H + CARD_GAP)
+        c:SetHeight(PANEL_H)
+        local y = -PANEL_TOP - row * (PANEL_H + PANEL_GAP)
         if col == 0 then
             c:SetPoint("TOPLEFT", 0, y)
-            c:SetPoint("TOPRIGHT", page, "TOP", -CARD_GAP / 2, y)
+            c:SetPoint("TOPRIGHT", page, "TOP", -PANEL_GAP / 2, y)
         else
-            c:SetPoint("TOPLEFT", page, "TOP", CARD_GAP / 2, y)
+            c:SetPoint("TOPLEFT", page, "TOP", PANEL_GAP / 2, y)
             c:SetPoint("TOPRIGHT", 0, y)
         end
-        Fill(c, T.card):SetAllPoints()
-        Border(c, T.line, 0.8)
-        local rail = Fill(c, T.accent, 0.9, "ARTWORK")
-        rail:SetPoint("TOPLEFT", 1, -1)
-        rail:SetPoint("BOTTOMLEFT", 1, 1)
-        rail:SetWidth(2)
-        c.title = Text(c, 13, T.accent)
-        c.title:SetPoint("TOPLEFT", 14, -10)
+        Fill(c, T.panel):SetAllPoints()
+        Border(c, T.line)
+        c.title = Text(c, 15, T.accentSoft, "LEFT", "strong")
+        c.title:SetPoint("TOPLEFT", 14, -12)
         c.title:SetText(title)
         c.left, c.right = {}, {}
         for i = 1, ROWS do
-            local l = Text(c, 12, T.fg)
-            l:SetPoint("TOPLEFT", 14, -30 - (i - 1) * ROW_H)
-            l:SetWidth(170)
-            local r = Text(c, 12, T.muted, "RIGHT")
-            r:SetPoint("TOPRIGHT", -12, -30 - (i - 1) * ROW_H)
-            r:SetWidth(100)
+            local l = Text(c, 14, T.text)
+            l:SetPoint("TOPLEFT", 14, -40 - (i - 1) * ROW_H)
+            l:SetWidth(180)
+            local r = Text(c, 14, T.fg, "RIGHT")
+            r:SetPoint("TOPRIGHT", -14, -40 - (i - 1) * ROW_H)
+            r:SetWidth(96)
             c.left[i], c.right[i] = l, r
         end
-        c.empty = Text(c, 12, T.muted)
-        c.empty:SetPoint("TOPLEFT", 14, -30)
+        c.empty = Text(c, 14, T.muted)
+        c.empty:SetPoint("TOPLEFT", 14, -40)
         c.empty:Hide()
         -- Row i shows label and value; rows after the last one given are cleared.
         function c:Set(i, label, value)
@@ -230,8 +227,16 @@ function ns.OverviewPage(parent, ui)
     local mates = Card(0, 1, "Played with")
     local deaths = Card(1, 1, "Deaths")
 
-    local footer = Text(page, 12, T.muted)
-    footer:SetPoint("TOPLEFT", 0, -CARD_TOP - 2 * (CARD_H + CARD_GAP) - 2)
+    -- "History through the last export, a dot, this session live"
+    local footerY = -PANEL_TOP - 2 * (PANEL_H + PANEL_GAP) - 2
+    local footer = Text(page, 13, T.muted)
+    footer:SetPoint("TOPLEFT", 0, footerY)
+    local liveDot = Fill(page, T.accent, 1, "ARTWORK")
+    liveDot:SetSize(6, 6)
+    liveDot:SetPoint("LEFT", footer, "RIGHT", 8, 0)
+    local liveText = Text(page, 13, T.fg)
+    liveText:SetPoint("LEFT", liveDot, "RIGHT", 6, 0)
+    liveText:SetText("this session live")
 
     local base
     local deathMap, deathNames, deathVals = {}, {}, {}
@@ -245,9 +250,8 @@ function ns.OverviewPage(parent, ui)
             base = Collect(key, lvl, weekStart)
         end
         local live = ns.Ov.Live()
-        footer:SetText(base.short
-            and "History through the last export, older sessions missing · |cff6fbf73this session live|r"
-            or "History through the last export · |cff6fbf73this session live|r")
+        footer:SetText(base.short and "History through the last export, older sessions missing \194\183"
+            or "History through the last export \194\183")
 
         -- Header
         local _, classFile = UnitClass("player")
@@ -258,7 +262,7 @@ function ns.OverviewPage(parent, ui)
         lvl = lvl or (type(base.level0) == "number" and base.level0) or nil
         local zone = CStr(GetRealZoneText()) or (type(base.zone) == "string" and base.zone) or nil
         if lvl and zone then
-            where:SetText(format("Level %d · %s", lvl, zone))
+            where:SetText(format("Level %d \194\183 %s", lvl, zone))
         else
             where:SetText(lvl and format("Level %d", lvl) or (zone or ""))
         end
@@ -270,7 +274,7 @@ function ns.OverviewPage(parent, ui)
             local ratio = math.min(1, max(0, xp / xpMax))
             barFill:SetWidth(max(1, ratio * (bar:GetWidth() or 0)))
             local text = format("%d%% to %d", floor(ratio * 100), (lvl or 0) + 1)
-            if levelTime > 0 then text = text .. " · this level " .. Duration(levelTime) .. " so far" end
+            if levelTime > 0 then text = text .. " \194\183 this level " .. Duration(levelTime) .. " so far" end
             progress:SetText(text)
         else
             barFill:SetWidth(1)
