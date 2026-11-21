@@ -2,3 +2,7 @@
 addon/Scarlet/Digest.lua
 addon/Scarlet/Digest.lua.tmp
 __pycache__/
+
+# Packager and listing render scratch
+.release/
+tools/listing/out/

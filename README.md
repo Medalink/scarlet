@@ -41,5 +41,7 @@ recording.
 Copy `addon/Scarlet` into `World of Warcraft\_forever_\Interface\AddOns\`. Recordings are saved with your
 SavedVariables at each logout and `/reload`.
 
+Listing text, logos and screenshots for CurseForge and Wago are in [listing/](listing/README.md); `.pkgmeta` packages `addon/Scarlet` as `Scarlet`.
+
 The desktop app that turns recordings into an overview, timeline, maps and charts is
 [scarlet-app](https://github.com/Medalink/scarlet-app).

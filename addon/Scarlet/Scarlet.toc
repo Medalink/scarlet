@@ -1,12 +1,20 @@
 ## Interface: 16001
 ## Title: |cffff2d55Scarlet|r
-## Notes: Records what you do in game into compact chunks for the Scarlet companion.
+## Notes: Records what your character does, with a timestamp on every line, and keeps it on your PC. /scarlet opens the window.
 ## Author: Medalink
-## Version: 0.3.0
+## Version: 0.4.0
+## X-License: All Rights Reserved
+## X-Website: https://medalink.github.io/scarlet-web/
+## X-Category: Data Export
 ## SavedVariables: ScarletDB, ScarletAddonsDB
 ## OptionalDeps: LibSharedMedia-3.0, SharedMedia, EllesmereUI
-## IconTexture: Interface\Icons\INV_Misc_Book_09
+## IconTexture: Interface\AddOns\Scarlet\Media\Icon
 ## AddonCompartmentFunc: Scarlet_OnCompartmentClick
+
+# After creating the CurseForge and Wago projects, remove the leading "# " and paste the ID after the colon.
+# The BigWigs packager reads these two lines. See listing/README.md.
+# ## X-Curse-Project-ID: 
+# ## X-Wago-ID: 
 
 Digest.lua
 Core.lua

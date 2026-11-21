@@ -1,0 +1,1 @@
+Records what your character does in WoW Forever, with a timestamp on every line, and keeps it on your PC. Optional desktop app charts it.

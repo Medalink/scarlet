@@ -1,0 +1,163 @@
+<!doctype html>
+<!-- A render of the /scarlet window, laid out from addon/Scarlet/UI.lua and Overview.lua (880 x 560, the same
+     pixel sizes, colours and bundled fonts) and filled with the website's invented demo character.
+     This is a picture, not a game capture. Open it as window.html?page=overview (see render.mjs for the list). -->
+<meta charset="utf-8">
+<title>Scarlet window render</title>
+<style>
+  @font-face { font-family: "SS"; src: url("../../addon/Scarlet/Media/SofiaSans-Regular.ttf"); }
+  @font-face { font-family: "SSS"; src: url("../../addon/Scarlet/Media/SofiaSans-SemiBold.ttf"); }
+  @font-face { font-family: "SSD"; src: url("../../addon/Scarlet/Media/SofiaSansExtraCondensed-ExtraBold.ttf"); }
+  :root { --win: #101012; --bg: #141416; --panel: #1b1b1f; --fg: #f0f1f3; --text: #cdced4; --muted: #8a8a93; --accent: #ff2d55; --soft: #ff6b8e; --ink: #141416; --line: rgba(255,255,255,.07); --line2: rgba(255,255,255,.13); --grey: rgba(255,255,255,.1); }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 960px; height: 600px; overflow: hidden; background: #0b0b0d; }
+  body { position: relative; font: 400 14px/1 "SS", sans-serif; color: var(--text); -webkit-font-smoothing: antialiased; }
+  .backdrop { position: absolute; inset: 0; background: radial-gradient(ellipse at 30% 20%, #1d1b22 0%, #0f0f12 55%, #08080a 100%); }
+  .win { position: absolute; left: 40px; top: 20px; width: 880px; height: 560px; background: rgba(16,16,18,.98); box-shadow: 0 0 0 1px var(--line2), 0 0 0 6px rgba(0,0,0,.0), 0 8px 24px 6px rgba(0,0,0,.5); }
+  .abs { position: absolute; white-space: nowrap; }
+  .d { font-family: "SSD"; }
+  .s { font-family: "SSS"; }
+  .hair-b { border-bottom: 1px solid var(--line); }
+  .money i { font-style: normal; }
+  .g { color: #d9b25f; } .si { color: #c3c7cf; } .c { color: #c58a63; }
+</style>
+<div class="backdrop"></div>
+<div class="win" id="win"></div>
+<script src="demo.js"></script>
+<script>
+(function () {
+  const D = window.ScarletDemo, ch = D.character();
+  const page = new URLSearchParams(location.search).get("page") || "overview";
+  const win = document.getElementById("win");
+  const num = (n) => Math.round(n).toLocaleString("en-US");
+  const dur = (s) => { s = Math.floor(s); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60; return h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s % 60}s` : `${s}s`; };
+  const span = (s) => { const m = Math.max(1, Math.floor(s / 60 + 0.5)), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60); return d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m % 60}m` : `${m}m`; };
+  const money = (c) => { c = Math.floor(c); const g = Math.floor(c / 10000), s = Math.floor(c / 100) % 100, k = c % 100;
+    if (g > 0) return `${num(g)}<i class="g">g</i> ${s}<i class="si">s</i>`; if (s > 0) return `${s}<i class="si">s</i> ${k}<i class="c">c</i>`; return `${k}<i class="c">c</i>`; };
+  const dist = (y) => (y < 1760 ? num(y) + " yd" : (y / 1760).toFixed(1) + " mi");
+
+  // el(parent, css, html, cls): an absolutely placed box. Sizes are the game's pixels.
+  function el(parent, css, html, cls) { const e = document.createElement("div"); e.className = "abs " + (cls || ""); e.style.cssText = css; if (html != null) e.innerHTML = html; parent.appendChild(e); return e; }
+  const T = (parent, size, color, x, y, html, o = {}) => el(parent, `${o.right != null ? "right:" + o.right + "px" : "left:" + x + "px"};top:${y}px;font-size:${size}px;line-height:${Math.round(size * 1.2)}px;color:${color};${o.w ? "width:" + o.w + "px;" : ""}${o.align ? "text-align:" + o.align + ";" : ""}${o.css || ""}`, html, o.cls);
+
+  // ---- frame: header, sidebar, content ------------------------------------------------------
+  const header = el(win, "left:1px;top:1px;right:1px;height:40px;border-bottom:1px solid var(--line)");
+  el(header, "left:20px;top:15px;width:9px;height:9px;background:var(--accent);transform:rotate(45deg)");
+  T(header, 24, "var(--fg)", 39, 7, "Scarlet", { cls: "d" });
+  T(header, 12, "var(--muted)", 105, 18, "v0.4.0");
+  [[10, 13, 13, 45], [10, 13, 13, -45]].forEach(([, , w, a]) => el(header, `right:18px;top:19px;width:${w}px;height:1.5px;background:var(--muted);transform:rotate(${a}deg)`));
+  T(header, 13, "var(--text)", 0, 12, "Recording", { right: 48 });
+  el(header, "right:118px;top:17px;width:6px;height:6px;background:var(--accent)");
+
+  const NAV = [["overview", "Character"], ["session", "This session"], ["stats", "Stats"], ["time", "Time"], ["more", "Combat and more"], ["people", "People"], ["live", "Live"], ["addons", "Addons"], ["settings", "Settings"], ["fonts", "Fonts"]];
+  const side = el(win, "left:1px;top:41px;bottom:1px;width:176px;border-right:1px solid var(--line)");
+  NAV.forEach(([key, label], i) => {
+    const on = key === page, y = 12 + i * 30;
+    if (on) { el(side, `left:0;top:${y}px;right:1px;height:30px;background:rgba(255,45,85,.1)`); el(side, `left:0;top:${y}px;width:2px;height:30px;background:var(--accent)`); }
+    T(side, 14, on ? "var(--fg)" : "var(--muted)", 16, y + 6, label);
+  });
+  T(side, 12, "var(--muted)", 16, 0, "412 chunks  968.4 KB<br>37 lines pending", { css: "bottom:14px;top:auto;line-height:14px" });
+
+  const content = el(win, "left:201px;top:64px;width:655px;height:472px");
+  const hair = (p, x, y, w, c) => el(p, `left:${x}px;top:${y}px;width:${w}px;height:1px;background:${c || "var(--line)"}`);
+  const body = (title) => { T(content, 30, "var(--fg)", 0, 2, title, { cls: "d" }); return el(content, "left:0;top:46px;width:655px;height:426px"); };
+
+  // ---- stat pages: open cells split by hairlines -----------------------------------------------
+  const CELL_W = Math.floor(655 / 4), CELL_H = 84;
+  function cells(p, defs, y0 = 0) {
+    defs.forEach(([label, value], i) => {
+      const col = i % 4, row = Math.floor(i / 4), pad = col === 0 ? 0 : 16, x = col * CELL_W, y = y0 + row * CELL_H;
+      hair(p, x, y + CELL_H - 1, CELL_W);
+      if (row === 0) hair(p, x, y, CELL_W, "var(--line2)");
+      if (col > 0) el(p, `left:${x}px;top:${y}px;width:1px;height:${CELL_H}px;background:var(--line)`);
+      T(p, 13, "var(--muted)", x + pad, y + 14, label);
+      T(p, 34, "var(--fg)", x + pad, y + 34, value, { cls: "d money" });
+    });
+  }
+
+  // ---- numbers: the demo character's, and one session of the website's replay -------------------
+  const kills = Math.round(ch.sessions.reduce((a, s) => a + s.k, 0)), quests = Math.round(ch.sessions.reduce((a, s) => a + s.q, 0));
+  const earned = Math.round(ch.sessions.reduce((a, s) => a + s.g, 0)), spent = Math.round(ch.sessions.reduce((a, s) => a + s.s, 0));
+  const P = ch.played, groupT = ch.mates.reduce((a, m) => a + m[1], 0) + 9100;
+  const stats = {
+    kills, blows: Math.round(kills * 0.93), casts: Math.round(kills * 6.4), steps: 1204880, dist: 679850, jumps: 18420, deaths: ch.deaths,
+    combat: P * 0.121, dungeons: ch.runs.reduce((a, r) => a + r[1], 0), bosses: 11, quests, loot: Math.round(kills * 0.62), xp: Math.round(ch.levels.reduce((a, l) => a + l.xp.total, 0)),
+    earned, spent, tracked: P, camps: 214, camptime: P * 0.04, buffs: 3180, sold: 1432,
+  };
+  const CARDS = (s) => [["Kills", num(s.kills)], ["Killing blows", num(s.blows)], ["Casts", num(s.casts)], ["Steps", num(s.steps)], ["Distance", dist(s.dist)], ["Jumps", num(s.jumps)], ["Deaths", num(s.deaths)], ["Time in combat", dur(s.combat)], ["Dungeons", num(s.dungeons)], ["Bosses", num(s.bosses)], ["Quests", num(s.quests)], ["Items looted", num(s.loot)], ["Experience", num(s.xp)], ["Gold earned", money(s.earned)], ["Gold spent", money(s.spent)], ["Time recorded", dur(s.tracked)], ["Camps", num(s.camps)], ["Time at camp", dur(s.camptime)], ["Buffs gained", num(s.buffs)], ["Items sold", num(s.sold)]];
+  const L = D.sessionLines(), count = (c) => L.filter((l) => l.code === c).length;
+  const combatSecs = D.TAGS.combat.reduce((a, [x, y]) => a + (y - x), 0);
+  const sess = { kills: count("K"), blows: count("K") - 1, casts: count("C") + 14, steps: 2392 + 3012, dist: 5980 + 7340 + 52, jumps: 4, deaths: 1, combat: combatSecs, dungeons: 0, bosses: 0, quests: 1, loot: 7, xp: 1364, earned: 4475, spent: 1820, tracked: D.END, camps: 1, camptime: 70, buffs: 6, sold: 9 };
+
+  // ---- pages ---------------------------------------------------------------------------------------
+  if (page === "overview") {
+    const lvl = ch.level, lv = ch.levels[lvl - 1], ratio = ch.xp / ch.xpMax;
+    T(content, 40, "#c69b6d", 0, 2, ch.name, { cls: "d" });
+    T(content, 14, "var(--fg)", 0, 20, `Level ${lvl} · ${ch.zone}`, { right: 0, css: "left:auto" });
+    const bar = el(content, "left:0;top:50px;width:655px;height:6px;background:var(--grey)");
+    el(bar, `left:0;top:0;height:6px;width:${Math.round(ratio * 655)}px;background:var(--accent)`);
+    T(content, 13, "var(--text)", 0, 64, `${Math.floor(ratio * 100)}% to ${lvl + 1} · this level ${dur(lv.p)} so far`);
+    // Time to the next level, the next multiple of ten and level 60, at the pace of the last two levels.
+    const full = ch.levels.slice(lvl - 3, lvl - 1), perSec = full.reduce((a, l) => a + l.xp.total, 0) / full.reduce((a, l) => a + l.p, 0);
+    const recent = ch.days.filter((d) => !d.future).slice(-14), rate = recent.reduce((a, d) => a + d.p, 0) / 14, now = Date.UTC(2026, 11 - 1, 20, 12);
+    const left = (target) => { let x = ch.xpMax - ch.xp; for (let n = lvl + 1; n < target; n++) x += D.xpMax(n); return x; };
+    [lvl + 1, 40, 60].forEach((target, i) => {
+      const secs = left(target) / perSec, y = 86 + i * 17;
+      T(content, 13, "var(--text)", 0, y, `Level ${target}`);
+      T(content, 13, "var(--fg)", 84, y, span(secs));
+      T(content, 13, "var(--text)", 180, y, `about ${D.day(now + (secs / rate) * 86400000)}`);
+    });
+    T(content, 13, "var(--muted)", 0, 86 + 3 * 17, `At your pace over the last ${span(full.reduce((a, l) => a + l.p, 0))} played: ${num(perSec * 3600)} XP an hour`);
+    const card = (col, row, title, rows) => {
+      const x = col === 0 ? 0 : 332.5, w = 322.5, y = 160 + row * 142;
+      const c = el(content, `left:${x}px;top:${y}px;width:${w}px;height:132px;background:var(--panel);border:1px solid var(--line)`);
+      T(c, 15, "var(--soft)", 13, 11, title, { cls: "s" });
+      rows.forEach(([a, b], i) => { T(c, 14, "var(--text)", 13, 35 + i * 22, a); T(c, 14, "var(--fg)", 0, 35 + i * 22, b, { right: 13, css: "left:auto;text-align:right", cls: "money" }); });
+    };
+    card(0, 0, "This week", [["Played", dur(ch.week.p)], ["Quests", num(ch.week.q)], ["Gold", "+" + money(ch.week.g)], ["Dungeons", num(ch.week.r)]]);
+    card(1, 0, `Level ${lvl} so far`, [["XP from kills", num(lv.xp.xk + lv.xp.xd)], ["XP from quests", num(lv.xp.xq)], ["Kills", num(Math.round(lv.k))], ["Deaths", num(lv.dd)]]);
+    card(0, 1, "Played with", ch.mates.map(([n, sec]) => [n, dur(sec)]));
+    card(1, 1, "Deaths", ch.deathZones.slice(0, 3).map(([z, n]) => [z, num(n)]));
+    const fy = 160 + 2 * 142 - 2;
+    T(content, 13, "var(--muted)", 0, fy, "History through the last export ·");
+    el(content, `left:185px;top:${fy + 4}px;width:6px;height:6px;background:var(--accent)`);
+    T(content, 13, "var(--fg)", 197, fy, "this session live");
+  } else if (page === "session") cells(body("This session"), CARDS(sess));
+  else if (page === "stats") cells(body("Stats"), CARDS(stats));
+  else if (page === "time") {
+    const f = (x) => dur(P * x);
+    cells(body("Time"), [["Running", f(0.218)], ["Walking", f(0.012)], ["Mounted", f(0.141)], ["Standing still", f(0.402)], ["Swimming", f(0.013)], ["Flying", "0s"], ["Flight paths", f(0.026)], ["At camp", f(0.04)], ["In combat", dur(stats.combat)], ["Out of combat", dur(P - stats.combat)], ["Rested", f(0.183)], ["Not rested", f(0.817)], ["AFK", f(0.021)], ["Casting", f(0.034)], ["Solo", dur(P - groupT)], ["In a group", dur(groupT)]]);
+  } else if (page === "more") {
+    cells(body("Combat and more"), [["Damage done", num(9482310)], ["Healing done", num(412760)], ["Damage taken", num(6318450)], ["Interrupts", num(1286)], ["Duels won", num(7)], ["Duels lost", num(4)], ["Honorable kills", num(63)], ["Flagged for PvP", dur(21460)], ["Places discovered", num(118)], ["Rested bonus XP", num(184200)], ["Spells learned", num(94)], ["Quests abandoned", num(6)], ["NPCs talked to", num(1873)], ["Repairs", money(381240)], ["Time underwater", dur(9420)], ["Screenshots", num(0)]]);
+  } else if (page === "people") {
+    const p = body("People");
+    cells(p, [["Players grouped with", "5"], ["In a group", dur(groupT)], ["Solo", dur(P - groupT)], ["Emotes", "213"], ["Said \"lol\"", "41"], ["Said \"rip\"", "9"]]);
+    const top = 2 * CELL_H + 22;
+    T(p, 24, "var(--fg)", 0, top, "Grouped with most", { cls: "d" });
+    const rows = [...ch.mates.map(([n, sec, g]) => [n, sec, g]), ["Wren-Halloway", 6340, 2], ["Corin-Dunmere", 3105, 1]];
+    rows.forEach(([n, sec, g], i) => {
+      const y = top + 36 + i * 24;
+      hair(p, 0, y + 23, 655);
+      T(p, 14, "var(--fg)", 0, y + 4, n);
+      T(p, 13, "var(--text)", 0, y + 5, `${dur(sec)} together, ${g} group${g === 1 ? "" : "s"}`, { right: 0, css: "left:auto;text-align:right" });
+    });
+  } else if (page === "live") {
+    const p = body("Live");
+    const rows = [["money", "214      110452"], ["loot", "c   2034   1   3871x1,mx214   0"], ["item", "3871   1"], ["xp", "212   18940   26400   k   2034"], ["kill", "2034   1"], ["combat", "0   24"], ["cast", "772"], ["cast", "100"], ["combat", "1"], ["moved", "f   941   92   3   31,57,80"], ["path", "1427   3180   5120   6"], ["path", "1427   3150   5060   6"], ["path", "1427   3110   5004   5"], ["zone", "1427   0   none   0   Saltmarsh Reach   Greywatch Ford"], ["quest", "2   40112   1480   2210"], ["money", "198      110238"], ["kill", "2034   1"], ["xp", "206   18728   26400   k   2034"], ["combat", "0   25"], ["cast", "845"], ["cast", "1715"]];
+    rows.forEach(([w, r], i) => { T(p, 13, "var(--accent)", 0, i * 20 + 3, w, { cls: "s" }); T(p, 13, "var(--text)", 104, i * 20 + 3, r, { css: "white-space:pre" }); });
+  } else if (page === "settings") {
+    const p = body("Settings");
+    const tog = [["Record movement path", 1], ["Turn on combat logging at login", 1], ["Show login message", 1], ["Pause recording", 0], ["Show recording icon", 1], ["Take screenshots at key moments", 0]];
+    tog.forEach(([label, on], i) => {
+      const y = i * 44; hair(p, 0, y + 43, 655);
+      T(p, 14, "var(--fg)", 0, y + 14, label);
+      el(p, `right:2px;top:${y + 15}px;width:32px;height:14px;background:${on ? "var(--accent)" : "var(--grey)"}`);
+      el(p, `left:${on ? 655 - 2 - 12 : 655 - 34 + 2}px;top:${y + 17}px;width:10px;height:10px;background:var(--fg)`);
+    });
+    const b = el(p, "left:0;top:284px;width:150px;height:30px;background:var(--accent)");
+    T(b, 14, "var(--ink)", 0, 8, "Save chunk now", { w: 150, align: "center", cls: "s" });
+  }
+  const faces = ["SS", "SSS", "SSD"].map((f) => `14px "${f}"`);
+  window.__ready = Promise.all(faces.map((f) => document.fonts.load(f))).then(() => document.fonts.ready).then(() => ({ ss: document.fonts.check('14px "SS"'), sss: document.fonts.check('14px "SSS"'), ssd: document.fonts.check('14px "SSD"') }));
+})();
+</script>

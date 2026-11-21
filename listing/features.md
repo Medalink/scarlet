@@ -1,0 +1,13 @@
+- Records a timestamped line for each thing that happens, from a step to a kill to a coin looted. Every line code is documented in the repository (`docs/FORMAT.md`).
+- Travel: the path you walk, ride, swim and fly on each map, flight paths, hearthstones, summons and other teleports, zones and subzones, places you discover.
+- Combat: kills and who got them, deaths with the last three hits and the killing blow, time in combat, crowd control taken, damage and healing meters, boss encounters, duels and PvP kills.
+- Progress: experience by source (kills, quests, exploring) and level, time per level, quests from accept to turn-in, reputation, skills, talents, achievements and Legacy points.
+- Items and gold: loot by corpse and by roll, what party members looted, gear changes, crafting, vendor and auction house sales, mail, trades, repairs, every copper earned and spent.
+- People: groups and how long you played with each person, players you meet, guild and friends counts.
+- The world: creatures you see with their level and type, vendor stock, trainer lists, item facts.
+- Other addons: data that some installed addons already hold (gathering nodes, fishing logs, guide progress, crafting lists) goes into its own table, each behind a toggle on the Addons page.
+- In-game window (`/scarlet`): a character overview with time to the next level, this week's play time, who you played with and where you died; session and lifetime stats; time splits; a live view of the lines being written.
+- Time to the next level, the next multiple of ten and level 60, worked out from your recent pace.
+- Small footprint: events are written as they happen, compressed into chunks, and saved with your normal SavedVariables.
+- Everything stays on your PC. The addon makes no network calls.
+- Optional Windows desktop app that turns the recording into an overview, timeline, maps, charts and loot tables.

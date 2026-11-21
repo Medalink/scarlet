@@ -1,0 +1,21 @@
+# BigWigs packager config. The addon lives in addon/Scarlet, so everything else is left out and that folder
+# becomes Scarlet/ in the zip. See listing/README.md.
+package-as: Scarlet
+
+manual-changelog:
+  filename: listing/changelog.md
+  markup-type: markdown
+
+move-folders:
+  Scarlet/addon/Scarlet: Scarlet
+
+ignore:
+  - addon/Scarlet/Digest.lua
+  - addon/Scarlet/Digest.lua.tmp
+  - .luarc.json
+  - .gitignore
+  - .github
+  - docs
+  - tools
+  - listing
+  - README.md
