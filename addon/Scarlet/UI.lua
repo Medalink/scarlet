@@ -173,6 +173,9 @@ local function Distance(yards)
     return format("%.1f mi", yards / 1760)
 end
 
+-- What Overview.lua draws with.
+ns.UI = { T = T, Fill = Fill, Border = Border, Text = Text, Num = Num, Money = Money, Duration = Duration }
+
 local CARDS = {
     { "Kills", function(s) return Num(s.kills) end },
     { "Killing blows", function(s) return Num(s.blows) end },
@@ -558,6 +561,7 @@ end
 local NAV = {
     { key = "overview", label = "Character" },
     { key = "session", label = "This session" },
+    { key = "stats", label = "Stats" },
     { key = "time", label = "Time" },
     { key = "more", label = "Combat and more" },
     { key = "people", label = "People" },
@@ -719,7 +723,8 @@ local function Build()
     body:SetPoint("BOTTOMRIGHT")
 
     pages = {
-        overview = StatsPage(body, function() return Snapshot(ns.char or ns.sess, true) end),
+        overview = ns.OverviewPage(body, ns.UI),
+        stats = StatsPage(body, function() return Snapshot(ns.char or ns.sess, true) end),
         session = StatsPage(body, function() return Snapshot(ns.sess, true) end),
         time = StatsPage(body, function() return Snapshot(ns.char or ns.sess, true) end, TIME_CARDS),
         more = StatsPage(body, function() return Snapshot(ns.char or ns.sess, true) end, MORE_CARDS),

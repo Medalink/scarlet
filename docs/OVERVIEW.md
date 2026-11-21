@@ -59,8 +59,9 @@ Short keys, so the SavedVariables stay small. All numbers; missing means 0.
 | `lv` | `{ [level] = { p, xk, xd, xq, xe, xo, k, dd, q } }`, the session's share of each level |
 | `zn` | `{ [zone name] = { p, k, dd, x } }`, the session's share of each zone (`x` all XP) |
 
-The addon keeps the last 30 rows in `ov.sess` (oldest first) and the open session in
-`ov.cur`, the same shape.
+The addon keeps the last 120 rows in `ov.sess` (oldest first) and the open session in
+`ov.cur`, the same shape, with `last`: the epoch seconds of its latest change, so a row a crash
+leaves open keeps its time up to then.
 
 ## Digest.lua
 
@@ -103,8 +104,9 @@ the next level. Cards: Gold (balance, change over the last 7 sessions, sparkline
 and raids (top 5 by runs, total), Played with (top 3 by time together, sessions), Deaths (top
 zones, most frequent killer). This week: played, dungeons, quests, gold, zones. Experience by
 level: stacked XP sources per level, or time per level. Play history: sessions, days or levels
-with played, levels, quests, gold, zones. In game the page is shorter: header, This week, the
-current level so far, Played with, Deaths. Empty cards say what is missing in plain words
+with played, levels, quests, gold, zones. In game the page is shorter: header, This week (played, quests, gold, dungeons), the
+current level so far, Played with, Deaths by zone (the digest's top 10 plus newer sessions). It has no
+zones tile and no killer. Empty cards say what is missing in plain words
 ("No deaths recorded"), no slogans.
 
 The old stat grids stay, renamed "Stats".

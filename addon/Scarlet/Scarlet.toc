@@ -8,6 +8,7 @@
 ## IconTexture: Interface\Icons\INV_Misc_Book_09
 ## AddonCompartmentFunc: Scarlet_OnCompartmentClick
 
+Digest.lua
 Core.lua
 Capture.lua
 Track.lua
@@ -26,4 +27,5 @@ Spells.lua
 Collections.lua
 Social.lua
 Interface.lua
+Overview.lua
 UI.lua

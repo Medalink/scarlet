@@ -202,6 +202,184 @@ function ns.InitChar(key)
     ns.char = ch
 end
 
+-- Session rows -------------------------------------------------------------------
+-- ScarletDB.chars[key].ov = { sess = { rows, oldest first }, cur = the open row, run = last dungeon run }.
+-- A row sums one session as events happen; its shape and counting rules are in docs/OVERVIEW.md.
+-- Capture.lua calls these where it already sees each event. Nothing here runs on a timer.
+
+local OV_ROWS = 120  -- closed rows kept
+local OV_ZONES = 40  -- zones with their own split in one row
+local RUN_GAP = 1800 -- leaving a dungeon and coming back within this is the same run
+
+local Ov = {}
+ns.Ov = Ov
+Ov.ROWS = OV_ROWS
+local ov, cur                          -- the character's ov table and its open row
+local mark, level, zone, instType      -- clock, level, zone name and instance type now
+local zoneN                            -- zones with a split in the open row
+local seen = {}                        -- distinct zone names in the open row
+
+local function Bump(t, k, n) t[k] = (t[k] or 0) + n end
+
+-- The open row's share of the current level and of the current zone.
+local function Slots()
+    local lvS, znS
+    if level then
+        lvS = cur.lv[level]
+        if not lvS then lvS = {}; cur.lv[level] = lvS end
+    end
+    if zone then
+        znS = cur.zn[zone]
+        if not znS and zoneN < OV_ZONES then
+            znS = {}
+            cur.zn[zone] = znS
+            zoneN = zoneN + 1
+        end
+    end
+    return lvS, znS
+end
+
+-- Adds the time since the last mark to the row, the level and the zone it was spent in.
+local function Tick()
+    local now = GetTime()
+    local dt = now - mark
+    mark = now
+    cur.last = time()
+    if dt <= 0 then return end
+    cur.p = cur.p + dt
+    local l, z = Slots()
+    if l then Bump(l, "p", dt) end
+    if z then Bump(z, "p", dt) end
+end
+
+local function Round(row)
+    row.p = floor(row.p + 0.5)
+    for _, s in pairs(row.lv) do
+        if s.p then s.p = floor(s.p + 0.5) end
+    end
+    for _, s in pairs(row.zn) do
+        if s.p then s.p = floor(s.p + 0.5) end
+    end
+end
+
+-- Closes a row into ov.sess. A row from an older version, or one a crash left damaged, is dropped.
+local function Push(row)
+    if type(row) ~= "table" or type(row.t) ~= "number" then return end
+    row.p = type(row.p) == "number" and row.p or 0
+    row.lv = type(row.lv) == "table" and row.lv or {}
+    row.zn = type(row.zn) == "table" and row.zn or {}
+    Round(row)
+    local sess = ov.sess
+    sess[#sess + 1] = row
+    while #sess > OV_ROWS do table.remove(sess, 1) end
+end
+
+local function Active() return cur ~= nil and not ns.opt.paused end
+
+-- The session starts: t is the S line's time. A row left open by a session that never closed
+-- (an error in the logout handler) is closed first, with what it has.
+function Ov.Start(t, lv, money)
+    local ch = ns.char
+    if not ch then return end
+    if type(ch.ov) ~= "table" then ch.ov = {} end
+    ov = ch.ov
+    if type(ov.sess) ~= "table" then ov.sess = {} end
+    local stale = ov.cur
+    if type(stale) == "table" and type(stale.t) == "number" then
+        -- Left open by a disconnect or an error at logout: its time runs to the last change seen.
+        local last = type(stale.last) == "number" and stale.last or stale.t
+        if type(stale.p) == "number" and last - stale.t > stale.p then stale.p = last - stale.t end
+        if type(ov.run) == "table" and ov.run.left == nil then ov.run.left = last end
+    end
+    if stale ~= nil then Push(stale) end
+    cur = { t = t, p = 0, l0 = lv, l1 = lv, m = money, z = 0, lv = {}, zn = {} }
+    ov.cur = cur
+    mark, level, zone, instType, zoneN = GetTime(), lv, nil, nil, 0
+    wipe(seen)
+end
+
+-- The session ends (logout or reload).
+function Ov.End()
+    if not cur then return end
+    Tick()
+    cur.l1 = level or cur.l1
+    Push(cur)
+    ov.cur, cur = nil, nil
+    -- Logging out inside a dungeon leaves it; coming back within RUN_GAP is the same run.
+    if type(ov.run) == "table" and ov.run.left == nil then ov.run.left = time() end
+end
+
+-- The open row after adding the time up to now, for the window. nil before login.
+function Ov.Live()
+    if cur then Tick() end
+    return cur
+end
+
+function Ov.Level(lv)
+    if not cur or type(lv) ~= "number" then return end
+    Tick()
+    level = lv
+    cur.l1 = lv
+end
+
+-- Z: name is the zone's name, kind its instanceType, inst its instanceMapID (any may be nil).
+function Ov.Zone(name, kind, inst)
+    if not cur then return end
+    Tick()
+    zone, instType = name, kind
+    if name and not seen[name] then
+        seen[name] = true
+        cur.z = cur.z + 1
+    end
+    local run = ov.run
+    if kind == "party" or kind == "raid" then
+        local same = type(run) == "table" and run.inst == inst and (run.left == nil or time() - run.left < RUN_GAP)
+        if not same then Bump(cur, "r", 1) end
+        if type(run) ~= "table" then run = {}; ov.run = run end
+        run.inst, run.left = inst, nil
+    elseif type(run) == "table" and run.left == nil then
+        run.left = time()
+    end
+end
+
+-- X: the amount once its source is known. kind is the X line's source: k, q, e or o.
+function Ov.XP(kind, amount)
+    if not Active() or type(amount) ~= "number" then return end
+    local key = "xo"
+    if kind == "k" then
+        key = (instType == "party" or instType == "raid") and "xd" or "xk"
+    elseif kind == "q" then
+        key = "xq"
+    elseif kind == "e" then
+        key = "xe"
+    end
+    cur.last = time()
+    local l, z = Slots()
+    Bump(cur, key, amount)
+    if l then Bump(l, key, amount) end
+    if z then Bump(z, "x", amount) end
+end
+
+local function Count(key, zoneKey)
+    if not Active() then return end
+    cur.last = time()
+    local l, z = Slots()
+    Bump(cur, key, 1)
+    if l then Bump(l, key, 1) end
+    if z and zoneKey then Bump(z, zoneKey, 1) end
+end
+
+function Ov.Kill() Count("k", "k") end    -- K, any by
+function Ov.Death() Count("dd", "dd") end -- D
+function Ov.Quest() Count("q") end        -- Q 2
+
+-- M: net is the change minus the part transferred between your own characters; balance what you carry now.
+function Ov.Money(net, balance)
+    if not Active() then return end
+    if net > 0 then Bump(cur, "g", net) elseif net < 0 then Bump(cur, "s", -net) end
+    if type(balance) == "number" then cur.m = balance end
+end
+
 -- Events about the player that are unit events: registered for "player" only.
 local UNIT_EVENTS = {
     UNIT_SPELLCAST_SUCCEEDED = true, UNIT_SPELLCAST_START = true, UNIT_SPELLCAST_CHANNEL_START = true,

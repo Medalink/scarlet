@@ -5,7 +5,7 @@ local ADDON, ns = ...
 
 local floor, abs, sqrt, tonumber, type, strsplit = math.floor, math.abs, math.sqrt, tonumber, type, strsplit
 local GetTime = GetTime
-local Emit, Add, Plain = ns.Emit, ns.Add, ns.Plain
+local Emit, Add, Plain, Ov = ns.Emit, ns.Add, ns.Plain, ns.Ov
 local issecretvalue = issecretvalue or function(_) return false end
 
 local SAMPLE_SECONDS = 1
@@ -251,6 +251,7 @@ local function Zone()
     if key == lastZone then return end
     lastZone = key
     Emit("Z", mapID, inst, itype, diff, zone, sub)
+    Ov.Zone(Str(zone), Str(itype), Num(inst))
     -- A position with every zone line, so events after a login, hearth or
     -- flight link to a place on this map, not the last one walked on.
     if ns.opt.path then
@@ -361,6 +362,7 @@ function H.PARTY_KILL(attacker, target)
     local id = NpcID(target)
     NameNpc(id, target)
     Emit("K", id, by)
+    Ov.Kill()
     if id == "p" and Plain(target) then PlayerKill(target, by) end
     ns.XPSource("k", id)
     Add("kills")
@@ -398,6 +400,7 @@ local function Died(unit)
         if reported[guid] then return end
         reported[guid] = true
         Emit("K", id, 2)
+        Ov.Kill()
         ns.XPSource("k", id)
         Add("kills")
     end)
@@ -910,6 +913,7 @@ local dead = false
 function H.PLAYER_DEAD()
     dead = true
     Emit("D")
+    Ov.Death()
     Add("deaths")
 end
 
@@ -1002,6 +1006,7 @@ local function FlushXP(p)
     p.done = true
     local kind, id = TakeXPSource(p.t)
     Emit("X", p.gain, p.cur, p.max, kind, id)
+    Ov.XP(kind, p.gain)
     while xpPending[1] and xpPending[1].done do table.remove(xpPending, 1) end
 end
 
@@ -1022,6 +1027,7 @@ end
 
 function H.PLAYER_LEVEL_UP(level)
     Emit("L", level)
+    Ov.Level(Num(level))
     Add("levels")
 end
 
@@ -1086,7 +1092,9 @@ function H.PLAYER_MONEY()
             moved, mailMove = m.copper, nil
         end
         local rest = delta - moved
-        if moved ~= 0 then Emit("M", delta, moved) else Emit("M", delta) end
+        -- The transfer field stays in place (empty when there is none) so the balance is always field 3.
+        Emit("M", delta, moved ~= 0 and moved or "", money)
+        Ov.Money(delta - moved, money)
         if rest > 0 then Add("earned", rest) elseif rest < 0 then Add("spent", -rest) end
     end
     lastMoney = money
@@ -1128,6 +1136,7 @@ end
 
 function H.QUEST_TURNED_IN(questID, xp, money)
     Emit("Q", 2, questID, xp, money)
+    Ov.Quest()
     if Plain(questID) and Plain(xp) and xp and xp > 0 then ns.XPSource("q", questID) end
     Add("quests")
 end
@@ -1350,12 +1359,14 @@ function H.PLAYER_LOGIN()
     lastXP, lastMax = UnitXP("player"), UnitXPMax("player")
     if not Plain(lastXP) or not Plain(lastMax) then lastXP, lastMax = nil, nil end
     -- Appended to S: region (the client's region id), toc (the interface number), and the
-    -- experience bar (xp, xpMax).
+    -- experience bar (xp, xpMax), and money (the copper you carry).
+    lastMoney = GetMoney()
     Emit("S", (GetBuildInfo()), class, race, UnitLevel("player"), (UnitFactionGroup("player")), ns.VERSION,
         _G.GetRealmID and _G.GetRealmID() or "", GetRealmName(),
-        _G.GetCurrentRegion and _G.GetCurrentRegion() or "", select(4, GetBuildInfo()), lastXP or "", lastMax or "")
+        _G.GetCurrentRegion and _G.GetCurrentRegion() or "", select(4, GetBuildInfo()), lastXP or "", lastMax or "",
+        lastMoney)
+    Ov.Start(ns.session, Num(UnitLevel("player")), Num(lastMoney))
     dead = UnitIsDeadOrGhost("player") and true or false
-    lastMoney = GetMoney()
     if ns.OnLogin then ns.OnLogin() end
 end
 
@@ -1378,6 +1389,7 @@ end
 
 function H.PLAYER_LOGOUT()
     while xpPending[1] do FlushXP(table.remove(xpPending, 1)) end
+    Ov.End()
     EndSegment()
     StopTicker()
     if campT0 then
