@@ -11,7 +11,7 @@ lines commented out (`# ## X-Curse-Project-ID:` and `# ## X-Wago-ID:`).
 | `description-curseforge.md` | Description for CurseForge. Choose the Markdown editor, then paste it. |
 | `description-wago.md` | Description for Wago. Same text as the CurseForge file (Markdown, no tables or inline images). |
 | `features.md`, `privacy.md`, `how-to-use.md` | The parts both descriptions are built from. |
-| `changelog.md` | Changelog for 0.4.0. `.pkgmeta` points the packager at it. |
+| `changelog.md` | Changelog, newest version first (1.0.0, then 0.4.0). `.pkgmeta` points the packager at it. |
 | `images/logo-400x400.png` | CurseForge logo and the avatar for both sites. Full-bleed dark square, so a round crop loses nothing. |
 | `images/logo-512x512.png`, `images/logo-1024x1024.png` | Larger copies if a form asks for more. |
 | `images/banner-1500x500.png` | For a banner field if either site shows one. Neither documents one, so this may stay unused. |
@@ -81,7 +81,8 @@ Forever has its own flavor on both sites, so no fallback to Retail or Classic is
 11. When it is approved, copy the project ID from the About Project box on the project page. Paste it into
     `addon/Scarlet/Scarlet.toc`: remove `# ` from the `## X-Curse-Project-ID:` line and put the number after the colon.
 12. Images tab: upload `screenshots/01` first, then the rest in order.
-13. Files tab: upload the zip (see "Make the zip"). Game version: Forever 1.60.1.
+13. Files tab: upload the zip by hand (see "Make the zip"; game version Forever 1.60.1), or let `publish-stores.ps1` do it
+    (see "Publish a release to both sites").
 
 ## Create the Wago project
 
@@ -91,9 +92,28 @@ Forever has its own flavor on both sites, so no fallback to Retail or Classic is
 3. Game: Forever (1.60.1). License: the same as on CurseForge.
 4. After it is created, the dashboard prints the project ID under the addon name (8 letters and digits, case matters).
    Paste it into `addon/Scarlet/Scarlet.toc`: remove `# ` from `## X-Wago-ID:` and put the ID after the colon.
-5. New Release: upload the zip, stability stable, changelog from `changelog.md`.
-6. For uploads from a script later, create an API key at https://addons.wago.io/account/apikeys. The packager reads it
-   from `WAGO_API_TOKEN`.
+5. New Release: upload the zip, stability stable, changelog from `changelog.md`, or let `publish-stores.ps1` do it.
+6. Create an API key at https://addons.wago.io/account/apikeys for the script (see below).
+
+## Publish a release to both sites
+
+`scarlet-app/scripts/publish-stores.ps1` uploads the addon zip of a published `Medalink/scarlet-app` release to both
+sites, and `release.ps1 -Lane release` runs it after publishing. Once the projects exist:
+
+1. Put the IDs in `addon/Scarlet/Scarlet.toc` on `main`: remove `# ` from `## X-Curse-Project-ID:` and `## X-Wago-ID:`
+   and paste the numbers. The script reads them from there; the release zip never carries them.
+2. Put the tokens in one-line files, or in the environment:
+
+   | Site | File | Environment variable | Made at |
+   | --- | --- | --- | --- |
+   | CurseForge | `E:\Dev\secrets\scarlet-addon-stores\curseforge-token` | `CF_API_KEY` | https://authors.curseforge.com/account/api-tokens |
+   | Wago | `E:\Dev\secrets\scarlet-addon-stores\wago-token` | `WAGO_API_TOKEN` | https://addons.wago.io/account/apikeys |
+
+3. `pwsh scripts/publish-stores.ps1 -Version 1.0.0 -DryRun` prints what each site would get. Without `-DryRun` it uploads.
+
+The uploaded changelog is the "Addon changes" section of the release notes (commit titles); `-Changelog listing\changelog.md`
+uploads that file instead. The game version comes from the TOC's `## Interface` (16001 is Forever 1.60.1) and is checked
+against each site's own list. Details and options are in `scarlet-app/docs/RELEASING.md`.
 
 ## Make the zip
 
