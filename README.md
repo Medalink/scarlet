@@ -40,7 +40,7 @@ recording.
 
 With the OpenMap addon installed (its code is MIT; its map art is Blizzard's), Scarlet adds a "Scarlet" section to
 OpenMap's menu (the Show tab) with a switch for each layer, and draws them on OpenMap's stitched map above its art:
-the trail walked in the last 20 minutes of this login (older segments fade out; the full path stays in the app),
+the trail walked in the last 20 minutes (older segments fade out; the full path stays in the app),
 flights and teleports, deaths, gathering and fishing, NPC windows, quests accepted and turned in,
 areas discovered, and camps. Flights and teleports, the trail, deaths, gathering and fishing, areas and camps are on
 by default; NPC windows and quests are off. Scarlet uses only OpenMap's public `OpenMapAPI` and needs a version with

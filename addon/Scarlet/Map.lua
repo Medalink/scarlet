@@ -6,7 +6,7 @@
 -- small "Scarlet" switch on the map (off until it is turned on). Positions come from MapData.lua, which reads what Scarlet
 -- already recorded; nothing new is captured here and nothing is written but the switches in ScarletDB.opt.map.
 -- opt.map.draw is the one switch for all of it (the Settings page of Scarlet's window): off, nothing is drawn and
--- the per-layer switches keep what they were set to. The trail shows only the last 20 minutes of this login's
+-- the per-layer switches keep what they were set to. The trail shows only the last 20 minutes of the character's
 -- walking, fading with age.
 --
 -- Cost while off: after login this file does nothing but wait for the world map to open. Once it opens

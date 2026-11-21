@@ -17,10 +17,10 @@ local cocreate, coresume, costatus, coyield = coroutine.create, coroutine.resume
 local MD = {}
 ns.MapData = MD
 
--- The trail is only the walking of this login in the last TRAIL_SECS, kept per map as x, y, t triples: t is
+-- The trail is only this character's walking in the last TRAIL_SECS, kept per map as x, y, t triples: t is
 -- the wall-clock second a point was recorded at (its chunk's start time plus the dt of the lines before it),
 -- and -1, -1, -1 ends a stretch. Map.lua fades a segment by its age and draws none at TRAIL_SECS. Older
--- walking and earlier logins stay in the recording for the app; they are not read into the trail here.
+-- walking stays in the recording for the app; it is not read into the trail here. A /reload keeps the trail.
 local TRAIL_SECS = 1200
 MD.TRAIL_SECS = TRAIL_SECS
 local TRAIL_JUMP2 = 800 * 800  -- farther than 800 units (8% of a map) between two points is not a walk: it breaks
@@ -76,7 +76,7 @@ end
 
 -- State a pass carries from line to line: where the character last stood, whether it is on a flight. rt is
 -- the time of the last path point (rx, ry); kept is whether that point went into the trail of the store being
--- built; sess is the login the lines belong to.
+-- built.
 local STATE_KEYS = { "hm", "hx", "hy", "flying", "fm", "fx", "fy", "fishedAt", "lastM", "rx", "ry", "rt" }
 
 local function NewState()
@@ -146,7 +146,7 @@ local function AddFound(ms, name, x, y)
     a[i * 2 - 1], a[i * 2] = x, y
 end
 
--- A point of the walked path goes into the trail only when it was recorded in this login and in the last
+-- A point of the walked path goes into the trail only when it was recorded in the last
 -- TRAIL_SECS (`cut` is that far back, set by Pump). The pass state advances for every point, so the first
 -- point that is kept after skipped ones, or in the next store, joins the point before it and the line into
 -- it is not lost.
@@ -160,7 +160,7 @@ local function TrailPoint(st, store, m, x, y)
         local dx, dy = x - st.rx, y - st.ry
         jump = dx * dx + dy * dy > TRAIL_JUMP2
     end
-    if t >= cut and st.sess == ns.session then
+    if t >= cut then
         local a = List(MapOf(store, m), "trail")
         local n = #a
         if same and not jump then
@@ -394,7 +394,6 @@ local function Build()
             local text = Text(c)
             if text then
                 stS.ms = (tonumber(c.t) or 0) * 1000
-                stS.sess = c.s
                 local n = 0
                 for line in gmatch(text, "[^\n]+") do
                     Main(stS, sealed, line)
@@ -453,7 +452,7 @@ local function LiveBuild(dst)
     Reset(dst)
     CopyState(stL, stS)
     stL.ms = (tonumber(db and db.bufT) or 0) * 1000
-    stL.sess, stL.kept = db and db.bufS, false -- the first point joins the last one of the sealed chunks
+    stL.kept = false -- the first point joins the last one of the sealed chunks
     local buf = db and db.buf
     if type(buf) == "table" then
         for i = 1, #buf do
