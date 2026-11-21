@@ -76,7 +76,7 @@ Forever has its own flavor on both sites, so no fallback to Retail or Classic is
 6. Main category: Data Export. Additional categories (up to 4): Quests & Leveling, Combat.
 7. Allow comments: on.
 8. Text editor: Markdown. Description: paste `description-curseforge.md`.
-9. License: All Rights Reserved, unless you pick another one (see Open decisions).
+9. License: GNU General Public License v3.0 (GPL-3.0).
 10. Submit. The project goes to moderation.
 11. When it is approved, copy the project ID from the About Project box on the project page. Paste it into
     `addon/Scarlet/Scarlet.toc`: remove `# ` from the `## X-Curse-Project-ID:` line and put the number after the colon.
@@ -122,6 +122,4 @@ Checked on 2026-11-20 against the packager's `master`: the package holds the TOC
 
 ## Open decisions
 
-- License. `## X-License: All Rights Reserved` matches the repo today (no LICENSE file). MIT is the usual choice for an
-  addon with source on GitHub and lets other authors reuse it. If you choose MIT, add a `LICENSE` file, change the TOC
-  line and pick MIT on both sites.
+- License: decided, GPL-3.0 (the repo's `LICENSE` file and `## X-License: GPL-3.0`). Pick GPL-3.0 on both sites.

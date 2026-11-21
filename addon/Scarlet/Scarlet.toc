@@ -3,7 +3,7 @@
 ## Notes: Records what your character does, with a timestamp on every line, and keeps it on your PC. /scarlet opens the window.
 ## Author: Medalink
 ## Version: 0.4.0
-## X-License: All Rights Reserved
+## X-License: GPL-3.0
 ## X-Website: https://medalink.github.io/scarlet-web/
 ## X-Category: Data Export
 ## SavedVariables: ScarletDB, ScarletAddonsDB

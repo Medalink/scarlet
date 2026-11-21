@@ -45,3 +45,7 @@ Listing text, logos and screenshots for CurseForge and Wago are in [listing/](li
 
 The desktop app that turns recordings into an overview, timeline, maps and charts is
 [scarlet-app](https://github.com/Medalink/scarlet-app).
+
+## License
+
+GPL-3.0. See `LICENSE`.
