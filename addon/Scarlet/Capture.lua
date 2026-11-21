@@ -234,6 +234,7 @@ end
 local lastZone
 local zoneRetries = 0
 local function Zone()
+    if ns.PlaceMoved then ns.PlaceMoved() end
     local mapID = C_Map.GetBestMapForUnit("player")
     local _, itype, diff, _, _, _, _, inst = GetInstanceInfo()
     local zone, sub = GetRealZoneText(), GetSubZoneText()

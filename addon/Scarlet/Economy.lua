@@ -470,9 +470,10 @@ end
 -- consignment. why: `i` read when the inbox was shown, `o` read when you opened the mail, `t` read when
 -- you took from it. The buyer's or seller's name and the mail's subject are never read, and neither is
 -- the mail's text: GetInboxText is not called, only watched when the client's own mail window calls it.
--- A mail's index changes as mail is taken, so an invoice is told apart by its numbers and the time its
+-- A mail's index changes as mail is taken, so an invoice is told apart by its numbers, the time its
 -- mail expires (daysLeft turned into a clock time, in one hour steps; the steps either side count as the
--- same), kept per character (AV_CAP of them). One invoice is written once, whichever way it is read first.
+-- same) and, for identical invoices in one inbox, their order counted from the oldest mail. Kept per
+-- character (AV_CAP of them). One invoice is written once, whichever way it is read first.
 
 local AV_CAP = 400
 
@@ -494,7 +495,9 @@ local function InvoiceSeen(base, hour)
     return false
 end
 
-local function Invoice(index, why)
+-- counts: the inbox scan's tally of invoices by their numbers, so the second identical one is told apart
+-- from the first (nil when one mail is read on its own).
+local function Invoice(index, why, counts)
     if type(_G.GetInboxInvoiceInfo) ~= "function" then return end
     local r = Pack(_G.GetInboxInvoiceInfo, index)
     local kind = r and Str(r[2])
@@ -505,6 +508,11 @@ local function Invoice(index, why)
     local days = head and Num(head[8])
     local hour = floor(((days and (time() + days * 86400)) or time()) / 3600)
     local base = concat({ kind, item, count, bid, buyout, deposit, cut }, "|")
+    if counts then
+        local nth = (counts[base] or 0) + 1
+        counts[base] = nth
+        if nth > 1 then base = base .. "#" .. nth end
+    end
     if InvoiceSeen(base, hour) then return end
     Emit("AV", kind, item, count, bid, buyout, deposit, cut, why)
 end
@@ -518,7 +526,8 @@ local function InboxScan()
     if not mailOpen then return end
     local n = Num(Call(_G.GetInboxNumItems))
     if not n then return end
-    for i = 1, math.min(n, 50) do Invoice(i, "i") end
+    local counts = {}
+    for i = math.min(n, 50), 1, -1 do Invoice(i, "i", counts) end
 end
 
 local function ScanSoon()

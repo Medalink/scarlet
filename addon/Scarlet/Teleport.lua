@@ -17,7 +17,7 @@ local function Num(v)
     if Plain(v) and type(v) == "number" then return v end
 end
 
-local JUMP_YARDS = 100   -- farther than this in a few seconds, in one instance, is a teleport
+local JUMP_YARDS = 100   -- farther than this between two checks (1.5 s apart), in one instance, is a teleport
 local ITEM_FOR = 20      -- seconds an item use stays the cause of a cast (the longest teleport cast is 10)
 local SPELL_WATCH = 8    -- seconds a cast or an item is watched for a move
 local SUMMON_WATCH = 24  -- seconds an accepted summon is watched
@@ -104,21 +104,27 @@ Resolve = function()
         watch = nil
         return
     end
-    local a, o = Snap(), w.from
-    local yards
+    local a, o, l = Snap(), w.from, w.last
+    local yards, step
     if a.wx and o.wx and a.inst == o.inst then
         local dx, dy = a.wx - o.wx, a.wy - o.wy
         yards = sqrt(dx * dx + dy * dy)
     end
+    -- Riding or flying covers at most about 45 yards between checks; a teleport covers it at once.
+    if a.wx and l.wx and a.inst == l.inst then
+        local dx, dy = a.wx - l.wx, a.wy - l.wy
+        step = sqrt(dx * dx + dy * dy)
+    end
     local how
     if a.inst and o.inst and a.inst ~= o.inst then
         how = "m"
-    elseif yards and yards > JUMP_YARDS then
+    elseif step and step > JUMP_YARDS then
         how = (a.map and o.map and a.map ~= o.map) and "m" or "d"
     elseif not yards and a.map and o.map and a.map ~= o.map then
         how = "m"
     end
     if not how then
+        w.last = a
         Arm(CHECK_EVERY)
         return
     end
@@ -145,7 +151,7 @@ local function Begin(kind, spell, item, seconds)
         w.kind, w.spell, w.item, w.t0, w.stop = kind, spell, item, now, now + seconds
         return
     end
-    watch = { kind = kind, spell = spell, item = item, from = from, t0 = now, stop = now + seconds }
+    watch = { kind = kind, spell = spell, item = item, from = from, last = from, t0 = now, stop = now + seconds }
     Arm(CHECK_EVERY)
 end
 

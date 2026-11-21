@@ -176,7 +176,7 @@ function H.PLAYER_DEAD()
     LookAround()
     ns.AutoShot("de")
     C_Timer.After(1, function()
-        DeathRecap()
+        pcall(DeathRecap)
         wipe(killers)
     end)
 end

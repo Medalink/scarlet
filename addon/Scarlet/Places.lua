@@ -26,6 +26,8 @@ local sesN = 0
 
 -- Your own cell on the map you are on, kept for a second.
 local hereT, hereMap, hereCell = -10, nil, nil
+-- Capture calls this on every zone change and loading screen.
+function ns.PlaceMoved() hereT = -10 end
 local function Here()
     local now = GetTime()
     if now - hereT >= 1 then

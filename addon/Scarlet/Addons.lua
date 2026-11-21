@@ -313,12 +313,28 @@ local function StartAttune(emit)
     if hooked.at then return true end
     hooked.at = true
     local seen, percent = {}, {}
-    for key in pairs(toon.done) do seen[key] = true end
-    for id, value in pairs(toon.attuned) do percent[id] = value end
+    local function Take(t)
+        wipe(seen)
+        wipe(percent)
+        for key in pairs(t.done) do seen[key] = true end
+        for id, value in pairs(t.attuned) do percent[id] = value end
+    end
+    Take(toon)
+    local off = false
     hooksecurefunc("Attune_SendPushInfo", Safe(function(step)
+        if not IsOn("at") then
+            off = true
+            return
+        end
         if Str(step) ~= "OVER" then return end
         local t = AttuneToon()
         if not t or type(t.done) ~= "table" or type(t.attuned) ~= "table" then return end
+        -- Progress made while the flag was off is not written once it is back on.
+        if off then
+            off = false
+            Take(t)
+            return
+        end
         local written = 0
         for key in pairs(t.done) do
             if not seen[key] then
@@ -362,6 +378,7 @@ local function StartAutoLayer(emit)
     Hook(al, "SendLayerRequest", function() emit("R") end)
     -- The system message's text is never read; the addon's own lifetime counter says it counted one.
     Hook(al, "ProcessSystemMessages", function()
+        if not IsOn("al") then return end
         local now = LayeredCount(al)
         if now and last and now > last then emit("J", now) end
         last = now or last
