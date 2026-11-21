@@ -5,6 +5,9 @@
 -- it shows the game's own map, the same layers are drawn on the game's map for the map being shown, behind a
 -- small "Scarlet" switch on the map (off until it is turned on). Positions come from MapData.lua, which reads what Scarlet
 -- already recorded; nothing new is captured here and nothing is written but the switches in ScarletDB.opt.map.
+-- opt.map.draw is the one switch for all of it (the Settings page of Scarlet's window): off, nothing is drawn and
+-- the per-layer switches keep what they were set to. The trail shows only the last 20 minutes of this login's
+-- walking, fading with age.
 --
 -- Cost while off: after login this file does nothing but wait for the world map to open. Once it opens
 -- with a layer on, one OnUpdate on Scarlet's own frame reads the history within a few milliseconds a
@@ -13,8 +16,8 @@
 -- HookScript OnShow and OnHide and a post-hook on OnMapChanged, which only set flags.
 local _, ns = ...
 
-local type, pairs, ipairs, floor, max = type, pairs, ipairs, math.floor, math.max
-local GetTime = GetTime
+local type, pairs, ipairs, floor, ceil = type, pairs, ipairs, math.floor, math.ceil
+local GetTime, time = GetTime, time
 local wipe = wipe
 
 local M = {}
@@ -34,6 +37,7 @@ local LAYERS = {
 local DEFAULT = {}
 for _, L in ipairs(LAYERS) do DEFAULT[L.id] = L.on end
 DEFAULT.blizzard = false -- the switch on the game's own map (no OpenMap): off until the player turns it on
+DEFAULT.draw = true      -- the one switch over all layers
 
 local ICON = "Interface\\AddOns\\Scarlet\\Media\\Icon"
 local SKULLS = "Interface\\TargetingFrame\\UI-RaidTargetingIcons"
@@ -62,6 +66,7 @@ local TRAIL_LINES = MAX_LINES - 300   -- the rest is for flights and teleports
 local STEP_MIN = 3.5                  -- screen pixels between two drawn trail points, at least
 local GRID_N = 96                     -- the view is cut into GRID_N x GRID_N cells, one pin of a kind each
 local STALE_CHECK = 2                 -- seconds between looks at the open buffers while the map is open
+local FADE_STEPS = 20                 -- the trail goes from full to gone in this many steps (a minute each)
 
 -- Settings ---------------------------------------------------------------------------------
 
@@ -74,7 +79,12 @@ local function On(id)
 end
 M.On = On
 
+-- Whether Scarlet draws on the map at all; the layers keep their own switches underneath.
+local function Drawing() return On("draw") end
+M.Drawing = Drawing
+
 local function AnyOn()
+    if not Drawing() then return false end
     for i = 1, #LAYERS do
         if On(LAYERS[i].id) then return true end
     end
@@ -98,19 +108,16 @@ end
 
 local ov                      -- the overlay frame, child of the map's canvas
 local pins, nPins, shownPins = {}, 0, 0
--- shownLines is the highest line a draw has touched since the last HideRest: the trail is drawn in up to four
--- passes that each start again at line 1, so it can be higher than the lines the final pass leaves in use.
+-- shownLines is the highest line a draw has touched since the last HideRest.
 local lines, nLines, shownLines = {}, 0, 0
 local labels, nLabels, shownLabels = {}, 0, 0
 local occ = {}                -- GRID_N * GRID_N cells, each holding the stamp of the last pin put in it
 for i = 0, GRID_N * GRID_N - 1 do occ[i] = 0 end
 local serial = 0
 
--- Per draw: canvas size in overlay pixels, the view in the same, the step between trail points.
+-- Per draw: canvas size in overlay pixels, the view in the same.
 local PW, PH, X0, Y0, X1, Y1, cellX, cellY, stamp, inv
-local trailStep = STEP_MIN
-local trailHost, trailPW, trailPH   -- the map and size the step was worked out for; it starts over when they change
-local capped = false
+local trailDrawn = 0                -- trail lines the last draw used; the trail fades while it is above 0
 local dirty = false                 -- a redraw is due (set by the callbacks below, and by a draw that wants another)
 
 local function NewPin()
@@ -147,7 +154,8 @@ local function Pin(kind, cx, cy)
     return p
 end
 
-local function Seg(kind, x1, y1, x2, y2)
+-- q, for the trail, is how many of FADE_STEPS the line is still at: its alpha is that share of the kind's.
+local function Seg(kind, x1, y1, x2, y2, q)
     if nLines >= MAX_LINES then return end
     nLines = nLines + 1
     if nLines > shownLines then shownLines = nLines end
@@ -156,11 +164,12 @@ local function Seg(kind, x1, y1, x2, y2)
         ln = ov:CreateLine(nil, "OVERLAY")
         lines[nLines] = ln
     end
-    if ln.kind ~= kind then
+    q = q or 0
+    if ln.kind ~= kind or ln.q ~= q then
         local sp = LINE[kind]
-        ln:SetColorTexture(sp.r, sp.g, sp.b, sp.a)
-        ln:SetThickness(sp.th)
-        ln.kind = kind
+        ln:SetColorTexture(sp.r, sp.g, sp.b, q > 0 and sp.a * q / FADE_STEPS or sp.a)
+        if ln.kind ~= kind then ln:SetThickness(sp.th) end
+        ln.kind, ln.q = kind, q
     end
     ln:SetStartPoint("TOPLEFT", ov, x1, -y1)
     ln:SetEndPoint("TOPLEFT", ov, x2, -y2)
@@ -315,63 +324,39 @@ local function SegsOf(arr, kind, a)
     end
 end
 
--- The coarsest tier of a map's trail whose own step, at the size the map is drawn now, is still below the
--- step between drawn points, so a map drawn small does not walk every point it has.
-local TRAIL_KEYS, TRAIL_STEPS = ns.MapData.TRAIL_KEYS, ns.MapData.TRAIL_STEPS
-local BOX_KEYS, BLOCK2 = ns.MapData.BOX_KEYS, ns.MapData.TRAIL_BLOCK * 2
-local function TrailTier(ms, a)
-    local unit = max(a[3] * PW, a[4] * PH) / 10000   -- screen pixels per recorded unit
-    for i = 3, 2, -1 do
-        local arr = ms[TRAIL_KEYS[i]]
-        if arr and TRAIL_STEPS[i] * unit <= trailStep then return arr, ms[BOX_KEYS[i]] end
-    end
-    if ms[TRAIL_KEYS[1]] then return ms[TRAIL_KEYS[1]], ms[BOX_KEYS[1]] end
-    return ms[TRAIL_KEYS[2]], ms[BOX_KEYS[2]] -- the finest tier was dropped when full (MapData.lua)
-end
-
--- The walked path: points further apart than the step, broken where a stretch ended (x = -1). The points
--- come in blocks with a bounding box each (MapData.lua); a block outside the view is not read, and the
--- stretch goes on from the point before the next block that is in view.
--- Sets `capped` when the pool of lines ran out, so the caller can draw again with a coarser step.
-local function TrailOf(arr, box, a)
-    if not (arr and box) then return end
+-- The walked path of the last TRAIL_SECS, from MapData.lua as x, y, t triples (x = -1 ends a stretch). It is
+-- read newest first, so a pool of lines that runs out drops the oldest. Points further apart than the step
+-- are joined; a line fades with the age of its newer end, one of FADE_STEPS for each minute, and none is
+-- drawn once that end is TRAIL_SECS old. `nowT` is the time of this draw.
+local TRAIL_SECS = ns.MapData.TRAIL_SECS
+local nowT = 0
+local function TrailOf(arr, a)
+    if not arr then return end
     local ox, oy, sx, sy = a[1], a[2], a[3], a[4]
-    local step2 = trailStep * trailStep
-    local have, lx, ly = false, 0, 0
-    local n = #arr
-    for b = 0, #box / 4 - 1 do
-        local k = b * 4
-        if (ox + box[k + 3] * sx) * PW < X0 or (ox + box[k + 1] * sx) * PW > X1
-            or (oy + box[k + 4] * sy) * PH < Y0 or (oy + box[k + 2] * sy) * PH > Y1 then
+    local step2 = STEP_MIN * STEP_MIN
+    local have, lx, ly, lq = false, 0, 0, 0
+    for i = #arr - 2, 1, -3 do
+        local x = arr[i]
+        if x < -0.5 then
             have = false
         else
-            local s = b * BLOCK2 + 1
-            if not have and s > 1 and arr[s - 2] > -0.5 then
-                have, lx, ly = true, (ox + arr[s - 2] * sx) * PW, (oy + arr[s - 1] * sy) * PH
-            end
-            local e = s + BLOCK2 - 1
-            if e > n then e = n end
-            for i = s, e, 2 do
-                local x = arr[i]
-                if x < -0.5 then
-                    have = false
-                else
-                    local cx, cy = (ox + x * sx) * PW, (oy + arr[i + 1] * sy) * PH
-                    if not have then
-                        have, lx, ly = true, cx, cy
-                    else
-                        local dx, dy = cx - lx, cy - ly
-                        if dx * dx + dy * dy >= step2 then
-                            if not ((lx < X0 and cx < X0) or (lx > X1 and cx > X1) or (ly < Y0 and cy < Y0) or (ly > Y1 and cy > Y1)) then
-                                if nLines >= TRAIL_LINES then
-                                    capped = true
-                                    return
-                                end
-                                Seg("trail", lx, ly, cx, cy)
-                            end
-                            lx, ly = cx, cy
-                        end
+            local cx, cy = (ox + x * sx) * PW, (oy + arr[i + 1] * sy) * PH
+            if not have then
+                local age = nowT - arr[i + 2]
+                if age >= TRAIL_SECS then return end -- everything before this point is older still
+                if age < 0 then age = 0 end -- the clock ticks in whole seconds, a point may be a hair ahead of it
+                have, lx, ly, lq = true, cx, cy, ceil((1 - age / TRAIL_SECS) * FADE_STEPS)
+            else
+                local dx, dy = cx - lx, cy - ly
+                if dx * dx + dy * dy >= step2 then
+                    if not ((lx < X0 and cx < X0) or (lx > X1 and cx > X1) or (ly < Y0 and cy < Y0) or (ly > Y1 and cy > Y1)) then
+                        if nLines >= TRAIL_LINES then return end
+                        Seg("trail", cx, cy, lx, ly, lq)
                     end
+                    local age = nowT - arr[i + 2]
+                    if age >= TRAIL_SECS then return end
+                    if age < 0 then age = 0 end
+                    lx, ly, lq = cx, cy, ceil((1 - age / TRAIL_SECS) * FADE_STEPS)
                 end
             end
         end
@@ -436,11 +421,6 @@ local function Draw()
     ov:Show()
 
     PW, PH = W * scale, H * scale
-    if host ~= trailHost or PW ~= trailPW or PH ~= trailPH then
-        -- another map or another zoom: the step worked out for the last view says nothing about this one
-        trailHost, trailPW, trailPH = host, PW, PH
-        trailStep = STEP_MIN
-    end
     local vx0, vy0, vx1, vy1 = ViewOf(map, canvas, W, H)
     if not vx0 then vx0, vy0, vx1, vy1 = 0, 0, 1, 1 end
     X0, Y0, X1, Y1 = vx0 * PW, vy0 * PH, vx1 * PW, vy1 * PH
@@ -450,26 +430,19 @@ local function Draw()
     nPins, nLabels, nLines = 0, 0, 0
 
     local stores = ns.MapData.stores
-    -- The trail first, coarser until it fits the pool of lines.
+    -- The trail first, the newest store (the open buffers) first.
+    trailDrawn = 0
     if On("trail") then
-        for _ = 1, 4 do
-            nLines, capped = 0, false
-            for s = 1, #stores do
-                for mapID, ms in pairs(stores[s].maps) do
-                    local a = Affine(mode, api, host, mapID)
-                    if a and (ms.trail or ms.trail2) and a[1] + a[3] >= vx0 and a[1] <= vx1 and a[2] + a[4] >= vy0 and a[2] <= vy1 then
-                        local arr, box = TrailTier(ms, a)
-                        TrailOf(arr, box, a)
-                    end
+        nowT = time()
+        for s = #stores, 1, -1 do
+            for mapID, ms in pairs(stores[s].maps) do
+                local a = Affine(mode, api, host, mapID)
+                if a and ms.trail and a[1] + a[3] >= vx0 and a[1] <= vx1 and a[2] + a[4] >= vy0 and a[2] <= vy1 then
+                    TrailOf(ms.trail, a)
                 end
             end
-            if not capped then break end
-            trailStep = trailStep * 1.7
         end
-        if not capped and nLines < TRAIL_LINES * 0.4 and trailStep > STEP_MIN then
-            trailStep = max(STEP_MIN, trailStep / 1.3)
-            dirty = true -- one more draw with the finer step, until it is back at the least
-        end
+        trailDrawn = nLines
     end
     local trips, deaths, gather = On("trips"), On("deaths"), On("gather")
     local npcs, quests, found, camps = On("npcs"), On("quests"), On("found"), On("camps")
@@ -545,6 +518,7 @@ local function Tick(_, elapsed)
             busy = more
             if changed then dirty = true end
         end
+        if trailDrawn > 0 then dirty = true end -- the trail fades with time
     end
     if dirty then
         dirty = false
@@ -600,25 +574,35 @@ end
 
 local sw, pop, popRows
 
-local function SetMaster(v)
+-- The one switch over every layer (Settings page of Scarlet's window). Off keeps each layer's own setting.
+local function SetDraw(v)
     if not ns.opt then return end
     if type(ns.opt.map) ~= "table" then ns.opt.map = {} end
-    ns.opt.map.blizzard = v and true or false
+    ns.opt.map.draw = v and true or false
     dirty = true
     Refresh()
 end
+M.SetDraw = SetDraw
 
-local function SetLayer(id, v)
+-- Turning a layer or the game map's switch on while drawing is off turns drawing back on, so it shows.
+local function Set(id, v)
     if not ns.opt then return end
     if type(ns.opt.map) ~= "table" then ns.opt.map = {} end
     ns.opt.map[id] = v and true or false
+    if v then ns.opt.map.draw = true end
     dirty = true
     Refresh()
 end
 
+local function SetMaster(v) Set("blizzard", v) end
+local function SetLayer(id, v) Set(id, v) end
+
+-- What a layer's switch shows: off while drawing is off.
+local function Shown(id) return Drawing() and On(id) end
+
 local function SyncPop()
     if not popRows then return end
-    for i = 1, #popRows do popRows[i]:SetChecked(On(popRows[i].layer)) end
+    for i = 1, #popRows do popRows[i]:SetChecked(Shown(popRows[i].layer)) end
 end
 
 local function BuildPop(map)
@@ -678,7 +662,7 @@ end
 local function UpdateSwitch(map, mode)
     if mode == "blizzard" and map and map:IsShown() then
         if not sw then BuildSwitch(map) end
-        sw:SetChecked(On("blizzard"))
+        sw:SetChecked(Shown("blizzard"))
         sw:Show()
         if pop and pop:IsShown() then SyncPop() end
     elseif sw then
@@ -742,7 +726,7 @@ local function Register()
             section = "Scarlet",
             tab = "show",
             icon = ICON,
-            get = function() return On(id) end,
+            get = function() return Shown(id) end,
             set = function(v) SetLayer(id, v) end,
         })
         if not ok then

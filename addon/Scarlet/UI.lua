@@ -562,12 +562,14 @@ local function SettingsPage(parent)
             function(v) opt.icon = v end),
         Toggle(page, -220, "Take screenshots at key moments", function() return opt.shots end,
             function(v) opt.shots = v end),
+        Toggle(page, -264, "Draw on the world map", function() return not ns.Map or ns.Map.Drawing() end,
+            function(v) if ns.Map then ns.Map.SetDraw(v) end end),
     }
     local save = Button(page, "Save chunk now", 150, function()
         SlashCmdList.SCARLET("save")
         ns.RefreshStatus()
     end)
-    save:SetPoint("TOPLEFT", 0, -284)
+    save:SetPoint("TOPLEFT", 0, -328)
     function page:Refresh()
         for i = 1, #toggles do toggles[i]:Refresh() end
     end

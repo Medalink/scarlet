@@ -40,7 +40,8 @@ recording.
 
 With the OpenMap addon installed (its code is MIT; its map art is Blizzard's), Scarlet adds a "Scarlet" section to
 OpenMap's menu (the Show tab) with a switch for each layer, and draws them on OpenMap's stitched map above its art:
-the trail you walked, flights and teleports, deaths, gathering and fishing, NPC windows, quests accepted and turned in,
+the trail walked in the last 20 minutes of this login (older segments fade out; the full path stays in the app),
+flights and teleports, deaths, gathering and fishing, NPC windows, quests accepted and turned in,
 areas discovered, and camps. Flights and teleports, the trail, deaths, gathering and fishing, areas and camps are on
 by default; NPC windows and quests are off. Scarlet uses only OpenMap's public `OpenMapAPI` and needs a version with
 API major 1, version 2 or later; OpenMap is an optional dependency and Scarlet works without it.
@@ -52,6 +53,8 @@ the map turns them on, off by default; the arrow next to it lists the layers.
 The layers show where this character was recorded, read from the same lines in SavedVariables that the companion
 reads: nothing extra is recorded, and nothing is drawn or read until the map is open with a layer on. The history is
 decoded a few milliseconds per frame and kept in memory only. The switches are saved as `ScarletDB.opt.map`.
+"Draw on the world map" on the Settings page of Scarlet's window turns every layer off and back on without
+changing the per-layer switches.
 
 ## Install
 

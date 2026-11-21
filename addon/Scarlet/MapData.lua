@@ -9,32 +9,21 @@
 -- Positions are the recorded unit divided by 10000: 0..1 across and down the map they were recorded on.
 local _, ns = ...
 
-local type, tonumber, pairs, floor, min, HUGE = type, tonumber, pairs, math.floor, math.min, math.huge
+local type, tonumber, pairs, floor = type, tonumber, pairs, math.floor
 local find, sub, match, gmatch = string.find, string.sub, string.match, string.gmatch
-local strsplit, wipe = strsplit, wipe
+local strsplit, wipe, time = strsplit, wipe, time
 local cocreate, coresume, costatus, coyield = coroutine.create, coroutine.resume, coroutine.status, coroutine.yield
 
 local MD = {}
 ns.MapData = MD
 
--- The trail is kept in three tiers, so a map drawn small does not walk every point: a point closer than
--- the tier's step (units of 1/10000) to the last one kept in that tier is dropped. Map.lua draws the
--- coarsest tier whose step is still below its own pixel step.
--- Each tier is cut into blocks of TRAIL_BLOCK points (a stretch break counts as one), and a block's bounding
--- box (minx, miny, maxx, maxy, plus the point before the block so a line into it is inside) is kept next to
--- it, so Map.lua skips the blocks outside the view without reading their points.
-local TRAIL_KEYS = { "trail", "trail2", "trail3" }
-local BOX_KEYS = { "trailB", "trail2B", "trail3B" }
-MD.TRAIL_KEYS = TRAIL_KEYS
-MD.BOX_KEYS = BOX_KEYS
-local TRAIL_BLOCK = 512
-MD.TRAIL_BLOCK = TRAIL_BLOCK
-MD.TRAIL_STEPS = { 8, 64, 512 }
-local TRAIL_STEP2 = { 8 * 8, 64 * 64, 512 * 512 }
-local TRAIL_LX = { "lx1", "lx2", "lx3" }
-local TRAIL_LY = { "ly1", "ly2", "ly3" }
-local TRAIL_JUMP2 = 800 * 800  -- farther than 800 units (8% of a map) between two points is not a walk: the trail breaks
-local TRAIL_CAP = 250000       -- path points kept per store in the finest tier (16 bytes each); past it the tier is thinned
+-- The trail is only the walking of this login in the last TRAIL_SECS, kept per map as x, y, t triples: t is
+-- the wall-clock second a point was recorded at (its chunk's start time plus the dt of the lines before it),
+-- and -1, -1, -1 ends a stretch. Map.lua fades a segment by its age and draws none at TRAIL_SECS. Older
+-- walking and earlier logins stay in the recording for the app; they are not read into the trail here.
+local TRAIL_SECS = 1200
+MD.TRAIL_SECS = TRAIL_SECS
+local TRAIL_JUMP2 = 800 * 800  -- farther than 800 units (8% of a map) between two points is not a walk: it breaks
 local FISH_MS = 6000           -- a loot window this soon after a fishing channel ended is a catch
 local FISH_SPELLS = { 7620, 18248, 7731 } -- Fishing (18248 is the one Forever casts); a spell with that name counts too
 local LIVE_MAX_AGE = 3         -- seconds before the open buffers are read again
@@ -46,11 +35,9 @@ local debugprofilestop = _G.debugprofilestop or function() return 0 end
 -- Stores ---------------------------------------------------------------------------------
 -- A store holds one pass over the lines: maps[uiMapID] = { trail, deaths, gather, fishing, qacc, qdone,
 -- camps, flights, teleports, found, foundName, foundIdx, npcs, npcN, npcIdx, seen }. The arrays are flat
--- (x, y, x, y ...); the trail holds -1, -1 where a stretch ends; flights and teleports hold x1, y1, x2, y2.
+-- (x, y, x, y ...); the trail holds x, y, t; flights and teleports hold x1, y1, x2, y2.
 
--- s1 is the finest tier's squared step in this store (it doubles each time the tier is thinned); full is set
--- when thinning can go no further, and the tier then takes no more points.
-local function NewStore() return { maps = {}, trailN = 0, s1 = TRAIL_STEP2[1], full = false } end
+local function NewStore() return { maps = {} } end
 local sealed = NewStore()
 -- The open buffers go into one of two stores while the other is shown, so a read in several frames never
 -- shows half a result.
@@ -67,7 +54,6 @@ local function Reset(store)
             end
         end
     end
-    store.trailN, store.s1, store.full = 0, TRAIL_STEP2[1], false
 end
 
 local function MapOf(store, m)
@@ -88,9 +74,10 @@ local function List(ms, key)
     return a
 end
 
--- State a pass carries from line to line: where the character last stood, whether it is on a flight.
-local STATE_KEYS = { "hm", "hx", "hy", "flying", "fm", "fx", "fy", "fishedAt", "lastM", "rx", "ry", "lx1", "ly1", "lx2", "ly2",
-    "lx3", "ly3" }
+-- State a pass carries from line to line: where the character last stood, whether it is on a flight. rt is
+-- the time of the last path point (rx, ry); kept is whether that point went into the trail of the store being
+-- built; sess is the login the lines belong to.
+local STATE_KEYS = { "hm", "hx", "hy", "flying", "fm", "fx", "fy", "fishedAt", "lastM", "rx", "ry", "rt" }
 
 local function NewState()
     return { lastQ = 0, lastQa = 0, ms = 0, fishedAt = -1e15, flying = false }
@@ -159,128 +146,63 @@ local function AddFound(ms, name, x, y)
     a[i * 2 - 1], a[i * 2] = x, y
 end
 
--- Writes the pair x, y after the n values already in t (n is even) and widens the box of the block it lands
--- in. A block's box starts with the pair before it, when that is a point, so a line that enters the block
--- is inside the box. A stretch break (x = -1) widens nothing.
-local function Put(t, box, n, x, y)
-    t[n + 1], t[n + 2] = x, y
-    local k = floor(n / 2 / TRAIL_BLOCK) * 4
-    if not box[k + 1] then
-        box[k + 1], box[k + 2], box[k + 3], box[k + 4] = HUGE, HUGE, -HUGE, -HUGE
-        if n > 0 and t[n - 1] > -0.5 then
-            local px, py = t[n - 1], t[n]
-            box[k + 1], box[k + 2], box[k + 3], box[k + 4] = px, py, px, py
-        end
-    end
-    if x > -0.5 then
-        if x < box[k + 1] then box[k + 1] = x end
-        if y < box[k + 2] then box[k + 2] = y end
-        if x > box[k + 3] then box[k + 3] = x end
-        if y > box[k + 4] then box[k + 4] = y end
-    end
-end
-
--- Drops the points of one tier-1 array that are closer than lim (squared, 0..1 units) to the last one kept,
--- keeping the end of each stretch, and rebuilds its boxes. Works in place: it writes behind where it reads.
--- Returns the number of points left.
-local function ThinArray(t, box, lim)
-    local n = #t
-    wipe(box)
-    local w, cnt = 0, 0
-    local have, lx, ly, px, py, pend = false, 0, 0, 0, 0, false
-    for i = 1, n, 2 do
-        local x, y = t[i], t[i + 1]
-        if x < -0.5 then
-            if pend then
-                Put(t, box, w, px, py)
-                w, cnt, pend = w + 2, cnt + 1, false
-            end
-            Put(t, box, w, -1, -1)
-            w, have = w + 2, false
-        else
-            local keep = not have
-            if have then
-                local dx, dy = x - lx, y - ly
-                keep = dx * dx + dy * dy >= lim
-            end
-            if keep then
-                Put(t, box, w, x, y)
-                w, cnt, have, lx, ly, pend = w + 2, cnt + 1, true, x, y, false
-            else
-                px, py, pend = x, y, true
-            end
-        end
-    end
-    if pend then
-        Put(t, box, w, px, py)
-        w, cnt = w + 2, cnt + 1
-    end
-    for j = n, w + 1, -1 do t[j] = nil end
-    return cnt
-end
-
-local Pause -- the build's yield (below); ThinFinest runs only inside the build coroutines
-
--- The finest tier is full: double its step (until it is at most three quarters full) and thin what is there,
--- so the newest walking is kept at the cost of some detail in the oldest. The step goes no coarser than the
--- second tier's: when the tier fills again at that step it is dropped, the second tier draws in its place
--- (Map.lua) and the other two tiers go on taking every point.
-local function ThinFinest(store)
-    if store.s1 < TRAIL_STEP2[2] then
-        repeat
-            store.s1 = min(store.s1 * 4, TRAIL_STEP2[2])
-            local lim, total = store.s1 / 1e8, 0
-            for _, ms in pairs(store.maps) do
-                local t, box = ms[TRAIL_KEYS[1]], ms[BOX_KEYS[1]]
-                if t and box and #t > 0 then total = total + ThinArray(t, box, lim) end
-            end
-            store.trailN = total
-            Pause()
-        until total <= TRAIL_CAP * 0.75 or store.s1 >= TRAIL_STEP2[2]
-    end
-    if store.trailN >= TRAIL_CAP then
-        store.full = true
-        for _, ms in pairs(store.maps) do
-            ms[TRAIL_KEYS[1]], ms[BOX_KEYS[1]] = nil, nil
-        end
-    end
-end
+-- A point of the walked path goes into the trail only when it was recorded in this login and in the last
+-- TRAIL_SECS (`cut` is that far back, set by Pump). The pass state advances for every point, so the first
+-- point that is kept after skipped ones, or in the next store, joins the point before it and the line into
+-- it is not lost.
+local cut = 0
 
 local function TrailPoint(st, store, m, x, y)
     if st.flying then return end
-    if store.trailN >= TRAIL_CAP and not store.full then ThinFinest(store) end
-    local ms = MapOf(store, m)
+    local t = st.ms / 1000
     local same, jump = st.lastM == m, true
     if same then
         local dx, dy = x - st.rx, y - st.ry
         jump = dx * dx + dy * dy > TRAIL_JUMP2
     end
-    for i = 1, 3 do
-        if i > 1 or not store.full then
-            local t, box = List(ms, TRAIL_KEYS[i]), List(ms, BOX_KEYS[i])
-            local n = #t
-            local lx, ly = TRAIL_LX[i], TRAIL_LY[i]
-            if same and not jump then
-                local dx, dy = x - st[lx], y - st[ly]
-                if dx * dx + dy * dy < (i == 1 and store.s1 or TRAIL_STEP2[i]) then
-                    n = nil
-                elseif n == 0 then
-                    -- a store that starts mid-stretch (the open buffer) joins the last point of the one before
-                    Put(t, box, 0, st[lx] / 10000, st[ly] / 10000)
-                    n = 2
+    if t >= cut and st.sess == ns.session then
+        local a = List(MapOf(store, m), "trail")
+        local n = #a
+        if same and not jump then
+            if not st.kept then
+                if n > 0 and a[n - 2] > -0.5 then
+                    a[n + 1], a[n + 2], a[n + 3] = -1, -1, -1
+                    n = n + 3
                 end
-            elseif n > 0 and t[n - 1] > -0.5 then
-                Put(t, box, n, -1, -1)
-                n = n + 2
+                a[n + 1], a[n + 2], a[n + 3] = st.rx / 10000, st.ry / 10000, st.rt
+                n = n + 3
             end
-            if n then
-                Put(t, box, n, x / 10000, y / 10000)
-                st[lx], st[ly] = x, y
-                if i == 1 then store.trailN = store.trailN + 1 end
+        elseif n > 0 and a[n - 2] > -0.5 then
+            a[n + 1], a[n + 2], a[n + 3] = -1, -1, -1
+            n = n + 3
+        end
+        a[n + 1], a[n + 2], a[n + 3] = x / 10000, y / 10000, t
+        st.kept = true
+    else
+        st.kept = false
+    end
+    st.lastM, st.rx, st.ry, st.rt = m, x, y, t
+end
+
+-- Drops the trail points that have aged out of the window, keeping the one point before the first that is
+-- left so the line into it stays. Works in place; run when a pass over the sealed chunks ends.
+local function PruneTrail(store)
+    for _, ms in pairs(store.maps) do
+        local a = ms.trail
+        local n = a and #a or 0
+        local i = 1
+        while i <= n and a[i + 2] < cut do i = i + 3 end -- a break has t = -1, so it counts as old
+        if i > 1 then
+            -- a[i - 3] is the last triple older than the window: keep it when it is a point of the same stretch
+            if i <= n and a[i - 3] > -0.5 then i = i - 3 end
+            local w = 0
+            for j = i, n, 3 do
+                a[w + 1], a[w + 2], a[w + 3] = a[j], a[j + 1], a[j + 2]
+                w = w + 3
             end
+            for j = n, w + 1, -1 do a[j] = nil end
         end
     end
-    st.lastM, st.rx, st.ry = m, x, y
 end
 
 -- Fishing is told apart by name: the spell Forever calls Fishing has more than one id by rank.
@@ -456,7 +378,7 @@ local function NextChunk(chunks, last)
 end
 
 local budget, started = 4, 0
-function Pause(force)
+local function Pause(force)
     if force or debugprofilestop() - started > budget then coyield() end
 end
 
@@ -472,6 +394,7 @@ local function Build()
             local text = Text(c)
             if text then
                 stS.ms = (tonumber(c.t) or 0) * 1000
+                stS.sess = c.s
                 local n = 0
                 for line in gmatch(text, "[^\n]+") do
                     Main(stS, sealed, line)
@@ -530,6 +453,7 @@ local function LiveBuild(dst)
     Reset(dst)
     CopyState(stL, stS)
     stL.ms = (tonumber(db and db.bufT) or 0) * 1000
+    stL.sess, stL.kept = db and db.bufS, false -- the first point joins the last one of the sealed chunks
     local buf = db and db.buf
     if type(buf) == "table" then
         for i = 1, #buf do
@@ -587,6 +511,7 @@ end
 function MD.Pump(ms)
     if not ns.db or not ns.charKey then return false, false end
     budget, started = ms or 4, debugprofilestop()
+    cut = time() - TRAIL_SECS
     local changed = false
     if not co and HasNew() then
         co = cocreate(Build)
@@ -601,7 +526,12 @@ function MD.Pump(ms)
             geterrorhandler()(err)
             return true, false
         end
-        if costatus(co) == "dead" then co = nil else return true, true end
+        if costatus(co) == "dead" then
+            co = nil
+            PruneTrail(sealed)
+        else
+            return true, true
+        end
     end
     -- The sealed chunks are all read: the open buffers follow, again when they have grown.
     local swapped, more = StepLive()
