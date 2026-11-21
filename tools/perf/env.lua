@@ -154,12 +154,14 @@ end
 
 -- Events -----------------------------------------------------------------------------
 
--- Calls every frame registered for event, the way the client does.
+-- Calls every frame registered for event when it began, the way the client does: a handler that
+-- unregisters its own frame (ADDON_LOADED does) must not make the next frame's handler skipped.
 function Env.fire(event, ...)
     local list = Env.byEvent[event]
     if not list then return end
-    for i = 1, #list do
-        local f = list[i]
+    local frames = { unpack(list) }
+    for i = 1, #frames do
+        local f = frames[i]
         local fn = f.scripts.OnEvent
         if fn then fn(f, event, ...) end
     end
