@@ -517,6 +517,8 @@ end
 
 -- Plays the stream. mode "time": per-call microseconds; "gc": bytes allocated with the collector
 -- stopped; "api": API calls per event. Returns buckets name -> samples.
+local gcStart, gcTotals = 0, nil
+
 local function Play(stream, mode)
     local buckets, dropped = {}, {}
     local function Add(name, v)
@@ -531,6 +533,7 @@ local function Play(stream, mode)
     elseif mode == "gc" then
         collect("collect")
         collect("stop")
+        gcStart = collect("count")
         local before
         Env.onTimerStart = function() before = collect("count") end
         Env.onTimer = function(fn) Add("timer " .. Where(fn), (collect("count") - before) * 1024) end
@@ -593,7 +596,14 @@ local function Play(stream, mode)
             Add(name, after - before)
         end
     end
-    if mode == "gc" then collect("restart") end
+    if mode == "gc" then
+        -- What the pass allocated in all, and how much of it is still alive after a full collect
+        -- (the rest was garbage; the live part is data the addon keeps, such as the map's index).
+        local grown = (collect("count") - gcStart) * 1024
+        collect("restart")
+        collect("collect")
+        gcTotals = { grown = grown, kept = (collect("count") - gcStart) * 1024 }
+    end
     Env.onTimer, Env.onTimerStart = nil, nil
     return buckets, clockT, dropped
 end
@@ -654,6 +664,7 @@ for p in opt.passes:gmatch("[^,]+") do passes[p] = true end
 local function RunScenario(name)
     local results, T, apiTop = {}, 0, nil
     local last, stream
+    gcTotals = nil
     for _, mode in ipairs({ "time", "gc", "api" }) do
         if passes[mode] then
             seed = 12345
@@ -677,6 +688,10 @@ local function RunScenario(name)
         end
     end
     Report(name .. " (" .. (stream and stream.n or 0) .. " events)", T, results)
+    if gcTotals then
+        print(("gc pass: %.0f KB allocated in all, %.0f KB still alive after a full collect"):format(
+            gcTotals.grown / 1024, gcTotals.kept / 1024))
+    end
     if apiTop then print("API calls, top: " .. apiTop) print() end
     return last
 end
