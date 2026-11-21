@@ -756,7 +756,8 @@ local function NavButton(parent, i, def)
     return b
 end
 
-local function CloseButton(parent)
+-- Closes target, the main window by default.
+local function CloseButton(parent, target)
     local b = CreateFrame("Button", nil, parent)
     b:SetSize(28, 28)
     local strokes = {}
@@ -772,7 +773,10 @@ local function CloseButton(parent)
     end
     b:SetScript("OnEnter", function() Tint(T.accent) end)
     b:SetScript("OnLeave", function() Tint(T.muted) end)
-    b:SetScript("OnClick", function() window:Hide() end)
+    b:SetScript("OnClick", function()
+        local frame = target or window
+        frame:Hide()
+    end)
     return b
 end
 
@@ -876,10 +880,10 @@ local function Build()
     window:SetScript("OnShow", function()
         ns.RefreshStatus()
         if not refreshTicker then
-            refreshTicker = C_Timer.NewTicker(REFRESH_SECONDS, function()
+            refreshTicker = C_Timer.NewTicker(REFRESH_SECONDS, ns.Perf.Fn("UI:Refresh", function()
                 if not STATIC_PAGES[current] then pages[current]:Refresh() end
                 ns.RefreshStatus()
-            end)
+            end))
         end
     end)
     window:SetScript("OnHide", function()
@@ -1021,23 +1025,140 @@ function ns.OnLogin()
     end
 end
 
+-- Profile report ----------------------------------------------------------------------
+-- /scarlet perf report: the report as plain text in a read-only box with all of it selected,
+-- so Ctrl+C copies it in one go (chat lines cannot be copied). Escape or the close mark hides it.
+
+local PERF_W, PERF_H, PERF_LINE = 700, 480, 15
+local PERF_EDIT_W = PERF_W - 2 * PAD - 2
+local perfWin
+
+local function BuildPerfWindow()
+    local f = CreateFrame("Frame", "ScarletPerfReport", UIParent)
+    f:SetSize(PERF_W, PERF_H)
+    f:SetPoint("CENTER")
+    f:SetFrameStrata("DIALOG")
+    f:SetToplevel(true)
+    f:SetClampedToScreen(true)
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    tinsert(UISpecialFrames, "ScarletPerfReport")
+
+    local shadow = Fill(f, { 0, 0, 0 }, 0.5, "BACKGROUND", -8)
+    shadow:SetPoint("TOPLEFT", -6, 6)
+    shadow:SetPoint("BOTTOMRIGHT", 6, -6)
+    Fill(f, T.win, 0.98):SetAllPoints()
+    Border(f, T.line2)
+
+    local header = CreateFrame("Frame", nil, f)
+    header:SetPoint("TOPLEFT", 1, -1)
+    header:SetPoint("TOPRIGHT", -1, -1)
+    header:SetHeight(HEADER_H)
+    Hair(header, "BOTTOM")
+    local mark = Fill(header, T.accent, 1, "ARTWORK")
+    mark:SetSize(9, 9)
+    mark:SetPoint("LEFT", 20, 0)
+    mark:SetRotation(math.pi / 4)
+    local title = Text(header, 24, T.fg, "LEFT", "display")
+    title:SetPoint("LEFT", mark, "RIGHT", 10, 0)
+    title:SetText("Profile report")
+    CloseButton(header, f):SetPoint("RIGHT", -10, 0)
+
+    local scroll = CreateFrame("ScrollFrame", nil, f)
+    scroll:SetPoint("TOPLEFT", PAD, -HEADER_H - 14)
+    scroll:SetPoint("BOTTOMRIGHT", -PAD, 14)
+    scroll:EnableMouseWheel(true)
+    scroll:SetScript("OnMouseWheel", function(self, delta)
+        local top = max(0, f.edit:GetHeight() - self:GetHeight())
+        self:SetVerticalScroll(math.min(top, max(0, self:GetVerticalScroll() - delta * PERF_LINE * 4)))
+    end)
+
+    -- Font and width first: a multi-line box wraps and sizes itself from them when text arrives.
+    local edit = CreateFrame("EditBox", nil, scroll)
+    edit:SetMultiLine(true)
+    edit:SetAutoFocus(false)
+    SetFontSafe(edit, FacePath("body"), 13)
+    edit:SetTextColor(T.text[1], T.text[2], T.text[3])
+    edit:SetWidth(PERF_EDIT_W)
+    edit:SetMaxLetters(200000)
+    scroll:SetScrollChild(edit)
+    f.edit, f.scroll = edit, scroll
+
+    edit:SetScript("OnEscapePressed", function() f:Hide() end)
+    edit:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
+    -- Read-only: whatever is typed or pasted is put back, with everything selected again.
+    edit:SetScript("OnTextChanged", function(self, userInput)
+        if userInput and f.text and self:GetText() ~= f.text then
+            self:SetText(f.text)
+            self:HighlightText()
+        end
+    end)
+    f:SetScript("OnHide", function() edit:ClearFocus() end)
+    f:Hide()
+    return f
+end
+
+function ns.ShowReport(text)
+    if not perfWin then perfWin = BuildPerfWindow() end
+    local edit = perfWin.edit
+    perfWin.text = text
+    edit:SetText(text)
+    -- The box sizes itself from its text in the client; this is the fallback, counting wrapped lines.
+    local lines = 0
+    for line in (text .. "\n"):gmatch("(.-)\n") do lines = lines + max(1, math.ceil(#line / 85)) end
+    edit:SetHeight(max(perfWin.scroll:GetHeight(), (lines + 2) * PERF_LINE))
+    perfWin.scroll:SetVerticalScroll(0)
+    perfWin:Show()
+    edit:SetFocus()
+    edit:HighlightText()
+    -- The client can drop the selection on the next frame; select again then.
+    C_Timer.After(0, function() edit:HighlightText() end)
+end
+
 -- Commands ----------------------------------------------------------------------------
 
 function Scarlet_OnCompartmentClick()
     ns.Toggle()
 end
 
+local function Perf(arg)
+    local perf = ns.Perf
+    if arg == "report" then
+        local text = perf.Report()
+        if not text then
+            ns.Print("nothing measured yet. |cffff6b8e/scarlet perf|r starts profiling.")
+            return
+        end
+        ns.ShowReport(text)
+        ns.Print("the report is selected. Ctrl+C copies it.")
+    elseif perf.on then
+        perf.Stop()
+        ns.Print(format("stopped profiling after %.0f s. |cffff6b8e/scarlet perf report|r shows the numbers.",
+            perf.Seconds() or 0))
+    elseif perf.Start() then
+        ns.Print("profiling every handler. |cffff6b8e/scarlet perf report|r shows the numbers, "
+            .. "|cffff6b8e/scarlet perf|r stops.")
+    else
+        ns.Print("this client has no debugprofilestop, so profiling is not possible.")
+    end
+end
+
 SLASH_SCARLET1, SLASH_SCARLET2 = "/scarlet", "/scar"
 SlashCmdList.SCARLET = function(msg)
-    msg = (msg or ""):lower():match("^%s*(%S*)")
-    if msg == "pause" then
+    local cmd, arg = (msg or ""):lower():match("^%s*(%S*)%s*(%S*)")
+    if cmd == "perf" then
+        Perf(arg)
+    elseif cmd == "pause" then
         ns.opt.paused = not ns.opt.paused
         ns.Print(ns.opt.paused and "paused." or "recording.")
         ns.RefreshStatus()
-    elseif msg == "save" then
+    elseif cmd == "save" then
         ns.Seal(true)
         ns.Print("saved the current chunk. It reaches disk on /reload or logout.")
-    elseif msg == "status" then
+    elseif cmd == "status" then
         local n, bytes = ns.StoredChunks()
         ns.Print(format("%d chunks stored (%.1f KB), %d lines pending, %s.", n, bytes / 1024, ns.Pending(),
             ns.opt.paused and "paused" or "recording"))

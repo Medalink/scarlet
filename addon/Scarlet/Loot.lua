@@ -379,4 +379,4 @@ function H.PLAYER_ENTERING_WORLD()
     end)
 end
 
-ns.Listen(frame, H)
+ns.Listen(frame, H, "Loot")

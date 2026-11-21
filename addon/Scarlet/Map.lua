@@ -542,7 +542,7 @@ local function Start()
     dirty, busy, acc = true, true, 0
     if not running then
         running = true
-        driver:SetScript("OnUpdate", Tick)
+        driver:SetScript("OnUpdate", ns.Perf.Fn("Map:Update", Tick))
     end
 end
 

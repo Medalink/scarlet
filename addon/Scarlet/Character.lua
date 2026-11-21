@@ -719,7 +719,7 @@ function H.PLAYER_ENTERING_WORLD()
     end)
 end
 
-ns.Listen(frame, H)
+ns.Listen(frame, H, "Character")
 
 -- These unit events fire for every unit the client tracks, nameplates and group included.
 -- Only the player's own are read. Pet happiness and training points are reported with the

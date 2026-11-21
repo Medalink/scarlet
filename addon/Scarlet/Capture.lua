@@ -183,7 +183,7 @@ function H.PLAYER_STARTED_MOVING()
             Emit("P", m, px, py, Facing())
         end
     end
-    if not ticker then ticker = C_Timer.NewTicker(SAMPLE_SECONDS, Tick) end
+    if not ticker then ticker = C_Timer.NewTicker(SAMPLE_SECONDS, ns.Perf.Fn("Capture:Tick", Tick)) end
 end
 
 function H.PLAYER_STOPPED_MOVING()
@@ -1462,4 +1462,4 @@ end
 ns.SpellName, ns.ItemName, ns.MapPoint, ns.NpcID, ns.Pattern = SpellName, ItemName, MapPoint, NpcID, Pattern
 ns.Round1, ns.TimerOn, ns.TimerOff = Round1, TimerOn, TimerOff
 
-ns.Listen(frame, H)
+ns.Listen(frame, H, "Capture")

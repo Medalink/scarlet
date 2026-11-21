@@ -500,4 +500,4 @@ function H.PLAYER_LOGOUT()
     if not InCombatLockdown() and GetTime() >= wsNext then StatisticsScan() end
 end
 
-ns.Listen(frame, H)
+ns.Listen(frame, H, "Metrics")

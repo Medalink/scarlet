@@ -4,6 +4,7 @@ local ADDON, ns = ...
 _G.Scarlet = ns
 
 local floor, select, type, tostring, concat, wipe = math.floor, select, type, tostring, table.concat, wipe
+local format = string.format
 local GetTime, time = GetTime, time
 local issecretvalue = issecretvalue or function(_) return false end
 
@@ -107,7 +108,7 @@ function ns.Seal(force)
         return
     end
     pendingSeal = false
-    local enc, z = Encode(concat(buf, "\n", 1, bufN))
+    local enc, z = ns.Encode(concat(buf, "\n", 1, bufN))
     db.seq = db.seq + 1
     chunks[#chunks + 1] = { q = db.seq, c = ns.charKey or "?", s = ns.session or 0, t = chunkT, n = bufN, e = enc, z = z }
     wipe(buf)
@@ -393,10 +394,283 @@ local UNIT_EVENTS = {
     UNIT_SPELL_HASTE = true, UNIT_DEFENSE = true, PLAYER_DAMAGE_DONE_MODS = true,
 }
 
+-- Profiler -----------------------------------------------------------------------
+-- /scarlet perf times every handler that ns.Listen routes, and the probes below, with
+-- debugprofilestop. Off, the default, it installs nothing: each frame keeps the plain OnEvent
+-- closure Listen made and Perf.Fn hands back the function it was given. Start swaps timing
+-- closures in and wraps the probes; Stop swaps the plain ones back. The numbers stay in memory
+-- for /scarlet perf report. Nothing here is written to ScarletDB.
+
+local Perf = { on = false }
+ns.Perf = Perf
+
+local profilestop = _G.debugprofilestop
+local SPIKES, MAX_ROWS = 10, 60
+local listeners, probes = {}, {}  -- every ns.Listen call; functions wrapped while on
+local rows, extra = {}, {}        -- rows with calls this run; label -> row for probes and Perf.Fn
+local spikes, spikeMin = {}, 0    -- the slowest single calls, slowest first
+local startedAt, stoppedAt, skipped = 0, nil, 0
+local combatTime, combatAt, instTime, instAt, instKind = 0, nil, 0, nil, nil
+local startKB, startHeap
+
+local function NewRow(name, nested)
+    local row = { name = name, calls = 0, total = 0, max = 0, nested = nested }
+    rows[#rows + 1] = row
+    return row
+end
+
+local function ByTime(a, b) return a.dt > b.dt end
+
+local function Spike(name, dt)
+    spikes[#spikes + 1] = { name = name, dt = dt, at = GetTime() - startedAt }
+    table.sort(spikes, ByTime)
+    if #spikes > SPIKES then spikes[#spikes] = nil end
+    if #spikes == SPIKES then spikeMin = spikes[SPIKES].dt end
+end
+
+local function Note(row, dt)
+    -- Another addon calling debugprofilestart in between makes dt negative: not a measurement.
+    if dt < 0 then skipped = skipped + 1 return end
+    row.calls = row.calls + 1
+    row.total = row.total + dt
+    if dt > row.max then row.max = dt end
+    if dt > spikeMin then Spike(row.name, dt) end
+end
+
+local function ReadInstance(now)
+    local inside, kind = IsInInstance()
+    if inside and ns.Plain(inside) then
+        instAt = instAt or now
+        if ns.Plain(kind) and type(kind) == "string" then instKind = kind end
+    elseif instAt then
+        instTime, instAt = instTime + now - instAt, nil
+    end
+end
+
+-- Combat and instance time for the report header; the handlers are the only clock needed.
+local function Context(event)
+    local now = GetTime()
+    if event == "PLAYER_REGEN_DISABLED" then
+        combatAt = combatAt or now
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        if combatAt then combatTime, combatAt = combatTime + now - combatAt, nil end
+    else
+        ReadInstance(now)
+    end
+end
+
+-- The OnEvent closure that times each call of listener l, one row per event.
+local function Timed(l)
+    local handlers, byEvent, label = l.handlers, l.rows, l.label
+    return function(_, event, ...)
+        local t0 = profilestop()
+        handlers[event](...)
+        local dt = profilestop() - t0
+        local row = byEvent[event]
+        if not row then
+            row = NewRow(label .. ":" .. event)
+            byEvent[event] = row
+        end
+        Note(row, dt)
+        if event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED"
+            or event == "PLAYER_ENTERING_WORLD" then
+            Context(event)
+        end
+    end
+end
+
+local function Done(row, t0, ...)
+    Note(row, profilestop() - t0)
+    return ...
+end
+
+-- fn with every call timed under label. A nested row is already inside a handler's time.
+local function Wrap(label, fn, nested)
+    return function(...)
+        if not Perf.on then return fn(...) end
+        local row = extra[label]
+        if not row then
+            row = NewRow(label, nested)
+            extra[label] = row
+        end
+        return Done(row, profilestop(), fn(...))
+    end
+end
+
+-- A function that runs outside the handlers (a ticker, an OnUpdate): timed when profiling is
+-- on at the moment it is handed out, the plain function otherwise.
+function Perf.Fn(label, fn)
+    if not Perf.on then return fn end
+    return Wrap(label, fn)
+end
+
+-- tbl[key] is wrapped while profiling. Callers must reach it through the table, not a local.
+function Perf.Probe(tbl, key, label, nested)
+    probes[#probes + 1] = { tbl = tbl, key = key, label = label, nested = nested }
+end
+
+Perf.Probe(ns, "Seal", "Core:Seal", true)
+Perf.Probe(ns, "Encode", "Core:Encode", true)
+Perf.Probe(ns, "Toggle", "UI:Toggle")
+
+local function AddonKB()
+    local api = _G.C_AddOns
+    local update = api and api.UpdateAddOnMemoryUsage or _G.UpdateAddOnMemoryUsage
+    local get = api and api.GetAddOnMemoryUsage or _G.GetAddOnMemoryUsage
+    if type(update) ~= "function" or type(get) ~= "function" then return end
+    local ok, kb = pcall(function()
+        update()
+        return get(ADDON)
+    end)
+    if ok and type(kb) == "number" then return kb end
+end
+
+function Perf.Start()
+    if Perf.on then return true end
+    if type(profilestop) ~= "function" then return false end
+    wipe(rows)
+    wipe(extra)
+    wipe(spikes)
+    spikeMin, skipped, combatTime, instTime, instKind = 0, 0, 0, 0, nil
+    for _, l in ipairs(listeners) do
+        l.rows = {}
+        l.frame:SetScript("OnEvent", Timed(l))
+    end
+    for _, p in ipairs(probes) do
+        local fn = p.tbl[p.key]
+        if type(fn) == "function" then
+            p.orig, p.wrapped = fn, Wrap(p.label, fn, p.nested)
+            p.tbl[p.key] = p.wrapped
+        end
+    end
+    startedAt, stoppedAt = GetTime(), nil
+    combatAt = InCombatLockdown() and startedAt or nil
+    instAt = nil
+    ReadInstance(startedAt)
+    startKB, startHeap = AddonKB(), collectgarbage("count")
+    Perf.on = true
+    return true
+end
+
+function Perf.Stop()
+    if not Perf.on then return end
+    Perf.on = false
+    stoppedAt = GetTime()
+    if combatAt then combatTime, combatAt = combatTime + stoppedAt - combatAt, nil end
+    if instAt then instTime, instAt = instTime + stoppedAt - instAt, nil end
+    for _, l in ipairs(listeners) do l.frame:SetScript("OnEvent", l.plain) end
+    for _, p in ipairs(probes) do
+        -- Leave it alone if another addon replaced our wrapper meanwhile.
+        if p.wrapped and p.tbl[p.key] == p.wrapped then p.tbl[p.key] = p.orig end
+        p.orig, p.wrapped = nil, nil
+    end
+end
+
+-- Seconds the last run covered, nil before the first.
+function Perf.Seconds()
+    if not (stoppedAt or Perf.on) then return nil end
+    return (stoppedAt or GetTime()) - startedAt
+end
+
+local function ClientMetrics()
+    local prof, enum = _G.C_AddOnProfiler, _G.Enum and _G.Enum.AddOnProfilerMetric
+    if not (prof and prof.GetAddOnMetric and type(enum) == "table") then return end
+    local names = {}
+    for name in pairs(enum) do names[#names + 1] = name end
+    table.sort(names)
+    local out = {}
+    for _, name in ipairs(names) do
+        local ok, v = pcall(prof.GetAddOnMetric, ADDON, enum[name])
+        if ok and type(v) == "number" then out[#out + 1] = format("%s %.2f", name, v) end
+    end
+    return #out > 0 and concat(out, ", ") or nil
+end
+
+local function ByTotal(a, b)
+    if a.total ~= b.total then return a.total > b.total end
+    return a.name < b.name
+end
+
+-- The report as plain text for pasting into a chat. It holds counts and times and names of
+-- handlers, never a player, guild, chat or item name.
+function Perf.Report()
+    local secs = Perf.Seconds()
+    if not secs then return nil end
+    local now = stoppedAt or GetTime()
+    local out = {}
+    local version, build, _, toc = GetBuildInfo()
+    out[#out + 1] = format("Scarlet %s profile, client %s build %s, interface %s", ns.VERSION, tostring(version),
+        tostring(build), tostring(toc))
+    local combat = combatTime + (combatAt and now - combatAt or 0)
+    local inst = instTime + (instAt and now - instAt or 0)
+    out[#out + 1] = format("ran %.1f s%s, combat %.1f s, instance %.1f s%s", secs, Perf.on and " (still running)" or "",
+        combat, inst, instKind and (" (" .. instKind .. ")") or "")
+
+    local list, handlerMs, calls = {}, 0, 0
+    for _, row in ipairs(rows) do
+        if row.calls > 0 then
+            list[#list + 1] = row
+            calls = calls + row.calls
+            if not row.nested then handlerMs = handlerMs + row.total end
+        end
+    end
+    table.sort(list, ByTotal)
+    out[#out + 1] = format("timed %d calls, %.1f ms in total, %.2f ms per second of play", calls, handlerMs,
+        secs > 0 and handlerMs / secs or 0)
+    if skipped > 0 then out[#out + 1] = format("skipped %d calls (another addon reset the timer)", skipped) end
+
+    out[#out + 1] = ""
+    out[#out + 1] = "handlers by total time:"
+    local shown = math.min(#list, MAX_ROWS)
+    for i = 1, shown do
+        local r = list[i]
+        out[#out + 1] = format("%s  calls %d  total %.2f ms  avg %.1f us  max %.2f ms", r.name, r.calls, r.total,
+            r.total / r.calls * 1000, r.max)
+    end
+    if #list > shown then
+        local rest = 0
+        for i = shown + 1, #list do rest = rest + list[i].total end
+        out[#out + 1] = format("%d more handlers, %.2f ms in total", #list - shown, rest)
+    end
+
+    out[#out + 1] = ""
+    out[#out + 1] = "slowest single calls:"
+    for i, s in ipairs(spikes) do
+        out[#out + 1] = format("%d. %.2f ms  %s  at %.1f s", i, s.dt, s.name, s.at)
+    end
+
+    out[#out + 1] = ""
+    out[#out + 1] = "memory:"
+    local kb, heap = AddonKB(), collectgarbage("count")
+    if kb and startKB then
+        out[#out + 1] = format("Scarlet: %.0f KB at start, %.0f KB now (%+.0f KB)", startKB, kb, kb - startKB)
+    elseif kb then
+        out[#out + 1] = format("Scarlet: %.0f KB now", kb)
+    else
+        out[#out + 1] = "Scarlet: this client has no GetAddOnMemoryUsage"
+    end
+    out[#out + 1] = format("Lua heap, all addons: %.0f KB at start, %.0f KB now (%+.0f KB)", startHeap, heap,
+        heap - startHeap)
+    local client = ClientMetrics()
+    if client then
+        out[#out + 1] = ""
+        out[#out + 1] = "client profiler, Scarlet: " .. client
+    end
+
+    out[#out + 1] = ""
+    out[#out + 1] = "not timed: C_Timer callbacks, hooks on game functions, the Addons and Map event frames. "
+        .. "Core:Seal and Core:Encode are inside the handler that sealed and are left out of the total. "
+        .. "Tickers and the map update are timed only when they started after profiling did."
+    return concat(out, "\n")
+end
+
 -- Route each event to handlers[event] and register every event the client
 -- knows. Unknown events are skipped, so one bad name never breaks loading.
-function ns.Listen(frame, handlers)
-    frame:SetScript("OnEvent", function(_, event, ...) handlers[event](...) end)
+-- label names the file in the profiler's rows.
+function ns.Listen(frame, handlers, label)
+    local plain = function(_, event, ...) handlers[event](...) end
+    frame:SetScript("OnEvent", plain)
+    listeners[#listeners + 1] = { label = label or "?", frame = frame, handlers = handlers, plain = plain }
     local valid = C_EventUtils and C_EventUtils.IsEventValid
     for event in pairs(handlers) do
         if not valid or valid(event) then

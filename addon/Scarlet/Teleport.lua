@@ -194,4 +194,4 @@ function H.LOADING_SCREEN_DISABLED()
     end
 end
 
-ns.Listen(frame, H)
+ns.Listen(frame, H, "Teleport")

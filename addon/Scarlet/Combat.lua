@@ -170,4 +170,4 @@ function H.PLAYER_REGEN_ENABLED()
     end
 end
 
-ns.Listen(frame, H)
+ns.Listen(frame, H, "Combat")

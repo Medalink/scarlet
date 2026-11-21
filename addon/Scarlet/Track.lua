@@ -717,4 +717,4 @@ function H.PLAYER_LOGOUT()
     end
 end
 
-ns.Listen(frame, H)
+ns.Listen(frame, H, "Track")
