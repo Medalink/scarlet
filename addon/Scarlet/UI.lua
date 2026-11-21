@@ -372,7 +372,9 @@ local function Snapshot(src, addSession, history)
     end
     local n = 0
     if ns.char and ns.char.mates then
-        for _ in pairs(ns.char.mates) do n = n + 1 end
+        for name in pairs(ns.char.mates) do
+            if not ns.IsOwnChar(name) then n = n + 1 end
+        end
     end
     liveStats.mateCount = n
     return liveStats
@@ -459,7 +461,9 @@ local function PeoplePage(parent, source)
         wipe(mateList)
         local mates = ns.char and ns.char.mates
         if mates then
-            for key in pairs(mates) do mateList[#mateList + 1] = key end
+            for key in pairs(mates) do
+                if not ns.IsOwnChar(key) then mateList[#mateList + 1] = key end
+            end
             table.sort(mateList, function(a, b) return mates[a].secs > mates[b].secs end)
         end
         empty:SetShown(#mateList == 0)

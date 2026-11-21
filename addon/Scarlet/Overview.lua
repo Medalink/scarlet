@@ -57,6 +57,17 @@ local function DigestFor(key)
     if type(c) == "table" then return c end
 end
 
+-- True for another character of the same player: one this account recorded, or one the companion's
+-- digest holds from any account (a player who dual boxes groups their two clients' characters).
+-- Such a character is not "someone you played with".
+function ns.IsOwnChar(name)
+    if type(name) ~= "string" or name == ns.charKey then return false end
+    local chars = ns.db and ns.db.chars
+    if type(chars) == "table" and type(chars[name]) == "table" then return true end
+    local d = _G.ScarletDigest
+    return type(d) == "table" and type(d.chars) == "table" and type(d.chars[name]) == "table"
+end
+
 -- The digest's totals for the sessions the addon did not record itself (docs/OVERVIEW.md, `before`),
 -- for the Stats pages to add to their own counters; nil when the character has none.
 local HISTORY_KEYS = { "kills", "deaths", "dungeons", "bosses", "quests", "xp", "earned", "spent", "loot", "tracked" }
@@ -304,7 +315,9 @@ local function Collect(key, lvl, weekStart)
         end
         if type(d.mates) == "table" then
             for _, m in ipairs(d.mates) do
-                if type(m) == "table" and type(m.name) == "string" then mates[m.name] = N(m.p) end
+                if type(m) == "table" and type(m.name) == "string" and not ns.IsOwnChar(m.name) then
+                    mates[m.name] = N(m.p)
+                end
             end
         end
         b.zone, b.class, b.level0 = d.zone, d.class, d.level
@@ -349,7 +362,9 @@ local function Collect(key, lvl, weekStart)
     local own = ns.char and ns.char.mates
     if type(own) == "table" then
         for name, m in pairs(own) do
-            if type(name) == "string" and type(m) == "table" then mates[name] = max(mates[name] or 0, N(m.secs)) end
+            if type(name) == "string" and type(m) == "table" and not ns.IsOwnChar(name) then
+                mates[name] = max(mates[name] or 0, N(m.secs))
+            end
         end
     end
     Top(mates, MATES, b.mn, b.mv)
