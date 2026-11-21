@@ -473,6 +473,41 @@ local function SettingsPage(parent)
     return page
 end
 
+-- One row per integration in Addons.lua: the addon's name, whether it is installed and loaded, the
+-- toggle, and the lines it wrote this session. An addon that is not installed is greyed out.
+local ADDON_ROW_H = 44
+
+local function AddonsPage(parent)
+    local page = CreateFrame("Frame", nil, parent)
+    page:SetAllPoints()
+    local registry = ns.Addons.REGISTRY
+    local rows, data = {}, {}
+    for i, e in ipairs(registry) do
+        local key = e.key
+        local row = Toggle(page, -(i - 1) * ADDON_ROW_H, e.label, function() return ns.Addons.IsOn(key) end,
+            function(v) ns.Addons.SetOn(key, v) end)
+        row.status = Text(row, 12, T.muted, "RIGHT")
+        row.status:SetPoint("RIGHT", -230, 0)
+        row.status:SetWidth(170)
+        row.count = Text(row, 13, T.fg, "RIGHT")
+        row.count:SetPoint("RIGHT", -70, 0)
+        row.count:SetWidth(80)
+        rows[i] = row
+    end
+    function page:Refresh()
+        ns.Addons.Rows(data)
+        for i, row in ipairs(rows) do
+            local d = data[i]
+            row:Refresh()
+            row.status:SetText(d.loaded and "Loaded" or d.installed and "Installed, not loaded" or "Not installed")
+            row.count:SetText(Num(d.lines))
+            row:SetAlpha(d.installed and 1 or 0.4)
+            row:SetEnabled(d.installed)
+        end
+    end
+    return page
+end
+
 -- Each font's name is drawn in that font; the chosen one is marked like the nav.
 local FONT_ROW_H, FONT_SIZE = 34, 15
 
@@ -568,6 +603,7 @@ local NAV = {
     { key = "more", label = "Combat and more" },
     { key = "people", label = "People" },
     { key = "live", label = "Live" },
+    { key = "addons", label = "Addons" },
     { key = "settings", label = "Settings" },
     { key = "fonts", label = "Fonts" },
 }
@@ -732,6 +768,7 @@ local function Build()
         more = StatsPage(body, function() return Snapshot(ns.char or ns.sess, true) end, MORE_CARDS),
         people = PeoplePage(body, function() return Snapshot(ns.char or ns.sess, true) end),
         live = LivePage(body),
+        addons = AddonsPage(body),
         settings = SettingsPage(body),
         fonts = FontsPage(body),
     }

@@ -3,7 +3,7 @@
 ## Notes: Records what you do in game into compact chunks for the Scarlet companion.
 ## Author: Medalink
 ## Version: 0.3.0
-## SavedVariables: ScarletDB
+## SavedVariables: ScarletDB, ScarletAddonsDB
 ## OptionalDeps: LibSharedMedia-3.0, SharedMedia, EllesmereUI
 ## IconTexture: Interface\Icons\INV_Misc_Book_09
 ## AddonCompartmentFunc: Scarlet_OnCompartmentClick
@@ -31,4 +31,5 @@ Collections.lua
 Social.lua
 Interface.lua
 Overview.lua
+Addons.lua
 UI.lua

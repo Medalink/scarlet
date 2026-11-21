@@ -16,6 +16,11 @@ it on your PC. It never sends anything anywhere.
 - **People:** groups and how long you played with each person, the players you meet, guild and friends counts.
 - **The world:** creatures you see with their level and type, vendor stock, trainer lists, item facts.
 
+- **Other addons:** a gathering node GatherMate2 adds, fish The Fishing Log and Forever Fishing record, the Polestar
+  guide and step you are on, Profession Shopping List's tracked recipes, Attune steps, AutoLayer requests. These go
+  in their own table, `ScarletAddonsDB`, apart from the main recording, each behind a toggle on the Addons page
+  (on by default). Their codes are in [docs/ADDONS.md](docs/ADDONS.md).
+
 Every line code and its fields are in [docs/FORMAT.md](docs/FORMAT.md). Chat text, mail bodies, notes and
 account names are never recorded.
 

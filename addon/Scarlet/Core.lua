@@ -97,6 +97,9 @@ local function Encode(text)
     return "d64", b64
 end
 
+-- Shared with Addons.lua, whose chunks are compressed the same way.
+ns.Encode = Encode
+
 function ns.Seal(force)
     if bufN == 0 or not db then return end
     if not force and InCombatLockdown() and bufN < HARD_LINES then
