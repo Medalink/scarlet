@@ -67,7 +67,8 @@ leaves open keeps its time up to then.
 
 Written by the companion after each export, to
 `<wow>\_forever_\Interface\AddOns\Scarlet\Digest.lua`, through a `.tmp` file and a rename
-(retried on the next export when the game holds the file). It is generated, not in git, and
+(retried on the next export when the game holds the file). Each character's rows come from
+`overview.json`, rebuilt from the payloads first when any payload is newer than it. It is generated, not in git, and
 listed in the TOC; the addon works the same when it is missing (`ScarletDigest == nil`).
 
 ```lua
