@@ -82,6 +82,7 @@ listed in the TOC; the addon works the same when it is missing (`ScarletDigest =
 ```lua
 ScarletDigest = {
   v = 1, made = <epoch s>,
+  accounts = { ["<game account folder>"] = { "Name-Surname", ... } },   -- absent until the companion has seen the accounts
   chars = {
     ["Name-Surname"] = {
       through = <t of the newest session included>,
@@ -97,7 +98,14 @@ ScarletDigest = {
       zones = { { name, p, k, dd, x }, ... },          -- top 40 by time
       runs = { { inst, name, n, last }, ... },          -- by n, top 10; last = epoch s
       runsTotal = <n>,
-      mates = { { name, class, p, n, last }, ... },     -- top 20 by time together; n sessions
+      mates = { { name, class, p, n, last }, ... },     -- top 20 by time together; n sessions; never one of your own characters
+      alts = { { name, p, o, n, last }, ... },          -- your other characters: p seconds grouped, o seconds online at the
+                                                        -- same time, n sessions grouped, last epoch s; most online together
+                                                        -- first; absent when there are none
+      days = { { d, p, q, g, s, r }, ... },             -- the last 14 local days, newest first, a day without play left out:
+                                                        -- d the day's local midnight (epoch s), p played seconds, q quests,
+                                                        -- g and s copper earned and spent, r dungeon and raid runs started;
+                                                        -- never trimmed with `sessions`
       killers = { { name, n }, ... },                   -- DR pos 1 source, top 10
       deathZones = { { name, n }, ... },                -- top 10
       gold = { { t, m }, ... },                         -- balance at each session end, last 30
@@ -120,6 +128,12 @@ from all the character's sessions before `sessions` is trimmed and is never trim
 the dates are measured on the same history whatever the size of `sessions`. `levels` is never
 trimmed either, and holds `p` and the XP sources `xk`, `xd`, `xq`, `xe`, `xo` of every level
 (a source that is 0 is left out). `first` is `t` of the oldest session the companion has.
+
+`alts` and `accounts` come from every character folder the companion keeps, across all WoW folders
+and game accounts. Two characters were online together when their sessions, `[t, t + p]`, share 60
+seconds or more; one game account cannot be online twice, so the pairs are across accounts.
+`accounts` maps each game account folder (`WTF\Account\<name>`) to the characters its
+SavedVariables file holds, kept in `accounts.json` beside `state.json`.
 
 Every string is escaped (`\\`, `\"`, newlines as `\n`); no long brackets, no NaN or inf. The
 file stays under 200 KB.
@@ -146,6 +160,22 @@ earned, Gold spent and Time recorded add it, so they hold the whole history the 
 show; every other card on that page says "since install", and the Time, Combat and more and People
 pages carry it in their title. Without `before` nothing is added or labelled. The session page never
 adds it.
+
+## Characters page
+
+The in-game Characters page reads the digest first, since `ScarletDB` holds only the characters of
+the current game account. A character's row is its digest figures (`class`, `level`, `zone`, `played`,
+`money`, `through`) plus this account's own rows after `through`; the logged-in character is live.
+Characters are grouped by game account (`accounts`, else the characters this account recorded).
+Sections: the totals (characters, played, gold), the character list, This week, Level estimates and
+Played together.
+
+- This week sums each character's `days` from the Monday 00:00 local time of this week, plus its own rows
+  after `through` and, for the logged-in character, the open session. A digest without `days` falls back
+  to `sessions` rows with `t >= Monday`.
+- Level estimates are the estimates below for each character that is not at the cap, from its own
+  digest; the logged-in character uses the client's level and XP.
+- Played together lists each pair once with the larger of the two sides' `o`, `p` and `last` from `alts`.
 
 ## Level estimates
 

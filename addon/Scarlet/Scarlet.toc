@@ -39,6 +39,7 @@ Collections.lua
 Social.lua
 Interface.lua
 Overview.lua
+Characters.lua
 Addons.lua
 MapData.lua
 Map.lua

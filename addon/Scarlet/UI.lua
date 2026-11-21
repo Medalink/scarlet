@@ -723,6 +723,7 @@ end
 
 local NAV = {
     { key = "overview", label = "Character" },
+    { key = "characters", label = "Characters" },
     { key = "session", label = "This session" },
     { key = "stats", label = "Stats" },
     { key = "time", label = "Time" },
@@ -740,6 +741,7 @@ local STATIC_PAGES = { settings = true, fonts = true }
 -- A page is built the first time it is shown, so opening the window pays for one page, not ten.
 local BUILDERS = {
     overview = function(body) return ns.OverviewPage(body, ns.UI) end,
+    characters = function(body) return ns.CharactersPage(body, ns.UI) end,
     stats = function(body)
         local page = StatsPage(body, function() return Snapshot(ns.char or ns.sess, true, ns.char ~= nil) end)
         page.partial = true

@@ -3,7 +3,7 @@
 -- see docs/OVERVIEW.md); the open session is added live. Built by UI.lua, refreshed only while shown.
 local _, ns = ...
 
-local floor, format, max, abs = math.floor, string.format, math.max, math.abs
+local floor, format, max, min, abs = math.floor, string.format, math.max, math.min, math.abs
 local Plain = ns.Plain
 
 -- Page layout, in pixels: the level times under the level bar, then four panels in two rows.
@@ -49,6 +49,7 @@ local function WeekStart()
     d.hour, d.min, d.sec, d.isdst = 0, 0, 0, nil
     return time(d)
 end
+ns.WeekStart = WeekStart
 
 local function DigestFor(key)
     local d = _G.ScarletDigest
@@ -276,7 +277,8 @@ end
 
 -- Everything that does not change while the window is open: the digest's sessions up to
 -- `through`, the addon's closed rows after it. The open session is added on each refresh.
-local function Collect(key, lvl, weekStart)
+local function Collect(key, lvl, weekStart, ch)
+    ch = ch or ns.char
     local d = DigestFor(key)
     local cap = CapOf(d)
     local capped = cap ~= nil and (lvl or (d and N(d.level)) or 0) >= cap
@@ -322,7 +324,7 @@ local function Collect(key, lvl, weekStart)
         end
         b.zone, b.class, b.level0 = d.zone, d.class, d.level
     end
-    local o = ns.char and ns.char.ov
+    local o = ch and ch.ov
     if type(o) == "table" and type(o.sess) == "table" then
         for _, row in ipairs(o.sess) do
             local t = type(row) == "table" and N(row.t) or 0
@@ -359,7 +361,7 @@ local function Collect(key, lvl, weekStart)
     -- Rows fell off the end of the addon's list before the digest held them: older history is short.
     b.short = d ~= nil and type(o) == "table" and type(o.sess) == "table" and #o.sess >= ns.Ov.ROWS
         and type(o.sess[1]) == "table" and N(o.sess[1].t) > through + 3 or false
-    local own = ns.char and ns.char.mates
+    local own = ch and ch.mates
     if type(own) == "table" then
         for name, m in pairs(own) do
             if type(name) == "string" and type(m) == "table" and not ns.IsOwnChar(name) then
@@ -394,6 +396,26 @@ local function Collect(key, lvl, weekStart)
     table.sort(rows, function(a, c) return a.t > c.t end)
     b.rows = rows
     return b
+end
+
+function ns.CapEstimate(key, lvl, xp, xpMax, live)
+    local d = DigestFor(key)
+    if not d then return end
+    lvl, xp, xpMax = lvl or N(d.level), xp or N(d.xp), xpMax or N(d.xpMax)
+    local cap = min(CapOf(d) or FALLBACK_CAP, #NEED + 1)
+    if lvl <= 0 or lvl >= cap or xpMax <= 0 then return end
+    local ch = ns.db and ns.db.chars and ns.db.chars[key]
+    local b = Collect(key, lvl, WeekStart(), ch)
+    if b.capped then return end
+    local held = live ~= nil and LiveHeld(b.rows, live)
+    if not FitPace(b.levelP, b.levelX, live, held, lvl) then return end
+    local secs = SecondsTo(lvl, xp, xpMax, cap)
+    local now = time()
+    local oldest = b.first or (b.rows[#b.rows] and b.rows[#b.rows].t) or (live and N(live.t)) or now
+    local rate = DayPlayed(b.rows, live, held, now) / min(DAY_WINDOW, max(1, (now - oldest) / 86400))
+    local when
+    if rate > 0 and secs / rate <= MAX_DAYS then when = DateText(floor(now + secs / rate * 86400), now) end
+    return lvl, secs, when, cap
 end
 
 -- Played seconds at the cap: the larger of the time the rows and the digest hold for the cap level, the
