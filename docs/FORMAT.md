@@ -114,6 +114,7 @@ A field the client marked secret is written as `?`. Missing values are empty.
 | `CP` | 0, seconds | Camp visit ended: the last camp aura went away, or the session ended |
 | `RS` | 0 or 1 | Resting state (inn, city, camp) changed |
 | `RX` | 1, xp or 0 | Rested XP started or ran out. Not written at the level cap or with experience off |
+| `RO` | restedXP, xpMax, resting | The rested XP, the XP the current level needs and whether you were resting (`1` or `0`), written at logout just before `ES`. Not written at the level cap or with experience off, nor when the client gave no values |
 | `AFK` | 0 or 1 | You went AFK or came back |
 | `I` | itemID, delta, where, npcID, sellPrice | Bag contents changed. where: `v` vendor, `b` bank, `m` mail, `t` trade, `l` loot, `a` auction house, `c` profession window, `g` guild bank, empty otherwise. At a vendor (`v`) npcID is the vendor and, for items that left the bags, sellPrice is the item's vendor sell price per unit in copper (empty when the client had no price); both fields are not written for other places |
 | `GP` | 1, size or 0, size | You joined a group or went solo |

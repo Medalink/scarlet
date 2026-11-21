@@ -1507,6 +1507,12 @@ function H.PLAYER_LOGOUT()
     end
     FlushMates()
     for k in pairs(timers) do TimerOff(k) end
+    if ns.Cap.Levelling() then
+        local rest, xpMax, resting = GetXPExhaustion(), UnitXPMax("player"), IsResting()
+        if Plain(rest) and Plain(xpMax) and Plain(resting) then
+            Emit("RO", rest or 0, xpMax or 0, resting and 1 or 0)
+        end
+    end
     Emit("ES")
     if ns.sessionG then Add("tracked", GetTime() - ns.sessionG) end
     ns.Seal(true)
