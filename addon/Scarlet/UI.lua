@@ -351,7 +351,7 @@ local WORDS = {
     DL = "deathspot", RZ = "rezoffer", SH = "spirithealer", DU = "duelask", DW = "duel", EX = "discover",
     XR = "restedxp", MT = "timer", DB = "durability", RE = "repair", NI = "npc", QN = "questname",
     LS = "learned", LR = "recipe", TL = "talents", HB = "hearth", HK = "hk", HN = "honor", PV = "pvp",
-    PT = "pet", SS = "screenshot", TP = "played", RL = "roll", ST = "stats", GR = "rules",
+    PT = "pet", SS = "screenshot", TP = "played", RL = "roll", ST = "stats", GR = "rules", RU = "rulesignals",
     DR = "deathhit", CU = "currency", CN = "currencyname", CR = "crafted", CC = "cc", NC = "collected",
 }
 

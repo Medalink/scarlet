@@ -9,6 +9,7 @@
 --   XD  whether experience gain is turned off
 --   BA  a barber shop change applied
 --   GA  the active game mode
+--   RU  every signal that might name the ruleset, read together
 --   CD  sex, class and race ids, effective level
 --   SX  more character numbers: defense, penetration, weapon damage, item levels
 -- Codes are in docs/FORMAT.md. Event driven only, nothing on a timer; every client value
@@ -28,6 +29,7 @@ local TRAITS = C_Traits
 local CT = C_ClassTalents
 local EQS = C_EquipmentSet
 local RULES = C_GameRules
+local PVP = C_PvP
 local PETINFO = C_PetInfo
 local BARBER = C_BarberShop
 local PAPER = C_PaperDollInfo
@@ -566,6 +568,53 @@ function H.ACTIVE_GAME_MODE_UPDATED()
     if started then ModeRead() end
 end
 
+-- RU <record> <warOn> <warOff> <warArea> <desired> <active> <faction> <flagged> <rules> <why>: the
+-- signals that might tell the character's ruleset (Normal, PvP, RP, RP-PvP, Hardcore), read
+-- together. The client has no call that names the ruleset, so none is guessed here; the web
+-- maps these once they are known for each ruleset. record is the game mode record id the
+-- realm picker switches by (GA is the mode enum, which does not tell rulesets apart).
+-- warOn and warOff say whether the client allows turning war mode on and off, warArea
+-- whether this area allows a toggle (`1` or `0`, empty when the client has no answer).
+-- desired and active are the war mode state, faction the player's faction, flagged the PvP
+-- flag. rules are the names of the client's game rules that are active, comma-joined (60 at
+-- most). why as XD.
+local ruKey
+local function RuRead()
+    local rec = RULES and Num(Call(RULES.GetCurrentGameModeRecordID))
+    local names = {}
+    local enum = Enum and Enum.GameRule
+    if RULES and type(enum) == "table" and RULES.IsGameRuleActive then
+        for name, id in pairs(enum) do
+            if type(name) == "string" and Num(id) and Call(RULES.IsGameRuleActive, id) then
+                names[#names + 1] = name
+            end
+        end
+        table.sort(names)
+        for i = #names, 61, -1 do names[i] = nil end
+    end
+    local faction = Call(_G.UnitFactionGroup, "player")
+    local fields = {
+        rec or "",
+        Flag(Call(PVP and PVP.CanToggleWarMode, true)),
+        Flag(Call(PVP and PVP.CanToggleWarMode, false)),
+        Flag(Call(PVP and PVP.CanToggleWarModeInArea)),
+        Flag(Call(PVP and PVP.IsWarModeDesired)),
+        Flag(Call(PVP and PVP.IsWarModeActive)),
+        Str(faction) or "",
+        Flag(Call(_G.UnitIsPVP, "player")),
+        concat(names, ","),
+    }
+    local key = concat(fields, "|")
+    if key == ruKey then return end
+    fields[#fields + 1] = ruKey == nil and "s" or "c"
+    Emit("RU", unpack(fields))
+    ruKey = key
+end
+
+function H.GAME_RULES_CHANGED()
+    if started then C_Timer.After(0.5, RuRead) end
+end
+
 local barberCost
 function H.BARBER_SHOP_COST_UPDATE()
     barberCost = BARBER and Num(Call(BARBER.GetCurrentCost)) or barberCost
@@ -714,6 +763,7 @@ function H.PLAYER_ENTERING_WORLD()
         PetRead()
         XpRead()
         ModeRead()
+        RuRead()
         SelfRead()
         SxScan()
     end)
