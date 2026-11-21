@@ -36,6 +36,19 @@ it is not worth recording. [tools/COVERAGE.md](tools/COVERAGE.md) explains how t
 where you died), the session's numbers, time splits, people and a live view. A minimap icon shows that it is
 recording.
 
+## On the world map
+
+With the OpenMap addon installed (its code is MIT; its map art is Blizzard's), Scarlet adds a "Scarlet" section to
+OpenMap's menu (the Show tab) with a switch for each layer, and draws them on OpenMap's stitched map above its art:
+the trail you walked, flights and teleports, deaths, gathering and fishing, NPC windows, quests accepted and turned in,
+areas discovered, and camps. Flights and teleports, the trail, deaths, gathering and fishing, areas and camps are on
+by default; NPC windows and quests are off. Scarlet uses only OpenMap's public `OpenMapAPI` and needs a version with
+API major 1, version 2 or later; OpenMap is an optional dependency and Scarlet works without it.
+
+The layers show where this character was recorded, read from the same lines in SavedVariables that the companion
+reads: nothing extra is recorded, and nothing is drawn or read until the map is open with a layer on. The history is
+decoded a few milliseconds per frame and kept in memory only. The switches are saved as `ScarletDB.opt.map`.
+
 ## Install
 
 Copy `addon/Scarlet` into `World of Warcraft\_forever_\Interface\AddOns\`. Recordings are saved with your

@@ -7,7 +7,7 @@
 ## X-Website: https://medalink.github.io/scarlet-web/
 ## X-Category: Data Export
 ## SavedVariables: ScarletDB, ScarletAddonsDB
-## OptionalDeps: LibSharedMedia-3.0, SharedMedia, EllesmereUI
+## OptionalDeps: LibSharedMedia-3.0, SharedMedia, EllesmereUI, OpenMap
 ## IconTexture: Interface\AddOns\Scarlet\Media\Icon
 ## AddonCompartmentFunc: Scarlet_OnCompartmentClick
 
@@ -40,4 +40,6 @@ Social.lua
 Interface.lua
 Overview.lua
 Addons.lua
+MapData.lua
+Map.lua
 UI.lua
