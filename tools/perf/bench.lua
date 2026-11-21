@@ -7,7 +7,7 @@
 --
 -- Before and after a change: run with --addon <old copy> --out a.txt and --addon <new> --out b.txt, then cmp.
 --
--- Scenarios: raid, quest, move, seal, window, map. The streams are generated (fixed seed, virtual
+-- Scenarios: raid, idle, quest, move, seal, window, map. The streams are generated (fixed seed, virtual
 -- clock), so two runs of the same addon see the same events.
 -- --history is the decoded recording from svdecode.py (read only, never printed): the window and map
 --   scenarios run on it, repeated --scale times (default 1) to stand in for a full 8 MB store.
@@ -42,7 +42,7 @@ do
     opt.scale = tonumber(opt.scale) or 1
 end
 
-local SCENARIOS = { "raid", "quest", "move", "seal", "window", "map" }
+local SCENARIOS = { "raid", "idle", "quest", "move", "seal", "window", "map" }
 if opt.list then print(table.concat(SCENARIOS, " ")) os.exit(0) end
 
 -- Deterministic random numbers, the same on every platform.
@@ -234,6 +234,23 @@ function SCEN.raid(W)
     s.add(T + 5, "BAG_UPDATE_DELAYED")
     s.sort()
     return s, T + 12
+end
+
+-- A raid between pulls: a minute of members healing back up, pets, nameplates of the city.
+function SCEN.idle(W)
+    Setup(W, 25)
+    local s = NewStream()
+    s.add(0, "GROUP_ROSTER_UPDATE")
+    for sec = 0, 59 do
+        for _ = 1, 250 do
+            local r = Rand(100)
+            s.add(sec + Rand(), "UNIT_HEALTH", r <= 70 and ("raid" .. Rand(25)) or r <= 90 and ("raidpet" .. Rand(25)) or "target")
+        end
+        for _ = 1, 4 do s.add(sec + Rand(), "UNIT_AURA", "player", { addedAuras = { Aura(7000 + sec * 4 + _, 7000 + Rand(20), true) } }) end
+        s.add(sec + Rand(), "UPDATE_MOUSEOVER_UNIT")
+    end
+    s.sort()
+    return s, 60
 end
 
 -- Ten minutes of questing: run, target, fight, loot, quest updates.
@@ -493,18 +510,6 @@ local function Boot(countApi, withSV)
     return ns
 end
 
--- Event name -> list of frame, function pairs, as the client would call them.
-local function Targets(name)
-    local list = {}
-    for _, f in ipairs(Env.frames) do
-        if f.events[name] and f.scripts.OnEvent then
-            list[#list + 1] = f
-            list[#list + 1] = f.scripts.OnEvent
-        end
-    end
-    return list
-end
-
 local function Where(fn)
     local info = debug.getinfo(fn, "S")
     return (info.short_src:match("([^/\\]+)$") or "?") .. ":" .. info.linedefined
@@ -513,8 +518,7 @@ end
 -- Plays the stream. mode "time": per-call microseconds; "gc": bytes allocated with the collector
 -- stopped; "api": API calls per event. Returns buckets name -> samples.
 local function Play(stream, mode)
-    local buckets, errors = {}, {}
-    local cache = {}
+    local buckets, dropped = {}, {}
     local function Add(name, v)
         local b = buckets[name]
         if not b then b = {} buckets[name] = b end
@@ -548,8 +552,7 @@ local function Play(stream, mode)
         end
         if e.pre then e.pre() end
         local name = e.name
-        local fns = cache[name]
-        if not fns then fns = Targets(name) cache[name] = fns end
+        local list = Env.byEvent[name]
         local a1, a2, a3, a4, a5 = e[1], e[2], e[3], e[4], e[5]
         if e.call then
             -- A direct call, not an event. Returning false drops the sample (a pass with nothing to do).
@@ -569,19 +572,22 @@ local function Play(stream, mode)
                 for _, n in pairs(calls) do after = after + n end
                 if keep ~= false then Add(name, after - before) end
             end
+        elseif not list or #list == 0 then
+            -- No frame listens: the client never calls the addon, so there is nothing to time.
+            dropped[name] = (dropped[name] or 0) + 1
         elseif mode == "time" then
             local t0 = hires()
-            for k = 1, #fns, 2 do fns[k + 1](fns[k], name, a1, a2, a3, a4, a5) end
+            for k = 1, #list do local f = list[k] f.scripts.OnEvent(f, name, a1, a2, a3, a4, a5) end
             Add(name, (hires() - t0) * 1e6 - overhead)
         elseif mode == "gc" then
             local m0 = collect("count")
-            for k = 1, #fns, 2 do fns[k + 1](fns[k], name, a1, a2, a3, a4, a5) end
+            for k = 1, #list do local f = list[k] f.scripts.OnEvent(f, name, a1, a2, a3, a4, a5) end
             Add(name, (collect("count") - m0) * 1024)
         else
             local calls = Env.apiCalls
             local before = 0
             for _, n in pairs(calls) do before = before + n end
-            for k = 1, #fns, 2 do fns[k + 1](fns[k], name, a1, a2, a3, a4, a5) end
+            for k = 1, #list do local f = list[k] f.scripts.OnEvent(f, name, a1, a2, a3, a4, a5) end
             local after = 0
             for _, n in pairs(calls) do after = after + n end
             Add(name, after - before)
@@ -589,7 +595,7 @@ local function Play(stream, mode)
     end
     if mode == "gc" then collect("restart") end
     Env.onTimer, Env.onTimerStart = nil, nil
-    return buckets, clockT
+    return buckets, clockT, dropped
 end
 
 -- Reporting ----------------------------------------------------------------------------------------------
@@ -626,6 +632,10 @@ local function Report(title, T, results)
         end
     end
     print(("total %.1f ms over %.0f s = %.3f ms per second of play"):format(sumAll / 1000, T, sumAll / 1000 / T))
+    local drops = {}
+    for name, n in pairs(results.dropped or {}) do drops[#drops + 1] = ("%s %d"):format(name, n) end
+    table.sort(drops)
+    if #drops > 0 then print("not delivered (no frame registered, the client skips them): " .. table.concat(drops, ", ")) end
     print()
 end
 
@@ -652,7 +662,9 @@ local function RunScenario(name)
             local s, dur = gen(Env.world, ns)
             stream, T = s, dur
             if mode == "time" and opt.perf then ns.Perf.Start() end
-            results[mode] = Play(s, mode)
+            local buckets, _, dropped = Play(s, mode)
+            results[mode] = buckets
+            if mode == "time" then results.dropped = dropped end
             if mode == "api" then apiTop = TopApi() end
             if mode == "time" and opt.perf then
                 print(ns.Perf.Report() or "")

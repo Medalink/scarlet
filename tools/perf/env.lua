@@ -50,10 +50,27 @@ end
 function Frame:SetScript(k, fn) self.scripts[k] = fn end
 function Frame:GetScript(k) return self.scripts[k] end
 function Frame:HookScript() end
-function Frame:RegisterEvent(e) self.events[e] = true end
-function Frame:RegisterUnitEvent(e) self.events[e] = true end
-function Frame:UnregisterEvent(e) self.events[e] = nil end
-function Frame:UnregisterAllEvents() self.events = {} end
+-- Env.byEvent[event] lists the frames registered for it, kept in step with Register and Unregister.
+Env.byEvent = {}
+function Frame:RegisterEvent(e)
+    if self.events[e] then return end
+    self.events[e] = true
+    local list = Env.byEvent[e]
+    if not list then list = {} Env.byEvent[e] = list end
+    list[#list + 1] = self
+end
+Frame.RegisterUnitEvent = Frame.RegisterEvent
+function Frame:UnregisterEvent(e)
+    if not self.events[e] then return end
+    self.events[e] = nil
+    local list = Env.byEvent[e]
+    for i = #list, 1, -1 do
+        if list[i] == self then table.remove(list, i) end
+    end
+end
+function Frame:UnregisterAllEvents()
+    for e in pairs(self.events) do self:UnregisterEvent(e) end
+end
 function Frame:Show()
     if not self.shown then
         self.shown = true
@@ -139,13 +156,12 @@ end
 
 -- Calls every frame registered for event, the way the client does.
 function Env.fire(event, ...)
-    local frames = Env.frames
-    for i = 1, #frames do
-        local f = frames[i]
-        if f.events[event] then
-            local fn = f.scripts.OnEvent
-            if fn then fn(f, event, ...) end
-        end
+    local list = Env.byEvent[event]
+    if not list then return end
+    for i = 1, #list do
+        local f = list[i]
+        local fn = f.scripts.OnEvent
+        if fn then fn(f, event, ...) end
     end
 end
 
@@ -215,7 +231,7 @@ end
 -- Loads Scarlet.toc's Lua files in order from dir, each with the file's own (addon, ns) arguments.
 function Env.load(dir)
     -- A fresh addon each time: new frames, timers, clock and saved variables.
-    Env.frames, Env.timers, Env.chat, Env.errors, Env.missing = {}, {}, {}, {}, {}
+    Env.frames, Env.timers, Env.chat, Env.errors, Env.missing, Env.byEvent = {}, {}, {}, {}, {}, {}
     Env.now, Env.inCombat = 1000, false
     local toc = assert(io.open(dir .. "/Scarlet.toc", "rb"))
     local version = "0.0.0"
