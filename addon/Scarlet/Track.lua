@@ -671,6 +671,7 @@ function H.TIME_PLAYED_MSG(total, thisLevel)
     if lastPlayed and math.abs(total - lastPlayed) < 5 then return end
     lastPlayed = total
     Emit("TP", total, thisLevel)
+    ns.Ov.Played(total)
     if ns.char then ns.char.played = total end
 end
 

@@ -222,6 +222,7 @@ local ov, cur                          -- the character's ov table and its open 
 local mark, level, zone, instType      -- clock, level, zone name and instance type now
 local zoneN                            -- zones with a split in the open row
 local seen = {}                        -- distinct zone names in the open row
+local readAt, readTotal, credited       -- the latest /played read of the open session (epoch s, total), whether its start was credited
 
 local function Bump(t, k, n) t[k] = (t[k] or 0) + n end
 
@@ -298,6 +299,7 @@ function Ov.Start(t, lv, money)
     if stale ~= nil then Push(stale) end
     cur = { t = t, p = 0, l0 = lv, l1 = lv, m = money, z = 0, lv = {}, zn = {} }
     ov.cur = cur
+    readAt, readTotal, credited = nil, nil, false
     mark, level, zone, instType, zoneN = GetTime(), lv, nil, nil, 0
     wipe(seen)
 end
@@ -307,6 +309,13 @@ function Ov.End()
     if not cur then return end
     Tick()
     cur.l1 = level or cur.l1
+    -- Where the client's played counter stood now, for the next session to credit the reload between.
+    local now = time()
+    if readAt and readTotal then
+        ov.pe, ov.pw, ov.pt, ov.pl, ov.pz = readTotal + (now - readAt), now, cur.t, cur.l1, zone
+    else
+        ov.pe = nil
+    end
     Push(cur)
     ov.cur, cur = nil, nil
     -- Logging out inside a dungeon leaves it; coming back within RUN_GAP is the same run.
@@ -317,6 +326,30 @@ end
 function Ov.Live()
     if cur then Tick() end
     return cur
+end
+
+-- A /played read (TP): the client keeps counting through a reload, which the rows do not cover. The
+-- first read of a session gives the counter at its start; what it stands above where the session before
+-- ended is that gap, added to that session, its last level and zone, up to the wall time between the two.
+function Ov.Played(total)
+    if not cur or type(total) ~= "number" then return end
+    local now = time()
+    readAt, readTotal = now, total
+    if credited then return end
+    credited = true
+    local pe, row = ov.pe, ov.sess[#ov.sess]
+    ov.pe = nil
+    if not pe or type(row) ~= "table" or row.t ~= ov.pt then return end
+    -- Both sides are whole seconds: under 2 is rounding.
+    local gap = total - (now - cur.t) - pe
+    if gap < 2 then return end
+    local credit = floor(math.min(gap, cur.t - (tonumber(ov.pw) or cur.t) + 2) + 0.5)
+    if credit <= 0 then return end
+    row.p = row.p + credit
+    local l = type(row.lv) == "table" and row.lv[ov.pl]
+    if type(l) == "table" then l.p = (l.p or 0) + credit end
+    local z = type(row.zn) == "table" and ov.pz and row.zn[ov.pz]
+    if type(z) == "table" then z.p = (z.p or 0) + credit end
 end
 
 function Ov.Level(lv)

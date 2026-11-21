@@ -56,6 +56,18 @@ local function DigestFor(key)
     if type(c) == "table" then return c end
 end
 
+-- The digest's totals for the sessions the addon did not record itself (docs/OVERVIEW.md, `before`),
+-- for the Stats pages to add to their own counters; nil when the character has none.
+local HISTORY_KEYS = { "kills", "deaths", "dungeons", "bosses", "quests", "xp", "earned", "spent", "loot", "tracked" }
+function ns.History(key)
+    local d = DigestFor(key)
+    local before = d and d.before
+    if type(before) ~= "table" then return end
+    local out = {}
+    for _, k in ipairs(HISTORY_KEYS) do out[k] = N(before[k]) end
+    return out
+end
+
 local function AddWeek(b, row)
     b.wp = b.wp + N(row.p)
     b.wq = b.wq + N(row.q)

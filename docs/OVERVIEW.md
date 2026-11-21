@@ -19,7 +19,15 @@ session.
 
 These hold on both sides, so the companion can check the addon's rows against its own.
 
-- **Played** time is the session's length: from `S` to `ES` (or the session's last line).
+- **Played** time is the session's length: from `S` to `ES` (or the session's last line), plus the
+  reload before the next session. The client keeps counting played time through a reload, which the
+  rows would miss: about 7 seconds each. The first `TP` read of a session gives the client's counter
+  at its start (the read's total less the seconds since `S`). Where that stands more than 1.5
+  seconds above the counter at the end of the session before (its last read, plus the seconds
+  since), the difference is added to that session, to the level and zone it ended in, up to the wall
+  time between the two sessions. A logout in between adds nothing, since the counter stood still.
+  Sessions without a `TP` read are not credited. A character's played total is the counter at the
+  end of its last session when it was read in it, else the last `TP` total, else the sum of the rows.
 - **Level and zone splits.** Time, XP, kills, deaths and quests go to the level and the zone
   current when they happen. Level changes at `L`, zone at `Z` (the `zone` field, the zone's
   name).
@@ -79,7 +87,7 @@ ScarletDigest = {
       through = <t of the newest session included>,
       class = "WARLOCK", race = "Troll", faction = "Horde",
       level = 41, xp = 34632, xpMax = 95800, zone = "Riverglades",
-      played = <seconds, from the newest TP total, else the sum of sessions>,
+      played = <seconds: the client's counter at the end of the last session, see Played>,
       money = <copper, latest known balance>,
       first = <t of the character's first recorded session>,
       sessions = { <session rows, newest first: the last 60, or all from the last 14 days if more;
@@ -93,6 +101,10 @@ ScarletDigest = {
       killers = { { name, n }, ... },                   -- DR pos 1 source, top 10
       deathZones = { { name, n }, ... },                -- top 10
       gold = { { t, m }, ... },                         -- balance at each session end, last 30
+      before = { kills, deaths, dungeons, bosses, quests, xp, earned, spent, loot, tracked },
+                                                        -- totals over the sessions the addon did not record
+                                                        -- itself (an `S` line whose version field is not a number);
+                                                        -- absent when it recorded all of them
     },
   },
 }
@@ -122,6 +134,13 @@ zones tile and no killer. Empty cards say what is missing in plain words
 ("No deaths recorded"), no slogans.
 
 The old stat grids stay, renamed "Stats".
+
+In game the Stats cards count from the install (`ScarletDB.chars[key]`). When the digest has
+`before` for the character, Kills, Deaths, Dungeons, Bosses, Quests, Items looted, Experience, Gold
+earned, Gold spent and Time recorded add it, so they hold the whole history the app and the website
+show; every other card on that page says "since install", and the Time, Combat and more and People
+pages carry it in their title. Without `before` nothing is added or labelled. The session page never
+adds it.
 
 ## Level estimates
 

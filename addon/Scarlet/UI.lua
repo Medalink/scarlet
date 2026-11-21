@@ -358,8 +358,14 @@ local WORDS = {
 -- Stats views ------------------------------------------------------------------
 
 local liveStats, openTimers = {}, {}
-local function Snapshot(src, addSession)
+-- history: add the digest's totals for what the addon did not record itself (before it was installed);
+-- liveStats.history is then that table, nil otherwise.
+local function Snapshot(src, addSession, history)
     for _, k in ipairs(ns.STAT_KEYS) do liveStats[k] = src[k] or 0 end
+    liveStats.history = history and ns.History(ns.charKey) or nil
+    if liveStats.history then
+        for k, v in pairs(liveStats.history) do liveStats[k] = liveStats[k] + v end
+    end
     if ns.sessionG and addSession then liveStats.tracked = liveStats.tracked + GetTime() - ns.sessionG end
     if addSession and ns.OpenTimers then
         for k, secs in pairs(ns.OpenTimers(openTimers)) do liveStats[k] = (liveStats[k] or 0) + secs end
@@ -371,6 +377,13 @@ local function Snapshot(src, addSession)
     liveStats.mateCount = n
     return liveStats
 end
+
+-- The Stats cards the digest's history fills; the rest count from the install.
+local FULL_HISTORY = { Kills = true, Deaths = true, Dungeons = true, Bosses = true, Quests = true,
+    ["Items looted"] = true, Experience = true, ["Gold earned"] = true, ["Gold spent"] = true,
+    ["Time recorded"] = true }
+-- Pages whose cards all count from the install.
+local FROM_INSTALL = { time = true, more = true, people = true }
 
 -- Open cells split by hairlines, like the site's "This week" row: a small label over a
 -- big condensed number. The first row has a stronger rule above it.
@@ -395,12 +408,21 @@ local function StatsPage(parent, source, defs)
         cell.value = Text(cell, 34, T.fg, "LEFT", "display")
         cell.value:SetPoint("TOPLEFT", pad, -34)
         cell.value:SetPoint("RIGHT", -6, 0)
+        cell.note = Text(cell, 11, T.muted, "RIGHT")
+        cell.note:SetPoint("TOPRIGHT", -6, -16)
+        cell.note:SetText("since install")
+        cell.note:Hide()
         cell.def = def
         cells[i] = cell
     end
     function page:Refresh()
         local s = source()
-        for i = 1, #cells do cells[i].value:SetText(cells[i].def[2](s)) end
+        for i = 1, #cells do
+            local c = cells[i]
+            c.value:SetText(c.def[2](s))
+            -- With history from before the install, the cards it cannot fill say where they start.
+            c.note:SetShown(s.history ~= nil and page.partial == true and not FULL_HISTORY[c.def[1]])
+        end
     end
     return page
 end
@@ -715,7 +737,9 @@ local STATIC_PAGES = { settings = true, fonts = true }
 local BUILDERS = {
     overview = function(body) return ns.OverviewPage(body, ns.UI) end,
     stats = function(body)
-        return StatsPage(body, function() return Snapshot(ns.char or ns.sess, true) end)
+        local page = StatsPage(body, function() return Snapshot(ns.char or ns.sess, true, ns.char ~= nil) end)
+        page.partial = true
+        return page
     end,
     session = function(body)
         return StatsPage(body, function() return Snapshot(ns.sess, true) end)
@@ -743,7 +767,9 @@ local function Show(key)
     -- The Character page opens on the character's name; the others open on their title.
     local home = key == "overview"
     window.pageTitle:SetShown(not home)
-    window.pageTitle:SetText(navButtons[key].label)
+    local title = navButtons[key].label
+    if FROM_INSTALL[key] and ns.char and ns.History(ns.charKey) then title = title .. ", since install" end
+    window.pageTitle:SetText(title)
     window.body:ClearAllPoints()
     window.body:SetPoint("TOPLEFT", 0, home and 0 or -TITLE_H)
     window.body:SetPoint("BOTTOMRIGHT")
