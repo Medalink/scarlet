@@ -14,7 +14,7 @@ local MATES, DEATHS = 3, 3
 -- Level estimates, see "Level estimates" in docs/OVERVIEW.md.
 local PACE_SECONDS = 36000 -- played time the pace is measured over
 local MIN_PLAYED = 900     -- less played time than this gives no estimate
-local DAY_WINDOW = 14      -- days the calendar rate is measured over
+local DAY_WINDOW = 14      -- most days the calendar rate is measured over
 local MAX_DAYS = 3650      -- a date further away than this is left out
 local MAX_LEVEL = 60
 -- NEED[n]: XP that level n needs to reach level n + 1.
@@ -239,24 +239,26 @@ local function Collect(key, lvl, weekStart)
     end
     Top(mates, MATES, b.mn, b.mv)
 
-    -- Rows for the level estimates, newest first: all the digest's, plus the addon's that the digest
-    -- does not hold (two keys within 3 seconds are one session).
+    -- Rows for the level estimates, newest first: the digest's `recent` (its `sessions` when an older
+    -- digest has no `recent`), plus the addon's rows after `through` (two keys within 3 seconds are one
+    -- session). `first` is the start of the oldest recorded session.
     local rows = {}
-    if d and type(d.sessions) == "table" then
-        for _, row in ipairs(d.sessions) do
-            local t = type(row) == "table" and N(row.t) or 0
-            if t > 0 then rows[#rows + 1] = { t = t, p = N(row.p), x = XPOf(row) } end
+    if d then
+        local list = type(d.recent) == "table" and d.recent or d.sessions
+        if type(list) == "table" then
+            for _, row in ipairs(list) do
+                local t = type(row) == "table" and N(row.t) or 0
+                if t > 0 then
+                    rows[#rows + 1] = { t = t, p = N(row.p), x = row.x ~= nil and N(row.x) or XPOf(row) }
+                end
+            end
         end
+        b.first = N(d.first) > 0 and N(d.first) or nil
     end
-    local held = #rows
     if type(o) == "table" and type(o.sess) == "table" then
         for _, row in ipairs(o.sess) do
             local t = type(row) == "table" and N(row.t) or 0
-            local dup = t <= 0
-            for i = 1, held do
-                if abs(rows[i].t - t) <= 3 then dup = true; break end
-            end
-            if not dup then rows[#rows + 1] = { t = t, p = N(row.p), x = XPOf(row) } end
+            if t > through + 3 then rows[#rows + 1] = { t = t, p = N(row.p), x = XPOf(row) } end
         end
     end
     table.sort(rows, function(a, c) return a.t > c.t end)
@@ -311,7 +313,7 @@ function ns.OverviewPage(parent, ui)
 
     -- Fills the rows for a character at level lvl; no rows (and no basis line) at level 60 or when
     -- the client hides the experience bar.
-    local function ShowEta(rows, live, lvl, xp, xpMax)
+    local function ShowEta(rows, first, live, lvl, xp, xpMax)
         local n = 0
         local basis = ""
         if lvl and xp and xpMax and xpMax > 0 then
@@ -325,7 +327,9 @@ function ns.OverviewPage(parent, ui)
                 basis = "No level times yet: they need 15m played with XP recorded"
             else
                 local perSecond = pace.xp / pace.played
-                local rate = pace.day / DAY_WINDOW
+                -- Played seconds per calendar day over the days recorded, at most DAY_WINDOW and at least 1.
+                local oldest = first or (rows[#rows] and rows[#rows].t) or (live and N(live.t)) or now
+                local rate = pace.day / math.min(DAY_WINDOW, max(1, (now - oldest) / 86400))
                 for i = 1, n do
                     local secs = XPLeft(lvl, xp, xpMax, targets[i]) / perSecond
                     local when
@@ -449,7 +453,7 @@ function ns.OverviewPage(parent, ui)
             barFill:SetWidth(1)
             progress:SetText(levelTime > 0 and ("This level " .. Duration(levelTime) .. " so far") or "")
         end
-        ShowEta(base.rows, live, clientLevel, xp, xpMax)
+        ShowEta(base.rows, base.first, live, clientLevel, xp, xpMax)
 
         -- This week
         local wp, wq, wg, ws, wr = base.wp, base.wq, base.wg, base.ws, base.wr

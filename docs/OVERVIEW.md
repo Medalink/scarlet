@@ -80,8 +80,10 @@ ScarletDigest = {
       level = 41, xp = 34632, xpMax = 95800, zone = "Riverglades",
       played = <seconds, from the newest TP total, else the sum of sessions>,
       money = <copper, latest known balance>,
-      sessions = { <session rows, newest first: the last 60, or all from the last 14 days if more; and
-                    more, if needed, until their `p` add up to 36,000, for the level estimates> },
+      first = <t of the character's first recorded session>,
+      sessions = { <session rows, newest first: the last 60, or all from the last 14 days if more;
+                    trimmed further when the file would pass 200 KB> },
+      recent = { { t, p, x }, ... },                    -- for the level estimates, see below
       levels = { [level] = { p, xk, xd, xq, xe, xo, k, dd, q, at = <epoch s reached, 0 if before recording>, zone = <zone with the most time> } },
       zones = { { name, p, k, dd, x }, ... },          -- top 40 by time
       runs = { { inst, name, n, last }, ... },          -- by n, top 10; last = epoch s
@@ -94,6 +96,13 @@ ScarletDigest = {
   },
 }
 ```
+
+`recent` is a compact list for the level estimates: one `{ t, p, x }` per session (start,
+played seconds, total XP: `xk + xd + xq + xe + xo`), newest first, covering every session from
+the 14 days before `made` and more until their `p` add up to 36,000. It is built from all the
+character's sessions before `sessions` is trimmed and is never trimmed itself, so the pace is
+measured on the same history whatever the size of `sessions`. `first` is `t` of the oldest
+session the companion has.
 
 Every string is escaped (`\\`, `\"`, newlines as `\n`); no long brackets, no NaN or inf. The
 file stays under 200 KB.
@@ -116,8 +125,12 @@ The old stat grids stay, renamed "Stats".
 
 Time to the next level, to the next multiple of 10 and to level 60, from how the character has
 actually gained XP. The game and the app show the same numbers, so both follow this section
-exactly. All sums use the merged session rows (digest rows, the addon's own rows, the open
-session), newest first by `t`; two keys within 3 seconds are one row.
+exactly. All sums use the merged rows `{ t, p, x }`, newest first by `t`: the digest's `recent`,
+the addon's own rows with `t` after `through` (their `x` is `xk + xd + xq + xe + xo`) and the
+open session. Two keys within 3 seconds are one row. `sessions` is not read here. A digest
+without `recent` (written by an older companion) falls back to its `sessions`, and without
+`first` to the oldest merged row. The app has no addon rows or open session: it merges nothing,
+and reads `recent` as the companion builds it from all sessions.
 
 **Pace.** Take rows newest first, the open session included, and stop after the row that brings
 the running total of `p` to 36,000 seconds (10 hours) or more; use all rows when they add up to
@@ -165,8 +178,11 @@ and above nothing is shown. At 59 the only target is 60.
 (halves round up): `d` days and `h` hours (`m div 1440`, `m mod 1440 div 60`) as `3d 4h` when
 `d > 0`; hours and minutes as `1h 52m` when `h > 0`; otherwise `41m`.
 
-**Date.** `rate` is the sum of `p` over the rows with `t >= now - 14 * 86400`, divided by 14
-(played seconds per calendar day). The date is `now + time / rate * 86400` seconds, in local
+**Date.** `rate` is the sum of `p` over the rows with `t >= now - 14 * 86400`, divided by the
+days covered: `min(14, (now - first) / 86400)`, not rounded, at least 1, where `first` is the
+digest's `first` (the start of the character's oldest recorded session; the oldest merged row
+when the digest has none). A character recorded for 2 days is measured over 2 days, not 14.
+`rate` is played seconds per calendar day. The date is `now + time / rate * 86400` seconds, in local
 time, written `Fri 28 Nov` (weekday, day, month), with the year added when it is not this year.
 Leave the date out when `rate` is 0 or when `time / rate` is more than 3,650 days. The page
 writes "about" before it.
