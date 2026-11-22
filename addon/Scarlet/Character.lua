@@ -30,6 +30,7 @@ local CT = C_ClassTalents
 local EQS = C_EquipmentSet
 local RULES = C_GameRules
 local PVP = C_PvP
+local PLAYERINFO = C_PlayerInfo
 local PETINFO = C_PetInfo
 local BARBER = C_BarberShop
 local PAPER = C_PaperDollInfo
@@ -683,9 +684,12 @@ local function RuRead()
         Num(Call(_G.GetRealmID)) or "",
         concat(names, ","),
     }
-    local key = concat(fields, "|")
+    local selfFound = Flag(Call(PLAYERINFO and PLAYERINFO.IsSelfFoundActive))
+    local selfFoundAllowed = Flag(Call(RULES and RULES.IsSelfFoundAllowed))
+    local key = concat(fields, "|") .. "|" .. selfFound .. "|" .. selfFoundAllowed
     if key == ruKey then return end
-    fields[#fields + 1] = ruKey == nil and "s" or "c"
+    local n = #fields
+    fields[n + 1], fields[n + 2], fields[n + 3] = ruKey == nil and "s" or "c", selfFound, selfFoundAllowed
     Emit("RU", unpack(fields))
     ruKey = key
 end
