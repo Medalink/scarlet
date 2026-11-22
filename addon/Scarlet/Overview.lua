@@ -12,7 +12,7 @@ local ETA_TOP, ETA_ROW_H = 86, 17
 local MATES, DEATHS = 3, 3
 
 -- Level estimates, see "Level estimates" in docs/OVERVIEW.md.
-local MIN_PLAYED = 900       -- less played time than this gives no estimate
+local MIN_FIT_LEVELS = 5
 local MIN_LEVEL_PLAYED = 900 -- a level needs this much played time to count as a point of the fit
 local MAX_GROWTH = math.log(1.05) -- most the pace may rise a level, as a log
 local DAY_WINDOW = 14      -- most days the calendar rate is measured over
@@ -214,27 +214,22 @@ end
 local pace = { a = 0, b = 0, levels = 0, flat = true }
 local pn, pp, py = {}, {}, {} -- the levels the fit uses: n, played seconds, ln(XP / played second)
 
--- Fits the pace from played seconds lp[n] and XP lx[n] on each level up to lvl, plus the open
--- session's share of each level unless a row already holds it. False when there is nothing to fit.
-local function FitPace(lp, lx, live, held, lvl)
+local function FitPace(lp, lx, live, held, lvl, key)
     local lv = live and not held and live.lv
-    local played, gained, count, levels = 0, 0, 0, 0
+    local count = 0
     for n = 1, lvl do
-        local p, x = lp[n] or 0, lx[n] or 0
-        local s = lv and lv[n]
-        if type(s) == "table" then p, x = p + N(s.p), x + XPOf(s) end
-        played, gained = played + p, gained + x
-        if p > 0 then levels = levels + 1 end
-        if p >= MIN_LEVEL_PLAYED and x > 0 then
-            count = count + 1
-            pn[count], pp[count], py[count] = n, p, math.log(x / p)
+        local _, complete = ns.LevelFacts(key, n)
+        if complete then
+            local p, x = lp[n] or 0, lx[n] or 0
+            local s = lv and lv[n]
+            if type(s) == "table" then p, x = p + N(s.p), x + XPOf(s) end
+            if p >= MIN_LEVEL_PLAYED and x > 0 then
+                count = count + 1
+                pn[count], pp[count], py[count] = n, p, math.log(x / p)
+            end
         end
     end
-    if played < MIN_PLAYED or gained <= 0 then return false end
-    if count < 3 then
-        pace.a, pace.b, pace.levels, pace.flat = math.log(gained / played), 0, levels, true
-        return true
-    end
+    if count < MIN_FIT_LEVELS then return false end
     local w, sn, sy = 0, 0, 0
     for i = 1, count do
         w, sn, sy = w + pp[i], sn + pp[i] * pn[i], sy + pp[i] * py[i]
@@ -434,7 +429,7 @@ function ns.CapEstimate(key, lvl, xp, xpMax, live)
     local b = Collect(key, lvl, WeekStart(), ch)
     if b.capped then return end
     local held = live ~= nil and LiveHeld(b.rows, live)
-    if not FitPace(b.levelP, b.levelX, live, held, lvl) then return end
+    if not FitPace(b.levelP, b.levelX, live, held, lvl, key) then return end
     local secs = SecondsTo(lvl, xp, xpMax, cap)
     local now = time()
     local oldest = b.first or (b.rows[#b.rows] and b.rows[#b.rows].t) or (live and N(live.t)) or now
@@ -519,9 +514,9 @@ function ns.OverviewPage(parent, ui)
         if n > 0 then
             local now = time()
             local held = live ~= nil and LiveHeld(rows, live)
-            if not FitPace(b.levelP, b.levelX, live, held, lvl) then
+            if not FitPace(b.levelP, b.levelX, live, held, lvl, b.key) then
                 n = 0
-                basis = "No level times yet: they need 15m played with XP recorded"
+                basis = format("Needs %d complete levels of 15m or more with XP recorded", MIN_FIT_LEVELS)
             else
                 -- Played seconds per calendar day over the days recorded, at most DAY_WINDOW and at least 1.
                 local oldest = first or (rows[#rows] and rows[#rows].t) or (live and N(live.t)) or now
@@ -536,8 +531,7 @@ function ns.OverviewPage(parent, ui)
                     etaTime[i]:SetText(Span(secs))
                     etaDate[i]:SetText(when and ("about " .. when) or "")
                 end
-                basis = format("Based on %s played: %s XP an hour",
-                    pace.levels == 1 and "1 level" or (pace.levels .. " levels"), Num(Rate(lvl) * 3600))
+                basis = format("Based on %d complete levels played: %s XP an hour", pace.levels, Num(Rate(lvl) * 3600))
                 if not pace.flat then
                     basis = format("%s at level %d, rising %.1f%% a level", basis, lvl, (math.exp(pace.b) - 1) * 100)
                 end

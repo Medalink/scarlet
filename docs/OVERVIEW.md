@@ -123,6 +123,7 @@ file, so a player without the app has no missing file for the client to warn abo
 ```lua
 ScarletDigest = {
   v = 1, made = <epoch s>,
+  groupByAccount = true,   -- only when the player turned on "Group characters by game account" in the app
   accounts = { ["<game account folder>"] = { "Name-Surname", ... } },   -- absent until the companion has seen the accounts
   chars = {
     ["Name-Surname"] = {
@@ -177,7 +178,9 @@ trimmed either, and holds `p` and the XP sources `xk`, `xd`, `xq`, `xe`, `xo` of
 and game accounts. Two characters were online together when their sessions, `[t, t + p]`, share 60
 seconds or more; one game account cannot be online twice, so the pairs are across accounts.
 `accounts` maps each game account folder (`WTF\Account\<name>`) to the characters its
-SavedVariables file holds, kept in `accounts.json` beside `state.json`.
+SavedVariables file holds, kept in `accounts.json` beside `state.json`. `groupByAccount` is written only
+when the player turns on "Group characters by game account" in the app's settings; the app rewrites the digest
+at once, and the game reads it at the next `/reload`.
 
 Every string is escaped (`\\`, `\"`, newlines as `\n`); no long brackets, no NaN or inf. The
 file stays under 200 KB.
@@ -210,9 +213,11 @@ its title, since every card on it is counted from the install. The session page 
 The in-game Characters page reads the digest first, since `ScarletDB` holds only the characters of
 the current game account. A character's row is its digest figures (`class`, `level`, `zone`, `played`,
 `money`, `through`) plus this account's own rows after `through`; the logged-in character is live.
-Characters are grouped by game account (`accounts`, else the characters this account recorded).
-Sections: the totals (characters, played, gold), Item search, the character list, This week, Level
-estimates and Played together.
+The character list is one table of every character, the logged-in one first, then the newest `last`
+first. With more than one game account in `accounts` it has a Game account column. With `groupByAccount`
+it is split under "This account" and "Other accounts" instead (`accounts`, else the characters this
+account recorded) and has no such column. Sections: the totals (characters, played, gold), Item search,
+the character list, This week, Level estimates and Played together.
 
 - This week sums each character's `days` from the Monday 00:00 local time of this week, plus its own rows
   after `through` and, for the logged-in character, the open session. A digest without `days` falls back
@@ -248,16 +253,17 @@ average over the latest hours.
   and `x_n` the XP gained at level `n` (`xk + xd + xq + xe + xo`). They come from the per-level
   history: the digest's `levels` table, plus the `lv` shares of the addon's own rows with `t`
   after `through`, plus the open session's `lv` unless a merged row already holds it (the same
-  start within 3 seconds). A level is a point when `p_n >= 900` and `x_n > 0`; its
-  `y_n = ln(x_n / p_n)`.
+  start within 3 seconds). A level is a point only when it is complete (`complete` in the digest,
+  or the ding out of it seen by the addon, see `ns.LevelFacts`: the level the character was first
+  seen at, a level with unrecorded play inside and the level in progress never are), `p_n >= 900`
+  and `x_n > 0`; its `y_n = ln(x_n / p_n)`.
 - Fit. A weighted least squares of `y` on `n` with weights `p_n`. With `W = sum p_n`,
   `mn = sum(p_n * n) / W` and `my = sum(p_n * y_n) / W`:
   `b = sum(p_n * (n - mn) * (y_n - my)) / sum(p_n * (n - mn)^2)` and `a = my - b * mn`.
   Clamp `b` to `[0, ln(1.05)]`; when `b` was clamped, `a = sum(p_n * (y_n - b * n)) / W`.
-- Fewer than 3 points: a flat pace, `b = 0` and `a = ln(sum x / sum p)`, the sums over all levels
-  `n <= L`.
-- No estimate when the total `p` over levels `n <= L` is under 900 seconds (15 minutes) or the
-  total `x` is 0.
+- No estimate under 5 points: the page shows "Needs 5 complete levels of 15m or more with XP
+  recorded". A character first seen at level 7 therefore has no target until it has dinged five
+  levels with Scarlet recording.
 - `rate(n) = exp(a + b * n)` is XP per played second at level `n`.
 
 **Seconds to reach level T**, for a character at level `L` with `xp` of `xpMax` on the bar
@@ -311,12 +317,11 @@ Leave the date out when `rate` is 0 or when `time / rate` is more than 3,650 day
 writes "about" before it.
 
 **The page.** Under the level bar: one row per target, `Level T`, the time and the date, and one
-muted line with the basis, `Based on 38 levels played: 11,278 XP an hour at level 41, rising
-2.1% a level`. The number of levels is the points of the fit (`1 level` for one); the rate is
+muted line with the basis, `Based on 38 complete levels played: 11,278 XP an hour at level 41,
+rising 2.1% a level`. The number of levels is the points of the fit; the rate is
 `round(rate(L) * 3600)` with thousands separators and the rise is `(exp(b) - 1) * 100` to one
-decimal. A flat pace says `Based on 2 levels played: 6,120 XP an hour`, the number being the
-levels with played time. With no estimate the rows are empty and the muted line says what is
-missing.
+decimal. A clamped slope of 0 leaves the rise out. With no estimate the rows are empty and the muted
+line says what is missing.
 
 ## Max level
 

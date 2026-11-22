@@ -11,6 +11,10 @@ local CHARS = {
     { x = 0, w = 180 }, { x = 184, w = 36, just = "RIGHT" }, { x = 232, w = 140 },
     { x = 380, w = 78, just = "RIGHT" }, { x = 466, w = 78, just = "RIGHT" }, { x = 552, w = 103, just = "RIGHT" },
 }
+local CHARS_ACCOUNT = {
+    { x = 0, w = 150 }, { x = 154, w = 88 }, { x = 246, w = 32, just = "RIGHT" }, { x = 284, w = 110 },
+    { x = 398, w = 76, just = "RIGHT" }, { x = 480, w = 70, just = "RIGHT" }, { x = 556, w = 99, just = "RIGHT" },
+}
 local WEEK = {
     { x = 0, w = 180 }, { x = 190, w = 90, just = "RIGHT" }, { x = 290, w = 70, just = "RIGHT" },
     { x = 370, w = 140, just = "RIGHT" }, { x = 520, w = 80, just = "RIGHT" },
@@ -57,6 +61,7 @@ local imported = {}
 
 local rows, pairsList = {}, {}
 local liveBags = {}
+local grouped, severalAccounts = false, false
 
 local function Span(secs)
     local m = max(1, floor(secs / 60 + 0.5))
@@ -73,6 +78,7 @@ end
 
 local function Gather(key, c, ch, weekStart, folderOf, here)
     local r = { key = key, wp = 0, wq = 0, wg = 0, wr = 0, played = 0, last = 0, live = key == ns.charKey }
+    r.account = folderOf[key]
     r.here = type(ch) == "table" or (here ~= nil and folderOf[key] == here)
     local through = -1
     if type(c) == "table" then
@@ -115,7 +121,11 @@ local function Gather(key, c, ch, weekStart, folderOf, here)
 end
 
 local function ByOrder(a, b)
-    if a.here ~= b.here then return a.here end
+    if grouped then
+        if a.here ~= b.here then return a.here end
+    elseif a.live ~= b.live then
+        return a.live
+    end
     if a.last ~= b.last then return a.last > b.last end
     return a.key < b.key
 end
@@ -154,11 +164,18 @@ local function Collect()
     for key in pairs(mine) do names[key] = true end
     if ns.charKey then names[ns.charKey] = true end
     local weekStart = ns.WeekStart()
+    grouped = type(d) == "table" and d.groupByAccount == true
+    local firstAccount
+    severalAccounts = false
     for key in pairs(names) do
         if type(key) == "string" then
             local r = Gather(key, chars[key], mine[key], weekStart, folderOf, here)
             Estimate(r)
             rows[#rows + 1] = r
+            if r.account then
+                firstAccount = firstAccount or r.account
+                if r.account ~= firstAccount then severalAccounts = true end
+            end
         end
     end
     table.sort(rows, ByOrder)
@@ -334,6 +351,8 @@ function ns.CharactersPage(parent, ui)
     end
 
     local charSec = Section("Character list", CHARS, { "Character", "Level", "Zone", "Played", "Last played", "Gold" })
+    local charAccountSec = Section("Character list", CHARS_ACCOUNT,
+        { "Character", "Game account", "Level", "Zone", "Played", "Last played", "Gold" })
     local weekSec = Section("This week", WEEK, { "Character", "Played", "Quests", "Gold", "Dungeons" })
     local etaSec = Section("Level estimates", ETA, { "Character", "Level", "Time", "Date" })
     local togetherSec = Section("Played together", TOGETHER,
@@ -505,33 +524,42 @@ function ns.CharactersPage(parent, ui)
         for i = #findSec.rows, found + 1, -1 do findSec.rows[i].frame:Hide() end
         Close(findSec, found, hits and "No items match" or nil)
 
-        Open(charSec)
+        local withAccount = severalAccounts and not grouped
+        local listSec, unusedSec = charSec, charAccountSec
+        if withAccount then listSec, unusedSec = charAccountSec, charSec end
+        Hide(unusedSec)
+        Open(listSec)
         local count, group = 0, nil
         local both = false
         for _, r in ipairs(rows) do
             if r.here ~= rows[1].here then both = true end
         end
         for i, r in ipairs(rows) do
-            if both and r.here ~= group then
+            if grouped and both and r.here ~= group then
                 group = r.here
                 count = count + 1
-                Place(charSec, count, group and "This account" or "Other accounts")
+                Place(listSec, count, group and "This account" or "Other accounts")
             end
             local s = list[i]
             count = count + 1
-            local line = Place(charSec, count)
+            local line = Place(listSec, count)
             local c = line.cols
             c[1]:SetText(r.key)
             Tint(c[1], s.class, T.fg)
-            c[2]:SetText(s.level and s.level > 0 and Num(s.level) or "")
-            c[3]:SetText(s.zone or "")
-            c[4]:SetText(s.known and Duration(s.played) or "")
-            c[5]:SetText(Ago(r.last, now, r.live))
-            c[6]:SetText(s.money and Money(s.money) or "")
+            local at = 2
+            if withAccount then
+                c[2]:SetText(r.account or "")
+                at = 3
+            end
+            c[at]:SetText(s.level and s.level > 0 and Num(s.level) or "")
+            c[at + 1]:SetText(s.zone or "")
+            c[at + 2]:SetText(s.known and Duration(s.played) or "")
+            c[at + 3]:SetText(Ago(r.last, now, r.live))
+            c[at + 4]:SetText(s.money and Money(s.money) or "")
             line.wash:SetShown(r.live)
         end
-        for i = #charSec.rows, count + 1, -1 do charSec.rows[i].frame:Hide() end
-        Close(charSec, count)
+        for i = #listSec.rows, count + 1, -1 do listSec.rows[i].frame:Hide() end
+        Close(listSec, count)
 
         local week = 0
         Open(weekSec)
