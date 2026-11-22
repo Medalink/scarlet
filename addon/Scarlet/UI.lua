@@ -124,6 +124,7 @@ end
 
 local function ApplyFont()
     for fs, def in pairs(followers) do SetFontSafe(fs, FacePath(def[2]), FaceSize(def[2], def[1])) end
+    if ns.Gather and ns.Gather.OnFontChanged then ns.Gather.OnFontChanged() end
 end
 
 local function Relist()
@@ -568,38 +569,60 @@ local function Button(parent, label, width, onClick)
     local text = Text(b, 14, T.ink, "CENTER", "strong")
     text:SetPoint("CENTER")
     text:SetText(label)
+    b.label = text
     b:SetScript("OnEnter", function() sheen:Show() end)
     b:SetScript("OnLeave", function() sheen:Hide() end)
     b:SetScript("OnClick", onClick)
     return b
 end
 
+ns.UI.Toggle = Toggle
+ns.UI.Button = Button
+
 local function SettingsPage(parent)
     local page = CreateFrame("Frame", nil, parent)
     page:SetAllPoints()
+    local scroll = CreateFrame("ScrollFrame", nil, page)
+    scroll:SetAllPoints()
+    local child = CreateFrame("Frame", nil, scroll)
+    child:SetSize(CONTENT_W, 1)
+    scroll:SetScrollChild(child)
+    scroll:EnableMouseWheel(true)
+    scroll:SetScript("OnMouseWheel", function(self, delta)
+        local top = max(0, child:GetHeight() - self:GetHeight())
+        self:SetVerticalScroll(math.min(top, max(0, self:GetVerticalScroll() - delta * 44 * 2)))
+    end)
+    scroll:SetScript("OnSizeChanged", function(_, w) child:SetWidth(w) end)
+
     local opt = ns.opt
     local toggles = {
-        Toggle(page, 0, "Record movement path", function() return opt.path end, function(v) opt.path = v end),
-        Toggle(page, -44, "Turn on combat logging at login", function() return opt.combatLog end,
+        Toggle(child, 0, "Record movement path", function() return opt.path end, function(v) opt.path = v end),
+        Toggle(child, -44, "Turn on combat logging at login", function() return opt.combatLog end,
             function(v) opt.combatLog = v end),
-        Toggle(page, -88, "Show login message", function() return opt.chat end, function(v) opt.chat = v end),
-        Toggle(page, -132, "Pause recording", function() return opt.paused end, function(v) opt.paused = v end),
-        Toggle(page, -176, "Show recording icon", function() return opt.icon ~= false end,
+        Toggle(child, -88, "Show login message", function() return opt.chat end, function(v) opt.chat = v end),
+        Toggle(child, -132, "Pause recording", function() return opt.paused end, function(v) opt.paused = v end),
+        Toggle(child, -176, "Show recording icon", function() return opt.icon ~= false end,
             function(v) opt.icon = v end),
-        Toggle(page, -220, "Take screenshots at key moments", function() return opt.shots end,
+        Toggle(child, -220, "Take screenshots at key moments", function() return opt.shots end,
             function(v) opt.shots = v end),
-        Toggle(page, -264, "Draw on the world map", function() return not ns.Map or ns.Map.Drawing() end,
+        Toggle(child, -264, "Draw on the world map", function() return not ns.Map or ns.Map.Drawing() end,
             function(v) if ns.Map then ns.Map.SetDraw(v) end end),
-        Toggle(page, -308, "Share loot sources with your group", function() return opt.shareLoot ~= false end,
+        Toggle(child, -308, "Share loot sources with your group", function() return opt.shareLoot ~= false end,
             function(v) opt.shareLoot = v if ns.ShareApply then ns.ShareApply() end end),
     }
-    local save = Button(page, "Save chunk now", 150, function()
+    local save = Button(child, "Save chunk now", 150, function()
         SlashCmdList.SCARLET("save")
         ns.RefreshStatus()
     end)
     save:SetPoint("TOPLEFT", 0, -372)
+    local gatherSection = ns.Gather and ns.Gather.BuildSection and ns.Gather.BuildSection(child, ns.UI, -424)
+    local totalHeight = 424 + (gatherSection and gatherSection.height or 0)
+    child:SetHeight(max(1, totalHeight))
     function page:Refresh()
+        local w = scroll:GetWidth()
+        if w and w > 0 then child:SetWidth(w) end
         for i = 1, #toggles do toggles[i]:Refresh() end
+        if gatherSection and gatherSection.Refresh then gatherSection.Refresh() end
     end
     return page
 end
@@ -1066,6 +1089,7 @@ function ns.OnLogin()
     WatchFonts()
     BuildIcon()
     RefreshIcon()
+    if ns.Gather and ns.Gather.Init then ns.Gather.Init(ns.UI) end
     if ns.db.seenVersion ~= ns.VERSION then
         ns.db.seenVersion = ns.VERSION
         Toast()
@@ -1212,6 +1236,18 @@ SlashCmdList.SCARLET = function(msg)
         local n, bytes = ns.StoredChunks()
         ns.Print(format("%d chunks stored (%.1f KB), %d lines pending, %s.", n, bytes / 1024, ns.Pending(),
             ns.opt.paused and "paused" or "recording"))
+    elseif cmd == "gather" then
+        if ns.Gather then
+            if arg == "reset" then
+                ns.Gather.ResetLayout()
+                ns.Print("gathering popup layout reset.")
+            elseif arg == "clear" then
+                ns.Gather.ResetSession()
+                ns.Print("gathering session cleared.")
+            else
+                ns.Gather.TogglePreview()
+            end
+        end
     else
         ns.Toggle()
     end

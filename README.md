@@ -52,6 +52,12 @@ the same rule. "Live" is a column that marks the APIs the client's UI calls; it 
 where you died), the session's numbers, time splits, people and a live view. A minimap icon shows that it is
 recording.
 
+While you herb, mine, skin, fish, survey or disenchant, a small popup lists the zone and one line per item:
+profession, item, this session's count / your lifetime count, and what the stack in your bags is worth. It fades
+12 seconds after the last gather. Drag it to move it, Shift-drag to scale it, and drag an edge to resize it. The
+Settings page has a live preview, the font size and which professions to show. `/scarlet gather` pins it on screen,
+`/scarlet gather reset` puts it back, and `/scarlet gather clear` empties the session.
+
 ## On the world map
 
 With the OpenMap addon installed (its code is MIT; its map art is Blizzard's), Scarlet adds a "Scarlet" section to

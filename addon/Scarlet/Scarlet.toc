@@ -46,4 +46,5 @@ Characters.lua
 Addons.lua
 MapData.lua
 Map.lua
+Gather.lua
 UI.lua
