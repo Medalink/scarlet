@@ -14,6 +14,10 @@ local function Num(v)
     if Plain(v) and type(v) == "number" then return v end
 end
 
+local function IsTable(v)
+    return Plain(v) and type(v) == "table"
+end
+
 local function Call(fn, ...)
     if type(fn) ~= "function" then return end
     local ok, v = pcall(fn, ...)
@@ -59,7 +63,7 @@ local function ReadWarband()
     local seen = 0
     wipe(warbandScratch)
     for _, tab in ipairs(tabs) do
-        local id = type(tab) == "table" and Num(tab.ID)
+        local id = IsTable(tab) and Num(tab.ID)
         if id then
             local slots = Num(Call(C_Container.GetContainerNumSlots, id)) or 0
             seen = seen + slots
@@ -241,10 +245,10 @@ function H.OWNED_AUCTIONS_UPDATED()
     local enum = _G.Enum and _G.Enum.AuctionStatus
     wipe(auctionsScratch)
     for _, a in ipairs(list) do
-        if type(a) == "table" then
+        if IsTable(a) then
             local status = Num(a.status)
             local key = a.itemKey
-            local id = type(key) == "table" and Num(key.itemID)
+            local id = IsTable(key) and Num(key.itemID)
             if id and not (enum and status == enum.Sold) then Add(auctionsScratch, id, Num(a.quantity)) end
         end
     end

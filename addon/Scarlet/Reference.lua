@@ -10,6 +10,7 @@ local SPELL_TEXT_CAP = 1500
 local SPELL_TEXT_CHARS = 300
 local RECIPE_CAP = 3000
 local RECIPES_PER_FRAME = 20
+local SPELLS_PER_FRAME = 8
 local WALK_DELAY = 1
 local BASIC_REAGENT = 1
 
@@ -83,9 +84,7 @@ local function SpellTextWrite(spellID, set, ch)
     Emit("SD", spellID, text:sub(1, SPELL_TEXT_CHARS))
 end
 
---- Called by Capture.lua right after it writes the SN line of a spell.
-function ns.SpellFact(spellID)
-    if not C_Spell or not Plain(spellID) or type(spellID) ~= "number" then return end
+local function SpellFactWrite(spellID)
     local infoSet, ch = CharSet("si", "siN")
     if not infoSet then return end
     local textSet = CharSet("sd", "sdN")
@@ -97,6 +96,29 @@ function ns.SpellFact(spellID)
         textSession[spellID] = true
         SpellTextWrite(spellID, textSet, ch)
     end
+end
+
+local spellQueue, spellQueued, spellNext, spellDraining = {}, {}, 1, false
+
+local function SpellQueueDrain()
+    local last = min(spellNext + SPELLS_PER_FRAME - 1, #spellQueue)
+    for i = spellNext, last do SpellFactWrite(spellQueue[i]) end
+    spellNext = last + 1
+    if spellNext <= #spellQueue then
+        C_Timer.After(0, SpellQueueDrain)
+        return
+    end
+    spellQueue, spellNext, spellDraining = {}, 1, false
+end
+
+--- Called by Capture.lua right after it writes the SN line of a spell.
+function ns.SpellFact(spellID)
+    if not C_Spell or not Plain(spellID) or type(spellID) ~= "number" or spellQueued[spellID] then return end
+    spellQueued[spellID] = true
+    spellQueue[#spellQueue + 1] = spellID
+    if spellDraining then return end
+    spellDraining = true
+    C_Timer.After(0, SpellQueueDrain)
 end
 
 local function ReagentList(schematic)

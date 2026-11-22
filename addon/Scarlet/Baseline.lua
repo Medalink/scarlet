@@ -290,14 +290,25 @@ end
 
 local function FunctionProbe(path)
     local fn = Resolve(path)
+    if type(fn) ~= "function" then
+        Emit("PR", "?f:" .. path, 0, "missing")
+        return
+    end
     local arg, needsArg = nil, false
     if PLAYER_UNIT_PROBES[path] then
         arg, needsArg = "player", true
     elseif PLAYER_MAP_PROBES[path] then
         arg, needsArg = BestMap(), true
     end
-    local v
-    if not needsArg or arg ~= nil then v = Call(fn, arg) end
+    if needsArg and arg == nil then
+        Emit("PR", "?f:" .. path, 0, "noarg")
+        return
+    end
+    local ok, v = pcall(fn, arg)
+    if not ok then
+        Emit("PR", "?f:" .. path, 0, "error")
+        return
+    end
     local present, detail = Present(v)
     Emit("PR", "?f:" .. path, present, detail)
 end

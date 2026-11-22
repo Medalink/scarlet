@@ -93,13 +93,15 @@ function ns.ScoreRows()
     if scoring or not count or not pvp or type(pvp.GetScoreInfo) ~= "function" then return end
     scoring = true
     local mine = Call(UnitGUID, "player")
+    local myName = CharacterName(Call(UnitName, "player"))
     local index, written = 1, 0
     local function Step()
         local last = min(index + BO_ROWS_PER_FRAME - 1, count)
         for i = index, last do
             local info = Call(pvp.GetScoreInfo, i)
             local guid = type(info) == "table" and info.guid
-            local own = mine ~= nil and Plain(guid) and guid == mine
+            local name = type(info) == "table" and CharacterName(info.name)
+            local own = (mine ~= nil and Plain(guid) and guid == mine) or (name and name == myName)
             if written < BO_ROWS and not own and ScoreRowWrite(info) then written = written + 1 end
         end
         index = last + 1

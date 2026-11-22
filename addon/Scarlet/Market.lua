@@ -92,7 +92,7 @@ function H.AUCTION_HOUSE_BROWSE_RESULTS_UPDATED()
     if type(rows) ~= "table" then return end
     for i = 1, min(#rows, ROWS_PER_EVENT) do
         local row = rows[i]
-        if type(row) == "table" then
+        if Plain(row) and type(row) == "table" then
             local itemID, level, suffix = KeyParts(row.itemKey)
             local price = Copper(row.minPrice)
             if itemID and price then
