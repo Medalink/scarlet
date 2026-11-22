@@ -8,10 +8,50 @@ local LINES_PER_SESSION = 600
 local BROWSE_LINES_PER_SESSION = 300
 local REPEAT_SECONDS = 15 * 60
 local ROWS_PER_EVENT = 50
+local PRICE_CAP = 2000
 
 local H = {}
 local lastWritten = {}
+local prices = {}
+local priceCount = nil
 local written, browseWritten = 0, 0
+
+local function RecordPrice(itemID, price)
+    if type(itemID) ~= "number" or type(price) ~= "number" or price <= 0 then return end
+    prices[itemID] = price
+    local db = ns.db
+    if type(db) ~= "table" then return end
+    local store = db.prices
+    if type(store) ~= "table" then
+        store = {}
+        db.prices = store
+        priceCount = 0
+    elseif priceCount == nil then
+        local n = 0
+        for _ in pairs(store) do n = n + 1 end
+        priceCount = n
+    end
+    if store[itemID] == nil then
+        if priceCount >= PRICE_CAP then
+            store[next(store)] = nil
+        else
+            priceCount = priceCount + 1
+        end
+    end
+    store[itemID] = price
+end
+
+function ns.MarketPrice(itemID)
+    if not Plain(itemID) or type(itemID) ~= "number" then return nil end
+    local p = prices[itemID]
+    if type(p) == "number" then return p end
+    local store = ns.db and ns.db.prices
+    if type(store) == "table" then
+        p = store[itemID]
+        if type(p) == "number" then return p end
+    end
+    return nil
+end
 
 local function Num(v)
     if Plain(v) and type(v) == "number" and v == v then return v end
@@ -29,6 +69,7 @@ local function Call(fn, ...)
 end
 
 local function Write(kind, itemID, price, quantity, listings, itemLevel, suffix)
+    RecordPrice(itemID, price)
     if written >= LINES_PER_SESSION then return end
     local browse = kind == "b"
     if browse and browseWritten >= BROWSE_LINES_PER_SESSION then return end
