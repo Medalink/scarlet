@@ -734,6 +734,7 @@ local function Inspected(unit)
     local _, race = UnitRace(unit)
     Emit("IV", name, Num(UnitLevel(unit)) or "", Str(class) or "", Str(race) or "",
         Str(UnitFactionGroup(unit)) or "", Str(Call(_G.GetGuildInfo, unit)) or "")
+    ns.Inspected(name, unit)
 end
 
 HookG("InspectUnit", Inspected)

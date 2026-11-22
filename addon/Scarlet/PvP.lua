@@ -185,6 +185,24 @@ local function StatName(id, name)
     Emit("BN", id, name)
 end
 
+local function StatsText(list)
+    local stats = ""
+    if Plain(list) and type(list) == "table" then
+        for i = 1, min(#list, 12) do
+            local s = list[i]
+            if type(s) == "table" then
+                local id, value = Num(s.pvpStatID), Num(s.pvpStatValue)
+                if id and value then
+                    StatName(id, s.name)
+                    stats = stats .. (stats == "" and "" or ",") .. id .. ":" .. value
+                end
+            end
+        end
+    end
+    return stats
+end
+ns.ScoreStats = StatsText
+
 -- BS <killingBlows> <honorableKills> <deaths> <honorGained> <damageDone> <healingDone> <rating>
 --    <ratingChange> <mmrChange> <honorLevel> <spec> <role> <teamSize> <enemySize> <stats>: your
 --    own scoreboard row after the match. stats are the mode's objective numbers as id:value
@@ -203,20 +221,7 @@ local function Score(final)
     end
     if not final and not (Num(info.killingBlows) and Num(info.honorGained)) then return end
     pending = false
-    local stats = ""
-    local list = info.stats
-    if Plain(list) and type(list) == "table" then
-        for i = 1, min(#list, 12) do
-            local s = list[i]
-            if type(s) == "table" then
-                local id, value = Num(s.pvpStatID), Num(s.pvpStatValue)
-                if id and value then
-                    StatName(id, s.name)
-                    stats = stats .. (stats == "" and "" or ",") .. id .. ":" .. value
-                end
-            end
-        end
-    end
+    local stats = StatsText(info.stats)
     local team = Team()
     local mine = team and Call(PVP.GetTeamInfo, team)
     local theirs = team and Call(PVP.GetTeamInfo, 1 - team)
@@ -224,6 +229,7 @@ local function Score(final)
         info.healingDone, info.rating, info.ratingChange, info.mmrChange, info.honorLevel, info.talentSpec,
         info.roleAssigned, type(mine) == "table" and Num(mine.size) or "",
         type(theirs) == "table" and Num(theirs.size) or "", stats)
+    ns.ScoreRows()
 end
 
 function H.PVP_MATCH_COMPLETE(winner, duration)
