@@ -1049,9 +1049,13 @@ end
 -- PLAYER_ALIVE also fires at every login and reload, so it only counts after
 -- a death this session (or when logging in dead).
 local dead = false
+local diedAt
+local SAME_DEATH_SECONDS = 3
 
 function H.PLAYER_DEAD()
-    dead = true
+    local now = GetTime()
+    if dead and diedAt and now - diedAt < SAME_DEATH_SECONDS then return end
+    dead, diedAt = true, now
     Emit("D")
     Ov.Death()
     Add("deaths")

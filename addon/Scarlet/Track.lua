@@ -3,7 +3,7 @@
 -- Plain() before it is compared or indexed. Codes are in docs/FORMAT.md.
 local _, ns = ...
 
-local floor, type, tonumber, pcall = math.floor, type, tonumber, pcall
+local floor, type, tonumber, pcall, pairs, tostring, select = math.floor, type, tonumber, pcall, pairs, tostring, select
 local GetTime = GetTime
 local Emit, Add, Plain = ns.Emit, ns.Add, ns.Plain
 local SpellName, MapPoint, NpcID, Pattern = ns.SpellName, ns.MapPoint, ns.NpcID, ns.Pattern
@@ -97,7 +97,9 @@ end
 -- The last hits before death, from the client's death recap. The list is newest first:
 -- entry 1 is the killing blow (Forever's own recap marks it causedDeath). Its event table
 -- is undocumented, so every field is read defensively.
-local RECAP_HITS = 3
+local RECAP_HITS = 20
+local SAME_DEATH_SECONDS = 3
+local ENVIRONMENT_EVENT = "ENVIRONMENTAL_DAMAGE"
 
 -- Who could have killed you: the units you can see when you die. Read at PLAYER_DEAD, since the recap
 -- arrives a second later, and matched to the killing blow's source name. A creature keeps its level and
@@ -123,7 +125,8 @@ local function Look(unit)
         killers[name] = { "p", level, Str(select(2, UnitClass(unit))) or "", Str(select(2, UnitRace(unit))) or "",
             Str((_G.GetGuildInfo(unit))) or "" }
     else
-        killers[name] = { "c", level, Str(UnitClassification(unit)) or "", "", "" }
+        local npc = NpcID(UnitGUID(unit))
+        killers[name] = { "c", level, Str(UnitClassification(unit)) or "", "", "", type(npc) == "number" and npc or "" }
     end
 end
 
@@ -131,6 +134,30 @@ local function LookAround()
     wipe(killers)
     for i = 1, #KILLER_UNITS do Look(KILLER_UNITS[i]) end
 end
+
+local function IsTrue(v)
+    return Plain(v) and v == true
+end
+
+local function HitFlags(e)
+    return (IsTrue(e.avoidable) and "a" or "") .. (IsTrue(e.deadly) and "d" or "") .. (IsTrue(e.hideCaster) and "h" or "")
+end
+
+local function RecapFieldsProbe(e)
+    local db = ns.db
+    if not db then return end
+    local key = tostring(select(2, GetBuildInfo())) .. ":" .. date("%Y%m%d")
+    if db.recapFieldsProbed == key then return end
+    db.recapFieldsProbed = key
+    local names = {}
+    for name in pairs(e) do
+        if Plain(name) and type(name) == "string" then names[#names + 1] = name end
+    end
+    table.sort(names)
+    Emit("PR", "?k:DeathRecapEventInfo", 1, table.concat(names, ","))
+end
+
+local recapWritten
 
 local function DeathRecap()
     local recap = C_DeathRecap
@@ -144,9 +171,13 @@ local function DeathRecap()
     local first = events[1]
     local last = Plain(first) and type(first) == "table" and N(first.timestamp) or ""
     last = last ~= "" and last or 0
+    local signature = last .. ":" .. #events .. ":" .. (Plain(first) and type(first) == "table" and N(first.amount) or "")
+    if last > 0 and signature == recapWritten then return end
+    recapWritten = signature
     for i = 1, math.min(#events, RECAP_HITS) do
         local e = events[i]
         if Plain(e) and type(e) == "table" then
+            if i == 1 then RecapFieldsProbe(e) end
             local spell = e.spellId or e.spellID
             local amount, src = e.amount, e.sourceName
             if Plain(spell) and spell then SpellName(spell) end
@@ -154,23 +185,24 @@ local function DeathRecap()
             local who = Str(src)
             local k = i == 1 and who and killers[who]
             local when = (t ~= "" and last > 0) and ns.Round1(last - t) or ""
-            if i == 1 then
-                -- The killing blow also carries who it came from, when that unit was in sight, and the
-                -- number of hits the recap holds.
-                Emit("DR", Plain(spell) and spell or "?", Plain(amount) and amount or "?",
-                    who or "", Plain(e.isEnvironmental) and e.isEnvironmental and 1 or 0,
-                    i, N(e.overkill), N(e.currentHP), maxHP, when, N(e.school),
-                    k and k[1] or "", k and k[2] or "", k and k[3] or "", k and k[4] or "", k and k[5] or "", #events)
-            else
-                Emit("DR", Plain(spell) and spell or "?", Plain(amount) and amount or "?",
-                    who or "", Plain(e.isEnvironmental) and e.isEnvironmental and 1 or 0,
-                    i, N(e.overkill), N(e.currentHP), maxHP, when, N(e.school))
-            end
+            local event = Str(e.event) or ""
+            local environmental = event == ENVIRONMENT_EVENT or IsTrue(e.isEnvironmental)
+            Emit("DR", Plain(spell) and spell or "?", Plain(amount) and amount or "?",
+                who or "", environmental and 1 or 0,
+                i, N(e.overkill), N(e.currentHP), maxHP, when, N(e.school),
+                k and k[1] or "", k and k[2] or "", k and k[3] or "", k and k[4] or "", k and k[5] or "",
+                i == 1 and #events or "", event, Str(e.environmentalType) or "", N(e.absorbed), N(e.resisted),
+                N(e.blocked), HitFlags(e), k and k[6] or "")
         end
     end
 end
 
+local diedAt
+
 function H.PLAYER_DEAD()
+    local now = GetTime()
+    if diedAt and now - diedAt < SAME_DEATH_SECONDS then return end
+    diedAt = now
     local m, x, y = MapPoint()
     Emit("DL", m, x, y)
     LookAround()

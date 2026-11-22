@@ -5,8 +5,8 @@ local min = math.min
 local concat = table.concat
 local Emit, Plain = ns.Emit, ns.Plain
 
-local HD_SESSION_CAP = 300
-local HD_TEXT_CHARS = 200
+local HD_SESSION_CAP = 3000
+local HD_TEXT_CHARS = 400
 local WH_ROWS_PER_SEARCH = 50
 local WH_DAY_CAP = 1500
 local BO_ROWS = 80
