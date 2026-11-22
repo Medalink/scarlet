@@ -234,6 +234,7 @@ A field the client marked secret is written as `?`. Missing values are empty.
 | `YS` | source, via, itemID, count, copper | Imported history: a sale another addon booked. via is `auction`, `vendor`, `trade` or `other`; copper is the whole amount received after the house's cut. No buyer is named. Group `imports` |
 | `YB` | source, via, itemID, count, copper | Imported history: a purchase another addon booked, as `YS`. Group `imports` |
 | `YM` | source, kind, copper | Imported history: other income or expense another addon booked (`money-transfer`, `repair-bill`, `postage`), copper signed. Group `imports` |
+| `YC` | origin, store, scope, window, kind, from, to, dims, amounts | Addon count: one additive statement another addon's saved variables make (casts and catches in a fishing session, a lifetime total, a kill). Written by the companion into `counts/payloads/counts.scl`, never by the addon. Group `counts` |
 | `JP` | xp, season, seasonXP, value, specimenItemID, specimenWeight, specimenWater, specimenAt | The Fishing Log: the character's angler profile. xp is its total experience, season the season number (months since year 0, UTC) and seasonXP the experience in it, value the copper its catches were worth; the four specimen fields are the latest specimen (item, pounds, water, epoch seconds). The line's time is when the profile last changed. Written by the companion into `fishing/payloads/fishing.scl`, never by the addon, like every `J` line. Group `fishing` |
 | `JR` | spotKey, itemID, weight, specimen | The Fishing Log: the character's heaviest fish of one species at one spot, in pounds, at the time it was caught. specimen `1` or `0`. Group `fishing` |
 | `JJ` | itemID, count, best, bestSpecimen, firstSpotKey, firstWater, uiMapID, x, y | The Fishing Log: one species in the character's journal: how many were caught, the heaviest and the heaviest specimen (pounds, `0` for none), and where the first was caught (x and y times 10000). The line's time is the first catch, or the profile's time when the addon kept none. Group `fishing` |
@@ -570,13 +571,58 @@ what Scarlet did not record itself as `YG`, `YS`, `YB` and `YM` lines.
   matches an `AU y` line, a vendor sale or purchase whose counts match `I` and `VB` lines within a minute, money that
   matches an `M` line within 90 seconds, and a gold point within 15 minutes of a balance Scarlet recorded.
 - Imported records are never added to earned, spent, kills or any other observed number, and no public board reads
-  them. They have their own sharing group, `imports`.
+  them. They have their own sharing group, `imports`. Addon counts (below) are the one kind of addon data that is
+  added to Scarlet's totals (owner, 2026-11-22).
 - Per character, `imports/view.json` (the pages' view of the records) and `imports/payloads/import.scl` (the upload
   payload, header `scarletimports	1	<Name-Surname>`, then `<epoch ms>	<code>	<fields...>`) replace themselves on
   every export. `overview.json` and `Digest.lua` carry the view as `imported`: `sources`, `first`, `last`, `sales`,
   `sales_copper`, `buys`, `buys_copper`, `dropped`, `gold` (one point a UTC day), `recent`, `items` and `days`.
 - The BeanCounter reader follows the order BeanCounter packs a completed auction in (stack, money, deposit, fee,
   buyout, bid, buyer or seller, time, reason, house); an entry in another layout is counted and left out.
+
+## Addon counts
+
+Other addons count things Scarlet counts too: casts and catches, kills, dungeon runs, experience by level. The
+companion writes each additive statement such an addon makes as a `YC` line, group `counts`, so a player's history
+from before Scarlet, and from moments Scarlet missed, is added to the same totals (owner, 2026-11-22: "part of our
+total scarlet data on the web and in the app", "marked as addon data", "we do not duplicate data"). Which of
+Scarlet's metrics each field equals, and how the server keeps a count from being added twice, is scarlet-web's
+DESIGN.md, "Addon counts". Non-additive facts (a record weight, a first catch) are never `YC` lines; they stay in the
+addon's own group, such as `fishing`.
+
+```
+<epoch ms of the window's end>	YC	<origin>	<store>	<scope>	<window>	<kind>	<from>	<to>	<dims>	<amounts>
+```
+
+- **origin**: the addon, as a short key: `fl` The Fishing Log, `ff` ForeverFishing, `mc` Mastercraft, `nf`
+  NaowhForever, `fdj` ForeverDungeonJournal, `rxp` RXPGuides, `tsm` TradeSkillMaster.
+- **store**: tells two histories of one addon apart, and is only a value the addon never rewrites while it keeps its
+  records. `fl` and `ff` session lines have an empty store: a session is its character and its end. `mc` `life` lines
+  use `life.since`.
+- **scope**: `c`, or `a` for a total the addon keeps for the whole game account. An `a` line names no character and
+  no account, and is written with the same text into the payload of every character of that folder the companion
+  exports.
+- **window**: `event` (`from` = `to`), `session`, `day`, `level` (`from` and `to` are the times the level was
+  reached and left) or `life` (`from` is the store's start, empty when it has none; `to` is the modification time of
+  the saved-variables file).
+- **kind**: what is counted: `fishing`, `kill`, `run`, `xp`, and others as integrations add them.
+- **from**, **to**: epoch seconds on the addon's clock, as the addon stamped them.
+- **dims**: `key=value` pairs joined by `;` (`zone=`, `item=`, `npc=`, `level=`), or empty. A store writes each
+  window once: one line with no dims, or lines split by the same dims that add up to the whole. `fl` and `ff`
+  sessions are one line with no dims.
+- **amounts**: `metric=number` pairs joined by `;`, with the addon's own field names mapped to Scarlet's metric names
+  (`casts`, `landed`, `items`, `unknown` for fishing). A field DESIGN.md does not map is not written.
+
+The companion keeps every record it has read in an archive per character, `counts/archive.tsv`, one record per key
+(origin, store, scope, window, kind, dims, to, and from for `life`). The archive keeps the addon's own numeric fields
+as read, not the mapped amounts; the payload maps them on every export, so a corrected mapping reaches records the
+addon has since wiped. A key read again with other values replaces its record. A record that leaves the addon's file
+stays in the archive, so an addon that wipes or caps its history takes nothing back. An unreadable file or a missing
+table adds nothing and removes nothing. `.bak` files are never read. A `life` total is archived at most once per UTC
+day, and only when it changed. Other players' names are dropped before a record enters the archive.
+
+- Per character, `counts/payloads/counts.scl` (header `scarletcounts	1	<Name-Surname>`, then
+  `<epoch ms>	YC	<fields...>`) is rebuilt from the archive on every export.
 
 ## The Fishing Log
 
