@@ -27,7 +27,7 @@ ns.STAT_KEYS = { "kills", "blows", "casts", "deaths", "foot", "mount", "swim", "
     "npcTalks", "abandoned", "spellsLearned", "recipes", "honorKills", "honor", "pvpTime", "screenshots", "rolls", "crafted", "ccTaken",
     "collected" }
 
-local DEFAULT_OPT = { path = true, combatLog = true, chat = true, paused = false, shots = false }
+local DEFAULT_OPT = { path = true, combatLog = true, chat = true, paused = false, shots = false, shareLoot = true }
 
 -- The open buffer lives in SavedVariables (db.buf) rather than a local, so
 -- whatever the client writes on reload, logout or disconnect includes it,

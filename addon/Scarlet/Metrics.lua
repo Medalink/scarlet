@@ -345,6 +345,15 @@ end
 local readGUIDs, nRead = {}, 0
 local REREAD_FOR = 300
 
+function ns.LootRead(guid)
+    local now, t = GetTime(), readGUIDs[guid]
+    if t and now - t < REREAD_FOR then return 1 end
+    if nRead > 500 then readGUIDs, nRead = {}, 0 end
+    if not t then nRead = nRead + 1 end
+    readGUIDs[guid] = now
+    return 0
+end
+
 local function LootSources(isFromItem)
     if lootRead then return end
     local okN, n = Call("GetNumLootItems")
@@ -388,21 +397,17 @@ local function LootSources(isFromItem)
     -- Only a window that produced a line counts as read; an empty read at
     -- LOOT_READY leaves LOOT_OPENED to try again.
     if #order > 0 then lootRead = true end
-    if nRead > 500 then readGUIDs, nRead = {}, 0 end
     for i = 1, #order do
         local kind, id = order[i]:match("^(%a):(.*)$")
         local src = sources[order[i]]
         local again = ""
+        if kind == "c" or kind == "g" then again = ns.LootRead(src.guid) end
+        local items = table.concat(src.items, ",")
+        Emit("LO", kind, id, src.slots, items, again)
         if kind == "c" or kind == "g" then
-            local now, t = GetTime(), readGUIDs[src.guid]
-            again = t and now - t < REREAD_FOR and 1 or 0
-            if again == 0 then
-                if not t then nRead = nRead + 1 end
-                readGUIDs[src.guid] = now
-            end
+            ns.PlaceGUID(src.guid, "l")
+            if ns.ShareLoot then ns.ShareLoot(src.guid, src.slots, items, again) end
         end
-        Emit("LO", kind, id, src.slots, table.concat(src.items, ","), again)
-        if kind == "c" or kind == "g" then ns.PlaceGUID(src.guid, "l") end
     end
 end
 

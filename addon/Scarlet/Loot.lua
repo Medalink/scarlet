@@ -73,19 +73,36 @@ end
 
 -- The roster key for a name from chat or the roll history: the name itself when it is a
 -- key, else the one key that starts with "<name>-", else the name as it came.
-local function Resolve(name)
-    if not Str(name) then return end
+local function Clean(name)
     -- Forever's loot messages show "Name Surname"; characters are keyed Name-Surname.
-    name = name:match("^%s*(.-)%s*$"):gsub("%s+", "-")
+    return (name:match("^%s*(.-)%s*$"):gsub("%s+", "-"))
+end
+
+function ns.RosterKey(name)
+    if not Str(name) then return end
+    name = Clean(name)
     if roster[name] then return name end
     local prefix, hit = name .. "-", nil
     for key in pairs(roster) do
         if key:sub(1, #prefix) == prefix then
-            if hit then return name end
+            if hit then return nil end
             hit = key
         end
     end
-    return hit or name
+    return hit
+end
+
+function ns.SenderKey(sender)
+    if not Str(sender) then return end
+    local key = ns.RosterKey(sender)
+    if key then return key end
+    local base = Clean(sender):match("^(.+)%-[^-]+$")
+    if base and roster[base] then return base end
+end
+
+local function Resolve(name)
+    if not Str(name) then return end
+    return ns.RosterKey(name) or Clean(name)
 end
 
 local function IsSelf(who)

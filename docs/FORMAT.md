@@ -177,7 +177,7 @@ A field the client marked secret is written as `?`. Missing values are empty.
 | `LB` | earned, available, spent, seasonalCap, maxAvailable, spentProfessions, spentAdventure, spentProgression, why | Legacy points balance. earned is the Legacy reward track level (the number on the shield, one per point earned). available is what you can still spend, spent what you have spent across the three Legacy trees (they share one currency), seasonalCap the client's cap for the currency and maxAvailable the most you can earn in total (`earned / max` in the challenge window). The last three are spent in the Professions, Adventure and Progression trees. Counts committed purchases only. why: `s` the first read of a session, `c` a number changed. Written when any field differs from the last `LB` of the session, a few seconds after a challenge, a purchase or a refund |
 | `LA` | achievementID, points | A Legacy Challenge you just completed paid this many Legacy points. Skipped when the client re-announces an old earn, and for an achievement that pays nothing. `AD` and `AN` carry the same achievementID |
 | `LN` | treeID, nodeID, entryID, rank, oldRank, ranksPurchased, maxRanks, spellID, why, name | A node of a Legacy tree changed its committed rank (a purchase, a refund or a reset), or, with why `s`, a baseline of every node that has a rank at login (oldRank empty). treeID: `1187` Professions, `1188` Adventure, `1189` Progression. rank is the node's `activeRank`, the value the tree UI reads for a purchased node; ranksPurchased counts the purchases behind it. entryID is the active entry (the first entry on a node with no rank). spellID is the entry's spell, named by `SN`; name is the definition's own name, filled only when it has no spell. Ranks you have staged in the tree window but not applied are not written; the apply writes them |
-| `LO` | kind, id, slots, items, again | A loot window's source: `c` creature (npcID), `g` object such as a herb, vein, chest or bobber (objectID), `i` an item opened from your bags (its itemID, empty when the client didn't say which item; a fished clam reads `LO g 35591`, `O 7973`, then `LO i 7973` and the pearl's `O` line), `o` other. One line per source. items is what that source put in the window, comma-joined: `itemIDxquantity`, `m` coin (`mxN`, N the client's quantity), `c<currencyID>xquantity`, read from the loot window itself. again is `1` when the same corpse or object was read in the last 5 minutes (skinning it, opening it a second time), `0` for a first read, empty for an item. Lines before 2026-11-20 15:00 have no items |
+| `LO` | kind, id, slots, items, again | A loot window's source: `c` creature (npcID), `g` object such as a herb, vein, chest or bobber (objectID), `i` an item opened from your bags (its itemID, empty when the client didn't say which item; a fished clam reads `LO g 35591`, `O 7973`, then `LO i 7973` and the pearl's `O` line), `o` other. One line per source. items is what that source put in the window, comma-joined: `itemIDxquantity`, `m` coin (`mxN`, N the client's quantity), `c<currencyID>xquantity`, read from the loot window itself. again is `1` when the same corpse or object was read in the last 5 minutes (skinning it, opening it a second time, or a group member's Scarlet reported it first in an `LW` line), `0` for a first read, empty for an item. Lines before 2026-11-20 15:00 have no items |
 | `PR` | name, present | Once per client build and day: whether an API Scarlet uses exists (`1`) or not (`0`). The loot code also probes the client's loot message format strings (`LOOT_ITEM`, `LOOT_ROLL_WON`, ...) |
 | `TW` | slot, spellID, seconds | A totem entered one of your totem slots, with its duration. spellID 0 when the slot emptied |
 | `IL` | 1, seconds, name, complete, total | You are in (or entering) an instance you are saved to: the lock's time left and bosses completed of total |
@@ -254,6 +254,7 @@ A field the client marked secret is written as `?`. Missing values are empty.
 | `LT` | kind, who, itemID, quantity | Another group member received an item. who is their Name-Surname. kind: `l` looted (by the rule, a roll win or a master looter's pick), `p` the client pushed the item to them. Your own receipts are `O`. Read from the client's loot messages through its format strings; the message text is not stored |
 | `LD` | kind, who, itemID, rollType, roll, src | A group roll on an item, for another player. kind: `r` rolled (roll is their number), `s` chose without a number yet, `p` passed, `w` won, `a` everyone passed (who empty). rollType is the client's LootRollType (`0` pass, `1` need, `2` greed, `3` disenchant, `4` transmog), empty when the message does not say. src: `c` the chat roll messages, `h` the client's roll history. One roll can arrive from both sources. Your own rolls are `RL` and `RW` |
 | `IQ` | itemID, quality | An item's quality (`0` poor, `1` common, `2` uncommon, `3` rare, `4` epic, `5` legendary), once per session per item, for the items in `LT` and `LD` lines and in your own loot messages. `O` carries no quality; the companion joins it by itemID. It is not a name line |
+| `LW` | who, kind, id, slots, items, again, late | A loot window that a group member's Scarlet read and sent to the group (see "What is sent to your group"). who is their Name-Surname as `GM` names them. kind, id, slots and items are as in `LO`, with kind only `c` or `g`; kind and id are read from the creature or object GUID in the message, never taken from the sender's word, and the GUID is not stored. again is `1` when the sender had read that corpse or object before, or when you or another member read it in the last 5 minutes, so one corpse has one line with again `0` across `LO` and `LW`. late is the seconds between their read and the send (a send waits for the end of combat). A member can add at most 20 lines a minute, and a session holds at most 1500. Written only while "Share loot sources with your group" is on |
 | `TN` | nodeID, name, state, slot | A flight point seen on a flight master's map, once per session (a name line). state: `0` you are here, `1` reachable, `2` unreachable (not discovered, or no route from here). slot is the client's index on that map |
 | `TF` | toNodeID, fromNodeID, copper | You picked a flight. fromNodeID is the flight point you stood at, empty when the client named none; copper is the price, empty when it gave none or the stop was not reachable. The flight itself is the `T 1` and `T 0` lines after it, and a mount you had on ends here |
 | `MO` | 1, spellID, mountID, flyable, baseline | You mounted. spellID and mountID come from the client's mount journal and are empty when it named none. flyable is `1` when the area allows flying. baseline `s` for a mount already on when the session started |
@@ -423,11 +424,43 @@ otherwise; logs from before `LM` existed stay `unknown` with the size from
 
 Links between events: `CB` to the `CR`, `CW` and `I c` lines after it (the
 recipe); `CB` to the `RD` line beside it (the recipe's difficulty); `QI` to `QK` (its campaign); `BQ` to `BM 1` (the queue that became the match, by map name and time); `BM 1` to `BM 0`, `BM 3` and `BS`, and `BS` to `BN` (stat names by id); `Q 2` to the `QR` line before it (the reward taken); `QD`, `GS` and `GO` to the `NW` window they happened in; `LO` to
-the `O` lines after it (the loot source); `K` and `LO` (kind `c`) to the same npcID, for drop rates; `LT`, `LD` and `LM` (master) to other players by Name-Surname, as `GM` names them; `O`, `LT` and `LD` to `IQ` (quality) and `IN` by itemID; `II` and `IT` to `IN` and `IQ` by itemID; `RW`, `RL` and `LD` to each other by player and itemID (rolls on one item within 60 seconds are one roll); names by id (`K`, `NS` to `N`; `CB`, `C`,
+the `O` lines after it (the loot source); `K` and `LO` (kind `c`) to the same npcID, for drop rates, and `LW` (kind `c`) the same way; `LW` to `LT` by who and itemID (the corpse a member's receipt came from); `LT`, `LD` and `LM` (master) to other players by Name-Surname, as `GM` names them; `O`, `LT` and `LD` to `IQ` (quality) and `IN` by itemID; `II` and `IT` to `IN` and `IQ` by itemID; `RW`, `RL` and `LD` to each other by player and itemID (rolls on one item within 60 seconds are one roll); names by id (`K`, `NS` to `N`; `CB`, `C`,
 `A`, `TW`, `RD`, `RT` to `SN`; `I`, `O`, `CR`, `G`, `PG` to `IN`; `SR` to `SN`
 and `IN`; `CU`, `CW` to `CN`; `SL`, `PS`, `PU`, `PG` to `KN`; `WS` to `WN`;
 `AC` to `AN`; `AD` to `AC` and `AN` by achievementID; `LA` to `AN` and `AD` by achievementID; `LN` to `SN` by spellID, and `LB` to `LV` (the same earned level); `AT` to `AN` and to `CK` by achievementID; `ZP` to the `Z` before it; `TF` to `TN` (flight points by nodeID) and to the `T 1` and `T 0` after it (the flight taken); `MO 1` to its `MO 0` (the mount, by spellID, and the time between them); `SM o` to its `SM a` or `SM x`, and to the `Z` line that follows an accepted summon; `TE m` to the `SM a` before it and `TE i` to `HB` (the bind) for a hearthstone; `NP` to `N` by npcID (kind `n`), `NS` and `NI` for the same npc, and `LO` and `NW` for the same source; `TE` to `SN` by spellID, to `IN` by itemID and to the `Z` and `P` lines around it; `TM 1` to its `TM 0` by type and id; `IB 1` to its `IB 0`; `SB`, `AB`, `AR`, `SO` to `SN` by spellID, `AB` and `EC` to `IN`, `SB` to `LS` (a learned spell is in the next `SB a`), `TB` to `N` and to the `LS` or `LR` after it, `TC` to `N` and to the `TB` that buys it (by npcID, name and subText), `AB` to its slot's earlier `AB`; `TG`, `TA` and `TD` to `TY` (talent tabs by id); `TG` and `TA` to each other by group; `TD` to its `TV` by treeID, to `TA` by nodeID and to `SN` by the spellIDs in entries; `TA` to `SN` by spellID; `EQ w` to the `EQ b` or `EQ c` line for the same setID; `PD` to `PT` (the same pet by name); `SX` to `SC` (the same reasons, the same stats.csv); `SE s`, `SE p` and `SE c` to one scenario by scenarioID; `MO`, `MP` to `SN` by spellID; `CA` to the `NC` line just before it (the same kind) and to `IN` by itemID; `CA mount` to `SN` by the spellID in extra; `TX` to `IN` by itemID, and to `TO` and `CL outfit` by outfitID; `SP`, `CX pet` and `CA pet` to each other by speciesID; `CV 1` to its `CV 0`; `UE` to itself by errorType (the client's name for the error is on every line); `AO v` and `AO x` to the earlier `AO s` or `AO a` for the same addon; `UW` to itself by widgetID; `SU q` to `QN` by questID; `BT x`, `BT l` and `BT e` to the `BT s` before them; `RF`, `RG`, `RV`, `RR` to `FN`; `RR` to `IN` and `SN`; `RF` to `RP` (the same gain, by faction name); `Q`, `QI`, `QP`, `QS`, `QA`, `QD`, `QR`, `QW`, `GS` to `QN`; `GO`, `GS` to `GN`; `QR` to `IN`; `QD`, `NW`, `GS`, `GO` to `N`; `VB`, `AU`, `ML`, `TR`, `EN`, `IU`, `RW`, `BR`, `DI` to `IN`; `VB` and `VS` to `N`; `VS` to `IN` by the itemIDs in its list); `VB` and `AU` to the `I` and `M` lines that follow (what you paid, what arrived); `ML` to the `I` and `M` lines after it; `TR 1` to its `TR 0`; `AU p` to `AU s`, `AU e` and `AU x` by auctionID; `AV` to `AU s` by item name, and with why `t` to the `ML` take next to it; `RW o` to `RW w`, `RW l` and `RL` by itemID; `GM`, `DP`, `ML` and `TR` to other players by Name-Surname; `GL m`, `GL l`, `GL c`, `RC r`, `GI` (from the unit tokens and the names the client gives), `IV`, `PM`, `AL`, `FR` and `CM i` and `j` to other players by name, and `GL m` to `GM` for the same member; `GL l` to the `GL m` that has the leader flag; `RC s` to its `RC r` and `RC e`; `LF l` to its `LF u` and `LF r`; `GU j` to `GU l`; every event to
 its session (`S`) and character.
+
+## What is sent to your group
+
+Scarlet sends one kind of addon message, and only to the group you are in
+(`PARTY`, `RAID` or `INSTANCE_CHAT`, prefix `Scarlet`). Each time it writes an
+`LO` line of kind `c` or `g` while you are grouped, it sends:
+
+```
+1;L;<guid>;<slots>;<items>;<again>;<late>
+```
+
+`1` is the message version; a receiver ignores any other. guid is the
+creature's or object's GUID: the receiver reads kind and id from it and uses it
+to tell a second read of the same corpse, and never stores it. slots, items and
+again are the `LO` fields. late is the whole seconds the message waited.
+
+The client refuses addon messages in combat and while chat messaging is
+restricted. A message then waits in a queue of at most 40 (the oldest is
+dropped past that) and the queue is sent one message a second once the
+restriction ends. A message that waited more than 5 minutes, or is longer than
+255 bytes, is not sent.
+
+A received message becomes an `LW` line when its sender is in your group, every
+field has the expected shape and the sender is under the rate limit. Anything
+else is dropped without a line. A member's `LW` lines are that member's claim:
+they are kept in their own code and never merged into `O` or `LO`.
+
+Nothing else is sent: no name, position, chat or any other line. "Share loot
+sources with your group" on the Settings page (`ScarletDB.opt.shareLoot`, on by
+default) turns sending and receiving off together, and so does pausing the
+recording. Scarlet makes no web requests; the game client carries the message
+to the group, as it carries its own loot messages.
 
 ## What is never recorded
 
@@ -520,11 +553,11 @@ SavedVariables path.
     group_size, kills, looted, drops, quantity, rate`. One row per creature
     and item that dropped at least once, for each loot rule (method,
     threshold, group size) the creature was killed or looted under. kills is
-    `K` lines; looted is the first-read `LO` lines of kind `c` for that
-    creature with an item list (older lines have none and count nowhere; a
-    second read of the same corpse, such as skinning, counts nowhere). Only
-    corpses you opened are seen, so rate is drops per corpse you looted,
-    under each rule; drops is the corpses
+    `K` lines; looted is the first-read `LO` and `LW` lines of kind `c` for
+    that creature with an item list (older lines have none and count nowhere;
+    a second read of the same corpse, such as skinning, counts nowhere). Only
+    corpses you opened, or a group member's Scarlet reported, are seen, so
+    rate is drops per corpse looted, under each rule; drops is the corpses
     the item came from; quantity is the total; rate is drops divided by
     looted. A rule with no drop of the item shows drops `0`. Coin and
     currency in a window are not items.

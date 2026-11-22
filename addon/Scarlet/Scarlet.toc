@@ -25,6 +25,7 @@ Economy.lua
 Progress.lua
 PvP.lua
 Loot.lua
+Share.lua
 Legacy.lua
 World.lua
 Teleport.lua
