@@ -1486,8 +1486,8 @@ local function OnSay(msg)
 end
 
 local lastEmote, lastEmoteT
-local function OnEmote(token)
-    if type(token) ~= "string" or not Plain(token) then return end
+local function OnEmote(token, _, hold)
+    if hold or type(token) ~= "string" or not Plain(token) then return end
     local now = GetTime()
     if token == lastEmote and now == lastEmoteT then return end
     lastEmote, lastEmoteT = token, now

@@ -122,7 +122,7 @@ A field the client marked secret is written as `?`. Missing values are empty.
 | `GM` | 1, Name-Surname | A player was in your group (joined, or already there at session start) |
 | `GM` | 0, Name-Surname, seconds | A player left your group, with time grouped together |
 | `WD` | word, count | You said a tracked word (`lol`, `rip`). Only the word and count are kept |
-| `EM` | token | You used an emote (`LOL`, `WAVE`, ...) |
+| `EM` | token | You used an emote (`LOL`, `WAVE`, ...). An emote the client's own UI holds while a frame is open, such as the `READ` the world map plays, is not one |
 | `DM` | meter, total, perSecond, seconds | Your total from the client damage meter after a fight. meter: `d` damage, `h` healing, `t` damage taken, `a` absorbs, `i` interrupts, `x` dispels |
 | `DS` | meter, spellID, amount | One of your top 5 spells for that meter (damage and healing) |
 | `DP` | meter, Name-Surname, classFile, total | A group member's total for that meter, up to 10 per fight |
