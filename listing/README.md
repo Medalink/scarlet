@@ -11,7 +11,7 @@ lines commented out (`# ## X-Curse-Project-ID:` and `# ## X-Wago-ID:`).
 | `description-curseforge.md` | Description for CurseForge. Choose the Markdown editor, then paste it. |
 | `description-wago.md` | Description for Wago. Same text as the CurseForge file (Markdown, no tables or inline images). |
 | `features.md`, `privacy.md`, `how-to-use.md` | The parts both descriptions are built from. |
-| `changelog.md` | Changelog, newest version first (1.0.0, then 0.4.0). `.pkgmeta` points the packager at it. |
+| `changelog.md` | Changelog, newest version first. `.pkgmeta` points the packager at it. |
 | `images/logo-400x400.png` | CurseForge logo and the avatar for both sites. Full-bleed dark square, so a round crop loses nothing. |
 | `images/logo-512x512.png`, `images/logo-1024x1024.png` | Larger copies if a form asks for more. |
 | `images/banner-1500x500.png` | For a banner field if either site shows one. Neither documents one, so this may stay unused. |
