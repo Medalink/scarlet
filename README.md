@@ -40,8 +40,11 @@ your group" on the Settings page turns sending and receiving off. The message an
 ## The capture map
 
 [docs/api-map.html](docs/api-map.html) lists every API the WoW Forever client documents, grouped by domain, and
-whether Scarlet records it. Each data point the client actually calls is either recorded or listed with the reason
-it is not worth recording. [tools/COVERAGE.md](tools/COVERAGE.md) explains how the map is built and grown.
+whether Scarlet records it. Every documented data point in a game domain (an event, or a function that reads state
+or returns a value) is either recorded or listed with the reason it is left out, whether or not the client's own UI
+calls it. The globals the client's UI calls that the docs omit are in their own "Undocumented" domain and follow
+the same rule. "Live" is a column that marks the APIs the client's UI calls; it does not change what needs a reason.
+[tools/COVERAGE.md](tools/COVERAGE.md) explains how the map is built and grown.
 
 ## In game
 

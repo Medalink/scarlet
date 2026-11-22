@@ -51,7 +51,7 @@ p { margin: 0; max-width: 68ch; color: var(--muted); }
 
 .domains { display: grid; gap: 2px; background: var(--panel); border: 1px solid var(--line); }
 .drow {
-  display: grid; grid-template-columns: minmax(130px, 190px) 1fr 120px; gap: 14px; align-items: center;
+  display: grid; grid-template-columns: minmax(130px, 190px) 1fr minmax(120px, 280px); gap: 14px; align-items: center;
   padding: 9px 14px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
 }
 .drow:hover, .drow[aria-pressed="true"] { background: var(--accent-soft); }
@@ -59,6 +59,7 @@ p { margin: 0; max-width: 68ch; color: var(--muted); }
 .drow .name { font-weight: 600; }
 .bar { height: 10px; background: var(--track); position: relative; overflow: hidden; }
 .bar i { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
+.bar i.skip { background: var(--muted); opacity: 0.45; }
 .drow .num { font-variant-numeric: tabular-nums; text-align: right; color: var(--muted); font-size: 13px; }
 .drow .num b { color: var(--fg); font-weight: 600; }
 .drow.other .name { color: var(--muted); font-weight: 500; }
@@ -82,16 +83,15 @@ td.sys { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
 .pill { display: inline-block; font-size: 11px; padding: 1px 7px; border: 1px solid var(--line); white-space: nowrap; color: var(--muted); }
 .pill.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .pill.ui { color: var(--live); border-color: currentColor; }
+.pill.hot { color: var(--accent); border-color: currentColor; }
 td.st { white-space: nowrap; }
 .why { white-space: normal; font-size: 11.5px; color: var(--muted); margin-top: 3px; max-width: 260px; }
 .kind { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 tr.act td.api { color: var(--muted); }
 .more { padding: 10px 12px; color: var(--muted); font-size: 13px; }
-.note { font-size: 13px; }
-.undoc { font-family: var(--mono); font-size: 12px; color: var(--fg); }
 @media (max-width: 560px) {
   h1 { font-size: 1.9rem; }
-  .drow { grid-template-columns: 1fr 88px; }
+  .drow { grid-template-columns: 1fr minmax(0, 60%); }
   .drow .bar { grid-column: 1 / -1; grid-row: 2; }
 }
 @media (prefers-reduced-motion: no-preference) { .bar i { transition: width 0.4s ease; } }
@@ -100,7 +100,7 @@ tr.act td.api { color: var(--muted); }
 <main>
   <header class="head">
     <h1>Scarlet API map <b id="build"></b></h1>
-    <p>Every function and event the WoW Forever client documents, sorted by what it is about. A data point is an event or a function that reads state; actions like Set, Open and Craft are listed but not counted. Live means a file the Forever client loads calls it, so the API works in Forever and not only in retail. Coverage counts live data points, minus the ones a review judged not worth recording; each of those shows its reason.</p>
+    <p>Every function and event the WoW Forever client documents, sorted by what it is about. A data point is an event, a function that reads state, or a function the docs say returns something; actions that return nothing are listed but not counted. Every data point in a game domain is either recorded by Scarlet or left out with a written reason, so none stays undecided. "Undocumented" holds the globals the Forever client's interface code calls that the docs do not list. The Live badge says a file the Forever client loads calls the API; it is a fact about the client and does not change what needs a decision. "Interface and other" is listed and not counted.</p>
     <div class="totals" id="totals"></div>
   </header>
 
@@ -119,13 +119,14 @@ tr.act td.api { color: var(--muted); }
         <option value="e">Events</option>
         <option value="f">Functions</option>
       </select>
-      <select id="state" aria-label="Tracking">
-        <option value="">Tracked or not</option>
-        <option value="1">Tracked</option>
-        <option value="0">Not tracked</option>
+      <select id="state" aria-label="Decision">
+        <option value="">Any decision</option>
+        <option value="rec">Recorded</option>
+        <option value="skip">Left out, with a reason</option>
+        <option value="undec">Undecided</option>
       </select>
       <label><input type="checkbox" id="points" checked> Data points only</label>
-      <label><input type="checkbox" id="ui" checked> Live in Forever</label>
+      <label><input type="checkbox" id="ui"> Live in Forever only</label>
     </div>
     <div class="count" id="count"></div>
     <div class="tablewrap">
@@ -137,11 +138,6 @@ tr.act td.api { color: var(--muted); }
     </div>
   </section>
 
-  <section aria-labelledby="ud-h" style="display:grid;gap:8px">
-    <h2 id="ud-h">Older globals Scarlet reads that the docs leave out</h2>
-    <p class="note">These are not in the generated docs but the Forever client's UI code calls them, and the addon checks for each before use.</p>
-    <div class="undoc" id="undoc"></div>
-  </section>
 </main>
 
 <script type="application/json" id="data">/*DATA*/</script>
@@ -151,32 +147,32 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 let rows = [], domain = "";
 
+const OTHER = "Interface and other";
+
 function totals(summary) {
-  const t = { points: 0, live: 0, liveTracked: 0, skipped: 0 };
+  const t = { points: 0, tracked: 0, skipped: 0, undecided: 0 };
   for (const [d, s] of Object.entries(summary)) {
-    if (d === "Interface and other") continue;
+    if (d === OTHER) continue;
     for (const k in t) t[k] += s[k];
   }
-  const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : 0);
   $("totals").innerHTML = [
-    ["hot", t.liveTracked, "live data points tracked"],
-    ["", t.live - t.skipped, "worth tracking"],
-    ["", pct(t.liveTracked, t.live - t.skipped) + "%", "coverage"],
-    ["", t.skipped, "judged not worth it"],
-    ["", t.points, "documented in game domains"],
+    ["", t.points, "documented data points"],
+    ["hot", t.tracked, "recorded"],
+    ["", t.skipped, "left out, with a reason"],
+    ["", t.undecided, "undecided"],
   ].map(([c, n, l]) => `<div class="total ${c}"><span class="n">${esc(n)}</span><span class="l">${esc(l)}</span></div>`).join("");
 }
 
 function domains(summary) {
   const order = Object.entries(summary).sort((a, b) =>
-    (a[0] === "Interface and other") - (b[0] === "Interface and other") || b[1].live - a[1].live);
+    (a[0] === OTHER) - (b[0] === OTHER) || b[1].points - a[1].points);
   $("domains").innerHTML = order.map(([d, s]) => {
-    const target = s.live - s.skipped;
-    const w = target ? (s.liveTracked / target) * 100 : 0;
-    return `<button class="drow${d === "Interface and other" ? " other" : ""}" data-d="${esc(d)}" aria-pressed="false">
+    const pct = (n) => (s.points ? (n / s.points) * 100 : 0).toFixed(1);
+    const counted = d !== OTHER;
+    return `<button class="drow${counted ? "" : " other"}" data-d="${esc(d)}" aria-pressed="false">
       <span class="name">${esc(d)}</span>
-      <span class="bar" aria-hidden="true"><i style="width:${w.toFixed(1)}%"></i></span>
-      <span class="num"><b>${s.liveTracked}</b> / ${target}</span></button>`;
+      <span class="bar" aria-hidden="true"><i style="width:${pct(s.tracked)}%"></i>${counted ? `<i class="skip" style="left:${pct(s.tracked)}%;width:${pct(s.skipped)}%"></i>` : ""}</span>
+      <span class="num">${counted ? `<b>${s.tracked}</b> recorded, ${s.skipped} left out, ${s.undecided} undecided` : `${s.points} data points, not counted`}</span></button>`;
   }).join("");
   const sel = $("dom");
   for (const [d] of order) sel.insertAdjacentHTML("beforeend", `<option value="${esc(d)}">${esc(d)}</option>`);
@@ -194,19 +190,20 @@ function render() {
   const dom = $("dom").value, kind = $("kind").value, st = $("state").value;
   const points = $("points").checked, ui = $("ui").checked;
   for (const b of document.querySelectorAll(".drow")) b.setAttribute("aria-pressed", String(b.dataset.d === dom));
+  const decision = (r) => (r[6] ? "rec" : r[8] ? "skip" : "undec");
   const hit = rows.filter((r) =>
-    (!dom || r[0] === dom) && (!kind || r[2] === kind) && (!st || String(r[6]) === st) &&
+    (!dom || r[0] === dom) && (!kind || r[2] === kind) && (!st || decision(r) === st) &&
     (!points || r[5]) && (!ui || r[7]) &&
     (!q || r[3].toLowerCase().includes(q) || r[4].toLowerCase().includes(q) || r[1].toLowerCase().includes(q)));
   $("count").textContent = `${hit.length.toLocaleString()} of ${rows.length.toLocaleString()} APIs`;
   $("rows").innerHTML = hit.slice(0, LIMIT).map((r) => `<tr class="${r[5] ? "" : "act"}">
     <td class="api">${esc(r[3])}</td>
-    <td class="kind">${r[2] === "e" ? "event" : r[5] ? "read" : "action"}</td>
+    <td class="kind">${r[2] === "e" ? "event" : r[5] ? "function" : "action"}</td>
     <td class="sys">${esc(r[1])}</td>
     <td class="fields">${esc(r[4])}</td>
-    <td class="st">${r[6] ? '<span class="pill on">Tracked</span>' : r[8] ? '<span class="pill">Skipped</span>' : '<span class="pill">Not tracked</span>'}
+    <td class="st">${r[6] ? '<span class="pill on">Recorded</span>' : r[8] ? '<span class="pill">Left out</span>' : r[5] && r[0] !== OTHER ? '<span class="pill hot">Undecided</span>' : '<span class="pill">Not recorded</span>'}
         ${r[7] ? '<span class="pill ui">Live</span>' : ""}
-        ${r[8] ? `<div class="why">Skipped: ${esc(r[8])}</div>` : ""}</td></tr>`).join("");
+        ${r[8] ? `<div class="why">${esc(r[8])}</div>` : ""}</td></tr>`).join("");
   const more = $("more");
   more.hidden = hit.length <= LIMIT;
   more.textContent = `Showing the first ${LIMIT}. Search or filter to narrow the list.`;
@@ -217,7 +214,6 @@ rows = d.rows;
 $("build").textContent = d.build;
 totals(d.summary);
 domains(d.summary);
-$("undoc").textContent = d.undocumented.join("  ");
 for (const id of ["q", "dom", "kind", "state", "points", "ui"]) $(id).addEventListener("input", render);
 render();
 </script>
