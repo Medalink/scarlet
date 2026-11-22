@@ -13,7 +13,7 @@ Scarlet records what your character does in WoW Forever, with a timestamp on eve
 - In-game window (`/scarlet`): a character overview with time to the next level, this week's play time, who you played with and where you died; session and lifetime stats; time splits; a live view of the lines being written.
 - Time to the next level, the next multiple of ten and level 60, worked out from your recent pace.
 - Small footprint: events are written as they happen, compressed into chunks, and saved with your normal SavedVariables.
-- The recording stays on your PC. In a group, Scarlet tells the other members' Scarlet which corpse or object you looted and what its loot window held, so drop rates count every corpse the group opened. A switch in Settings turns that off.
+- The recording stays on your PC. In a group, Scarlet tells the other members' Scarlet which corpse or object you looted and what its loot window held, so drop rates count every corpse the group opened. A switch in Settings turns that off. Kill and loot lines carry a corpse key, a hash of the game's GUID for the creature or object, so a corpse several players saw is counted once.
 - Optional Windows desktop app that turns the recording into an overview, timeline, maps, charts and loot tables.
 
 ## What Scarlet never records
@@ -38,7 +38,11 @@ What it does keep about other people: the character names of players in your gro
 
 Screenshots at key moments are off by default. When you turn them on in Settings, Scarlet calls the game's own screenshot command, at most once every 5 seconds, and records the file name.
 
-Scarlet makes no web requests. While you are in a group it sends one thing through the game's addon channel, to that group only: which creature or object you looted, and the items and coin in its loot window. It sends no names, positions or chat, and "Share loot sources with your group" in Settings turns it off. Your recording leaves your PC only if you copy the file yourself.
+Kill and loot lines end with a corpse key: 10 hex digits hashed from the GUID of the creature or object, the same for every player who sees that corpse, so one corpse is counted once. The GUID itself is never stored. Because the key is the same for everyone, the site can tell that two uploaded characters killed or opened the same corpse, which shows they were together, even with the Social group off. When you open an object, Scarlet also records its name from the game's tooltip.
+
+What other members' Scarlet send you is recorded as loot lines with their character names. The desktop app's upload sends those lines in the Loot sharing group with each name replaced by a pseudonym, and the app can switch that group off.
+
+Scarlet makes no web requests. While you are in a group it sends one thing through the game's addon channel, to that group only: which creature or object you looted, and the items and coin in its loot window. It sends no names, positions or chat, and "Share loot sources with your group" in Settings turns it off. Your recording leaves your PC only if you copy the file yourself or turn on the desktop app's upload, which is off until you do.
 
 ## How to use
 

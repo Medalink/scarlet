@@ -9,5 +9,5 @@
 - In-game window (`/scarlet`): a character overview with time to the next level, this week's play time, who you played with and where you died; session and lifetime stats; time splits; a live view of the lines being written.
 - Time to the next level, the next multiple of ten and level 60, worked out from your recent pace.
 - Small footprint: events are written as they happen, compressed into chunks, and saved with your normal SavedVariables.
-- The recording stays on your PC. In a group, Scarlet tells the other members' Scarlet which corpse or object you looted and what its loot window held, so drop rates count every corpse the group opened. A switch in Settings turns that off.
+- The recording stays on your PC. In a group, Scarlet tells the other members' Scarlet which corpse or object you looted and what its loot window held, so drop rates count every corpse the group opened. A switch in Settings turns that off. Kill and loot lines carry a corpse key, a hash of the game's GUID for the creature or object, so a corpse several players saw is counted once.
 - Optional Windows desktop app that turns the recording into an overview, timeline, maps, charts and loot tables.

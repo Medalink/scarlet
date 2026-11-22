@@ -32,6 +32,12 @@ held: which creature or object, the items with their quantities, and coin. Their
 line, and the app's drop rates then count the corpses the whole group opened, not only yours. On recordings from
 before this, a grouped character had a loot window for 255 of 531 kills.
 
+Kill and loot lines (`K`, `LO` and `LW`) end with a corpse key: 10 hex digits hashed from the GUID of the creature or
+object, the same on every client, so a corpse several members saw is counted once. The GUID itself is never stored. Because the key is the same for everyone,
+the site can tell that two uploaded characters saw the same corpse, even with the Social group off.
+An `ON` line records the name of an object you loot, read from the game's tooltip. The desktop app uploads `LW` lines
+with the rest of the Loot group, with each sender's name replaced by a pseudonym, when you turn uploading on.
+
 It goes through the game's addon channel to your party or raid only, and waits for the end of combat, because the
 client refuses addon messages in combat. No name, position, chat or other line is sent. "Share loot sources with
 your group" on the Settings page turns sending and receiving off. The message and its limits are in
