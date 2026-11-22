@@ -3,6 +3,8 @@
 ## 1.0.1
 
 - In a group, Scarlet now tells the other members' Scarlet which corpse or object you looted and what its loot window held, and records what theirs tell you. Drop rates then count the corpses your group opened, not only yours. It goes to your group only, after combat, and carries no names, position or chat. "Share loot sources with your group" on the Settings page turns it off.
+- The Characters page lists every character from all your game accounts in one table, the one you are logged into first, with a Game account column when you have more than one account. "Group characters by game account" in the desktop app brings the split by account back.
+- A time-to-level target now needs five complete recorded levels, so a new character no longer shows a date years away.
 
 ## 1.0.0
 
