@@ -6,6 +6,7 @@
 - The Characters page lists every character from all your game accounts in one table, the one you are logged into first, with a Game account column when you have more than one account. "Group characters by game account" in the desktop app brings the split by account back.
 - A time-to-level target now needs five complete recorded levels, so a new character no longer shows a date years away.
 - A camp visit now lasts as long as you are at the camp. The Camp Benefits, Warmth and Cozy Fire buffs, which you keep for an hour after leaving, no longer start or extend a visit, so Camps and Time at camp count only the time near a campfire or tent.
+- The world map shows only your walking trail of the last 20 minutes. Flight and teleport lines, deaths, gathering and fishing, NPC windows, quests, discovered areas and camps are no longer drawn in game; the desktop app still shows them. With OpenMap, its Scarlet menu has the one "Trail walked" switch, and the game map's Scarlet switch no longer has a list of layers.
 
 ## 1.0.0
 

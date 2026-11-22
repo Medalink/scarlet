@@ -8,15 +8,9 @@
 -- opt.map.draw is the one switch for all of it (the Settings page of Scarlet's window): off, nothing is drawn and
 -- the per-layer switches keep what they were set to. The trail shows only the last 20 minutes of the character's
 -- walking, fading with age.
---
--- Cost while off: after login this file does nothing but wait for the world map to open. Once it opens
--- with a layer on, one OnUpdate on Scarlet's own frame reads the history within a few milliseconds a
--- frame, redraws when the view moves, and stops when the map closes. A redraw allocates nothing: pins,
--- lines and labels come from pools. No protected frame is touched; the only hooks on Blizzard's map are
--- HookScript OnShow and OnHide and a post-hook on OnMapChanged, which only set flags.
 local _, ns = ...
 
-local type, pairs, ipairs, floor, ceil = type, pairs, ipairs, math.floor, math.ceil
+local type, pairs, ipairs, ceil = type, pairs, ipairs, math.ceil
 local GetTime, time = GetTime, time
 local wipe = wipe
 
@@ -25,14 +19,7 @@ ns.Map = M
 
 -- Layers, in the order of the app's Survey look. `on` is the default.
 local LAYERS = {
-    { id = "trips", label = "Flights and teleports", on = true },
     { id = "trail", label = "Trail walked", on = true },
-    { id = "deaths", label = "Deaths", on = true },
-    { id = "gather", label = "Gathering and fishing", on = true },
-    { id = "npcs", label = "NPC windows", on = false },
-    { id = "quests", label = "Quests accepted and turned in", on = false },
-    { id = "found", label = "Areas discovered", on = true },
-    { id = "camps", label = "Camps", on = true },
 }
 local DEFAULT = {}
 for _, L in ipairs(LAYERS) do DEFAULT[L.id] = L.on end
@@ -40,31 +27,14 @@ DEFAULT.blizzard = false -- the switch on the game's own map (no OpenMap): off u
 DEFAULT.draw = true      -- the one switch over all layers
 
 local ICON = "Interface\\AddOns\\Scarlet\\Media\\Icon"
-local SKULLS = "Interface\\TargetingFrame\\UI-RaidTargetingIcons"
 
--- Pins: size in screen pixels, a colour or a texture with its coordinates.
-local PIN = {
-    death = { size = 15, tex = SKULLS, l = 0.75, r = 1, t = 0.25, b = 0.5 },
-    gather = { size = 7, r = 0.94, g = 0.95, b = 0.96, a = 0.9 },
-    fishing = { size = 7, r = 0.18, g = 0.62, b = 0.77, a = 1 },
-    npc = { size = 5, r = 0.78, g = 0.78, b = 0.85, a = 0.85 },
-    qacc = { size = 7, r = 1, g = 0.85, b = 0.2, a = 1 },
-    qdone = { size = 7, r = 0.35, g = 0.85, b = 0.4, a = 1 },
-    found = { size = 8, r = 0.4, g = 0.9, b = 1, a = 0.95 },
-    camp = { size = 9, r = 1, g = 0.55, b = 0.15, a = 1 },
-}
-local SLOT = { death = 1, gather = 2, fishing = 3, npc = 4, qacc = 5, qdone = 6, found = 7, camp = 8 }
 -- Lines: colour and thickness in screen pixels.
 local LINE = {
     trail = { r = 1, g = 0.18, b = 0.33, a = 0.85, th = 2 },
-    flights = { r = 0.35, g = 0.7, b = 1, a = 0.9, th = 2 },
-    teleports = { r = 0.75, g = 0.5, b = 1, a = 0.9, th = 2 },
 }
 
-local MAX_PINS, MAX_LINES, MAX_LABELS = 700, 1600, 30
-local TRAIL_LINES = MAX_LINES - 300   -- the rest is for flights and teleports
+local MAX_LINES = 1300
 local STEP_MIN = 3.5                  -- screen pixels between two drawn trail points, at least
-local GRID_N = 96                     -- the view is cut into GRID_N x GRID_N cells, one pin of a kind each
 local STALE_CHECK = 2                 -- seconds between looks at the open buffers while the map is open
 local FADE_STEPS = 20                 -- the trail goes from full to gone in this many steps (a minute each)
 
@@ -107,52 +77,13 @@ end
 -- Pools ---------------------------------------------------------------------------------------
 
 local ov                      -- the overlay frame, child of the map's canvas
-local pins, nPins, shownPins = {}, 0, 0
 -- shownLines is the highest line a draw has touched since the last HideRest.
 local lines, nLines, shownLines = {}, 0, 0
-local labels, nLabels, shownLabels = {}, 0, 0
-local occ = {}                -- GRID_N * GRID_N cells, each holding the stamp of the last pin put in it
-for i = 0, GRID_N * GRID_N - 1 do occ[i] = 0 end
-local serial = 0
 
 -- Per draw: canvas size in overlay pixels, the view in the same.
-local PW, PH, X0, Y0, X1, Y1, cellX, cellY, stamp, inv
+local PW, PH, X0, Y0, X1, Y1
 local trailDrawn = 0                -- trail lines the last draw used; the trail fades while it is above 0
 local dirty = false                 -- a redraw is due (set by the callbacks below, and by a draw that wants another)
-
-local function NewPin()
-    return ov:CreateTexture(nil, "OVERLAY")
-end
-
-local function Pin(kind, cx, cy)
-    if nPins >= MAX_PINS then return end
-    nPins = nPins + 1
-    local p = pins[nPins]
-    if not p then
-        p = NewPin()
-        pins[nPins] = p
-    end
-    local sp = PIN[kind]
-    if p.kind ~= kind then
-        if sp.tex then
-            p:SetTexture(sp.tex)
-            p:SetTexCoord(sp.l, sp.r, sp.t, sp.b)
-            p:SetVertexColor(1, 1, 1, 1)
-        else
-            p:SetColorTexture(sp.r, sp.g, sp.b, sp.a)
-            p:SetTexCoord(0, 1, 0, 1)
-        end
-        p:SetSize(sp.size, sp.size)
-        p.kind = kind
-    end
-    p:ClearAllPoints()
-    p:SetPoint("CENTER", ov, "TOPLEFT", cx, -cy)
-    if not p.on then
-        p:Show()
-        p.on = true
-    end
-    return p
-end
 
 -- q, for the trail, is how many of FADE_STEPS the line is still at: its alpha is that share of the kind's.
 local function Seg(kind, x1, y1, x2, y2, q)
@@ -179,42 +110,12 @@ local function Seg(kind, x1, y1, x2, y2, q)
     end
 end
 
-local function Label(text, cx, cy)
-    if nLabels >= MAX_LABELS then return end
-    nLabels = nLabels + 1
-    local fs = labels[nLabels]
-    if not fs then
-        fs = ov:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        fs:SetJustifyH("LEFT")
-        fs:SetTextColor(0.85, 0.97, 1, 1)
-        labels[nLabels] = fs
-    end
-    if fs.text ~= text then
-        fs:SetText(text)
-        fs.text = text
-    end
-    fs:ClearAllPoints()
-    fs:SetPoint("LEFT", ov, "TOPLEFT", cx + 7, -cy)
-    if not fs.on then
-        fs:Show()
-        fs.on = true
-    end
-end
-
 local function HideRest()
-    for i = nPins + 1, shownPins do
-        pins[i]:Hide()
-        pins[i].on = false
-    end
     for i = nLines + 1, shownLines do
         lines[i]:Hide()
         lines[i].on = false
     end
-    for i = nLabels + 1, shownLabels do
-        labels[i]:Hide()
-        labels[i].on = false
-    end
-    shownPins, shownLines, shownLabels = nPins, nLines, nLabels -- from here on, only these are on
+    shownLines = nLines
 end
 
 -- Where a map's own 0..1 lands on the canvas -------------------------------------------------------
@@ -281,49 +182,6 @@ end
 
 -- Drawing ------------------------------------------------------------------------------------------
 
--- One kind of pins from a flat array of positions on one map.
-local function PinsOf(arr, kind, a)
-    if not arr then return end
-    local ox, oy, sx, sy = a[1], a[2], a[3], a[4]
-    local slot = stamp + SLOT[kind]
-    for i = 1, #arr, 2 do
-        local cx, cy = (ox + arr[i] * sx) * PW, (oy + arr[i + 1] * sy) * PH
-        if cx >= X0 and cx <= X1 and cy >= Y0 and cy <= Y1 then
-            local gx, gy = floor((cx - X0) * cellX), floor((cy - Y0) * cellY)
-            if gx >= GRID_N then gx = GRID_N - 1 end
-            if gy >= GRID_N then gy = GRID_N - 1 end
-            local cell = gy * GRID_N + gx
-            if occ[cell] ~= slot then
-                occ[cell] = slot
-                Pin(kind, cx, cy)
-            end
-        end
-    end
-end
-
-local function LabelsOf(ms, a)
-    local arr, names = ms.found, ms.foundName
-    if not arr or not names then return end
-    local ox, oy, sx, sy = a[1], a[2], a[3], a[4]
-    for i = 1, #names do
-        local cx, cy = (ox + arr[i * 2 - 1] * sx) * PW, (oy + arr[i * 2] * sy) * PH
-        if cx >= X0 and cx <= X1 and cy >= Y0 and cy <= Y1 then Label(names[i], cx, cy) end
-    end
-end
-
--- Straight lines (flights, teleports): x1, y1, x2, y2 on the map.
-local function SegsOf(arr, kind, a)
-    if not arr then return end
-    local ox, oy, sx, sy = a[1], a[2], a[3], a[4]
-    for i = 1, #arr, 4 do
-        local x1, y1 = (ox + arr[i] * sx) * PW, (oy + arr[i + 1] * sy) * PH
-        local x2, y2 = (ox + arr[i + 2] * sx) * PW, (oy + arr[i + 3] * sy) * PH
-        if not ((x1 < X0 and x2 < X0) or (x1 > X1 and x2 > X1) or (y1 < Y0 and y2 < Y0) or (y1 > Y1 and y2 > Y1)) then
-            Seg(kind, x1, y1, x2, y2)
-        end
-    end
-end
-
 -- The walked path of the last TRAIL_SECS, from MapData.lua as x, y, t triples (x = -1 ends a stretch). It is
 -- read newest first, so a pool of lines that runs out drops the oldest. Points further apart than the step
 -- are joined; a line fades with the age of its newer end, one of FADE_STEPS for each minute, and none is
@@ -350,7 +208,7 @@ local function TrailOf(arr, a)
                 local dx, dy = cx - lx, cy - ly
                 if dx * dx + dy * dy >= step2 then
                     if not ((lx < X0 and cx < X0) or (lx > X1 and cx > X1) or (ly < Y0 and cy < Y0) or (ly > Y1 and cy > Y1)) then
-                        if nLines >= TRAIL_LINES then return end
+                        if nLines >= MAX_LINES then return end
                         Seg("trail", cx, cy, lx, ly, lq)
                     end
                     local age = nowT - arr[i + 2]
@@ -399,9 +257,7 @@ local function Draw()
         wipe(aff)
         affHost, affMode = host, mode
     end
-    -- The overlay is scaled against the canvas, so pins, lines and text keep their size on screen.
-    inv = 1 / scale
-    ov:SetScale(inv)
+    ov:SetScale(1 / scale)
     ov:ClearAllPoints()
     ov:SetPoint("TOPLEFT", canvas, "TOPLEFT", 0, 0)
     local level
@@ -424,54 +280,19 @@ local function Draw()
     local vx0, vy0, vx1, vy1 = ViewOf(map, canvas, W, H)
     if not vx0 then vx0, vy0, vx1, vy1 = 0, 0, 1, 1 end
     X0, Y0, X1, Y1 = vx0 * PW, vy0 * PH, vx1 * PW, vy1 * PH
-    cellX, cellY = GRID_N / (X1 - X0), GRID_N / (Y1 - Y0)
-    serial = serial + 1
-    stamp = serial * 16
-    nPins, nLabels, nLines = 0, 0, 0
+    nLines = 0
 
     local stores = ns.MapData.stores
-    -- The trail first, the newest store (the open buffers) first.
-    trailDrawn = 0
-    if On("trail") then
-        nowT = time()
-        for s = #stores, 1, -1 do
-            for mapID, ms in pairs(stores[s].maps) do
-                local a = Affine(mode, api, host, mapID)
-                if a and ms.trail and a[1] + a[3] >= vx0 and a[1] <= vx1 and a[2] + a[4] >= vy0 and a[2] <= vy1 then
-                    TrailOf(ms.trail, a)
-                end
-            end
-        end
-        trailDrawn = nLines
-    end
-    local trips, deaths, gather = On("trips"), On("deaths"), On("gather")
-    local npcs, quests, found, camps = On("npcs"), On("quests"), On("found"), On("camps")
-    for s = 1, #stores do
+    nowT = time()
+    for s = #stores, 1, -1 do
         for mapID, ms in pairs(stores[s].maps) do
             local a = Affine(mode, api, host, mapID)
-            if a and a[1] + a[3] >= vx0 and a[1] <= vx1 and a[2] + a[4] >= vy0 and a[2] <= vy1 then
-                if trips then
-                    SegsOf(ms.flights, "flights", a)
-                    SegsOf(ms.teleports, "teleports", a)
-                end
-                if deaths then PinsOf(ms.deaths, "death", a) end
-                if gather then
-                    PinsOf(ms.gather, "gather", a)
-                    PinsOf(ms.fishing, "fishing", a)
-                end
-                if npcs then PinsOf(ms.npcs, "npc", a) end
-                if quests then
-                    PinsOf(ms.qacc, "qacc", a)
-                    PinsOf(ms.qdone, "qdone", a)
-                end
-                if found then
-                    PinsOf(ms.found, "found", a)
-                    LabelsOf(ms, a)
-                end
-                if camps then PinsOf(ms.camps, "camp", a) end
+            if a and ms.trail and a[1] + a[3] >= vx0 and a[1] <= vx1 and a[2] + a[4] >= vy0 and a[2] <= vy1 then
+                TrailOf(ms.trail, a)
             end
         end
     end
+    trailDrawn = nLines
     HideRest()
 end
 M.Draw = Draw
@@ -569,10 +390,8 @@ end
 
 -- The switch on the game's own map -------------------------------------------------------------------------
 -- Shown only while the game's map is the one up (never over OpenMap's stitched map, which has the menu).
--- All of it is Scarlet's own frames: a check button for the whole set, and a short list of the layers behind
--- a small arrow. No dropdown template, which would taint.
 
-local sw, pop, popRows
+local sw
 
 -- The one switch over every layer (Settings page of Scarlet's window). Off keeps each layer's own setting.
 local function SetDraw(v)
@@ -590,6 +409,7 @@ local function Set(id, v)
     if type(ns.opt.map) ~= "table" then ns.opt.map = {} end
     ns.opt.map[id] = v and true or false
     if v then ns.opt.map.draw = true end
+    if v and id == "blizzard" then ns.opt.map.trail = true end
     dirty = true
     Refresh()
 end
@@ -599,46 +419,6 @@ local function SetLayer(id, v) Set(id, v) end
 
 -- What a layer's switch shows: off while drawing is off.
 local function Shown(id) return Drawing() and On(id) end
-
-local function SyncPop()
-    if not popRows then return end
-    for i = 1, #popRows do popRows[i]:SetChecked(Shown(popRows[i].layer)) end
-end
-
-local function BuildPop(map)
-    pop = CreateFrame("Frame", nil, map)
-    pop:SetSize(200, 8 + #LAYERS * 22)
-    pop:SetPoint("TOPLEFT", sw, "BOTTOMLEFT", 0, -2)
-    pop:SetFrameLevel(sw:GetFrameLevel() + 5)
-    local bg = pop:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetColorTexture(0.06, 0.06, 0.08, 0.92)
-    popRows = {}
-    for i, L in ipairs(LAYERS) do
-        local cb = CreateFrame("CheckButton", nil, pop, "UICheckButtonTemplate")
-        cb:SetSize(22, 22)
-        cb:SetPoint("TOPLEFT", pop, "TOPLEFT", 6, -4 - (i - 1) * 22)
-        local fs = cb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        fs:SetPoint("LEFT", cb, "RIGHT", 2, 1)
-        fs:SetText(L.label)
-        cb.layer = L.id
-        cb:SetScript("OnClick", function(self) SetLayer(self.layer, self:GetChecked() and true or false) end)
-        popRows[i] = cb
-    end
-    pop:Hide()
-end
-
-local function TogglePop()
-    local map = _G.WorldMapFrame
-    if not (sw and map) then return end
-    if not pop then BuildPop(map) end
-    if pop:IsShown() then
-        pop:Hide()
-    else
-        SyncPop()
-        pop:Show()
-    end
-end
 
 local function BuildSwitch(map)
     local anchor = map.ScrollContainer or map
@@ -650,24 +430,15 @@ local function BuildSwitch(map)
     fs:SetPoint("LEFT", sw, "RIGHT", 0, 1)
     fs:SetText("Scarlet")
     sw:SetScript("OnClick", function(self) SetMaster(self:GetChecked() and true or false) end)
-    local more = CreateFrame("Button", nil, sw)
-    more:SetSize(16, 20)
-    more:SetPoint("LEFT", fs, "RIGHT", 4, 0)
-    local mt = more:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    mt:SetAllPoints()
-    mt:SetText("v")
-    more:SetScript("OnClick", TogglePop)
 end
 
 local function UpdateSwitch(map, mode)
     if mode == "blizzard" and map and map:IsShown() then
         if not sw then BuildSwitch(map) end
-        sw:SetChecked(Shown("blizzard"))
+        sw:SetChecked(AnyOn() and On("blizzard"))
         sw:Show()
-        if pop and pop:IsShown() then SyncPop() end
     elseif sw then
         sw:Hide()
-        if pop then pop:Hide() end
     end
 end
 
