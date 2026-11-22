@@ -14,6 +14,7 @@ local ZONE_MAP_TYPE = 3
 local COSMIC_MAP_FALLBACK = 946
 local PARENT_STEPS = 20
 local PROBES_PER_FRAME = 5
+local WORLD_BOSS_LOCK = 2
 
 local CONTENT_PROBES = {
     "e:ACTIVE_DELVE_DATA_UPDATE",
@@ -229,6 +230,18 @@ local function LocksRead()
                 lockSeen[key] = progress
                 Emit("IS", name, Num(instanceID), Num(difficulty), reset, Flag(locked), Flag(extended), Flag(raid),
                     Num(maxPlayers), Num(done), Num(total), why)
+            end
+        end
+    end
+    local bosses = Num(Call(_G.GetNumSavedWorldBosses)) or 0
+    for i = 1, bosses do
+        local name, bossID, reset = Call(_G.GetSavedWorldBossInfo, i)
+        name, bossID, reset = Str(name), Num(bossID), Num(reset)
+        if name and bossID and reset and reset > 0 then
+            local key = "w|" .. bossID
+            if not lockSeen[key] then
+                lockSeen[key] = 1
+                Emit("IS", name, bossID, "", reset, 1, 0, WORLD_BOSS_LOCK, "", "", "", locksRead and "c" or "s")
             end
         end
     end

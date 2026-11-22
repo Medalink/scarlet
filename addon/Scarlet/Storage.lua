@@ -51,7 +51,8 @@ local warbandOpen, warbandDue = false, false
 
 local function ReadWarband()
     warbandDue = false
-    local bank, kind = _G.C_Bank, _G.Enum and _G.Enum.BankType
+    local bank = C_Bank
+    local kind = Enum and Enum.BankType
     if not (bank and bank.FetchPurchasedBankTabData and kind and kind.Account) then return end
     local tabs = Call(bank.FetchPurchasedBankTabData, kind.Account)
     if type(tabs) ~= "table" then return end
@@ -234,7 +235,7 @@ end
 local auctions, auctionsScratch, auctionsRead = {}, {}, false
 
 function H.OWNED_AUCTIONS_UPDATED()
-    local ah = _G.C_AuctionHouse
+    local ah = C_AuctionHouse
     local list = ah and Call(ah.GetOwnedAuctions)
     if type(list) ~= "table" then return end
     local enum = _G.Enum and _G.Enum.AuctionStatus
@@ -257,7 +258,8 @@ function H.AUCTION_HOUSE_CLOSED()
 end
 
 local function ReadWarbandMoney()
-    local bank, kind = _G.C_Bank, _G.Enum and _G.Enum.BankType
+    local bank = C_Bank
+    local kind = Enum and Enum.BankType
     if not (bank and bank.FetchDepositedMoney and kind and kind.Account) then return end
     local copper = Num(Call(bank.FetchDepositedMoney, kind.Account))
     if not copper or written.warbandMoney == copper then return end
