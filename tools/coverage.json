@@ -2262,7 +2262,6 @@
     "C_TooltipInfo.GetItemKey": "tooltip data and display; UI. What you bought or looted is in I, O and LO",
     "C_TooltipInfo.GetSendMailItem": "tooltip data and display; UI. What you bought or looted is in I, O and LO",
     "C_TooltipInfo.GetUnit": "tooltip data and display; UI. What you bought or looted is in I, O and LO",
-    "C_TooltipInfo.GetWorldCursor": "tooltip data and display; UI. What you bought or looted is in I, O and LO",
     "C_ToyBoxInfo.HasAnyToy": "enables the toy box tab; CL toy has the owned count",
     "C_ToyBoxInfo.IsToySourceValid": "filter validity check for the heirloom or toy tab; UI",
     "C_ToyBoxInfo.NeedsFanfare": "the toy box's unseen marker; the learn is NEW_TOY_ADDED, written as CA toy",

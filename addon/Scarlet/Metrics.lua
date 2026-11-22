@@ -354,6 +354,60 @@ function ns.LootRead(guid)
     return 0
 end
 
+local OBJECT_NAMES_CAP = 500
+local namedObjects, nNamedObjects = {}, 0
+
+local function FieldNames(t)
+    local names = {}
+    for name in pairs(t) do
+        if Plain(name) and type(name) == "string" then names[#names + 1] = name end
+    end
+    table.sort(names)
+    return table.concat(names, ",")
+end
+
+local function CursorFieldsProbe(data, line)
+    local db = ns.db
+    if not db then return end
+    local key = tostring(select(2, GetBuildInfo())) .. ":" .. date("%Y%m%d")
+    if db.cursorFieldsProbed == key then return end
+    db.cursorFieldsProbed = key
+    Emit("PR", "?k:TooltipData", 1, FieldNames(data))
+    if line then Emit("PR", "?k:TooltipDataLine", 1, FieldNames(line)) end
+end
+
+local function CursorName(objectID, guid)
+    local cursor = C_TooltipInfo and C_TooltipInfo.GetWorldCursor
+    if type(cursor) ~= "function" then return end
+    local ok, data = pcall(cursor)
+    if not ok or not Plain(data) or type(data) ~= "table" then return end
+    local lines = data.lines
+    local first = Plain(lines) and type(lines) == "table" and lines[1] or nil
+    if not (Plain(first) and type(first) == "table") then first = nil end
+    CursorFieldsProbe(data, first)
+    local seenGUID, seenID = data.guid, data.id
+    if Plain(seenGUID) then
+        if seenGUID ~= guid then return end
+    elseif not (Plain(seenID) and seenID == objectID) then
+        return
+    end
+    local text = first and first.leftText
+    if not Plain(text) or type(text) ~= "string" then return end
+    text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    if text == "" or #text > 80 then return end
+    return text
+end
+
+local function NameObject(id, guid)
+    local objectID = tonumber(id)
+    if not objectID or namedObjects[objectID] or nNamedObjects >= OBJECT_NAMES_CAP then return end
+    local name = CursorName(objectID, guid)
+    if not name then return end
+    namedObjects[objectID] = true
+    nNamedObjects = nNamedObjects + 1
+    Emit("ON", objectID, name)
+end
+
 local function LootSources(isFromItem)
     if lootRead then return end
     local okN, n = Call("GetNumLootItems")
@@ -405,6 +459,7 @@ local function LootSources(isFromItem)
             local again = ns.LootRead(src.guid)
             Emit("LO", kind, id, src.slots, items, again, ns.CorpseKey(src.guid))
             ns.PlaceGUID(src.guid, "l")
+            if kind == "g" then NameObject(id, src.guid) end
             if ns.ShareLoot then ns.ShareLoot(src.guid, src.slots, items, again) end
         else
             Emit("LO", kind, id, src.slots, items, "")
