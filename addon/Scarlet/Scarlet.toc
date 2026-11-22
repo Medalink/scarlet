@@ -35,6 +35,11 @@ Character.lua
 Spells.lua
 Collections.lua
 Social.lua
+Baseline.lua
+Storage.lua
+Reference.lua
+Census.lua
+Market.lua
 Interface.lua
 Overview.lua
 Characters.lua
