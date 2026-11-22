@@ -1,5 +1,10 @@
 # Scarlet
 
+## 1.0.3
+
+- The Loot HUD counts gathers again after you visit a mailbox. WoW Forever never reports the mailbox closing, so the HUD stayed paused until the next /reload; Scarlet now reads the close from the mailbox window itself.
+- Item search now finds what is in your mailbox. Its contents are saved when you close the mailbox, which the same missing close kept from happening.
+
 ## 1.0.2
 
 - New Loot HUD: while you herb, mine, skin, fish or disenchant, outlined text around your character shows the zone, this session's items and nodes, your lifetime count, what the items are worth, gold per hour, your skill, the 7 latest items and the best one this session. It fades 8 seconds after the last gather. The Loot HUD page in Scarlet's window sets its size, layout, outline and professions; drag a part to move it.
