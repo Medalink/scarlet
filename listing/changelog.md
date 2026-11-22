@@ -1,5 +1,9 @@
 # Scarlet
 
+## 1.1.0
+
+- In a group, Scarlet now tells the other members' Scarlet which corpse or object you looted and what its loot window held, and records what theirs tell you. Drop rates then count the corpses your group opened, not only yours. It goes to your group only, after combat, and carries no names, position or chat. "Share loot sources with your group" on the Settings page turns it off.
+
 ## 1.0.0
 
 First release on CurseForge and Wago.

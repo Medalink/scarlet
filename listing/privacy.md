@@ -18,4 +18,4 @@ What it does keep about other people: the character names of players in your gro
 
 Screenshots at key moments are off by default. When you turn them on in Settings, Scarlet calls the game's own screenshot command, at most once every 5 seconds, and records the file name.
 
-Scarlet makes no network requests. Nothing leaves your PC unless you copy the file yourself.
+Scarlet makes no web requests. While you are in a group it sends one thing through the game's addon channel, to that group only: which creature or object you looted, and the items and coin in its loot window. It sends no names, positions or chat, and "Share loot sources with your group" in Settings turns it off. Your recording leaves your PC only if you copy the file yourself.

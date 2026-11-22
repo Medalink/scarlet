@@ -1,7 +1,8 @@
 # Scarlet
 
 Scarlet is a WoW Forever addon that records what your character does, with a timestamp on every line, and keeps
-it on your PC. It never sends anything anywhere.
+it on your PC. The one thing it sends is the loot window of a corpse or object you open while grouped, to that
+group only, so every member's Scarlet knows what dropped. A switch on the Settings page turns that off.
 
 ## What it records
 
@@ -23,6 +24,18 @@ it on your PC. It never sends anything anywhere.
 
 Every line code and its fields are in [docs/FORMAT.md](docs/FORMAT.md). Chat text, mail bodies, notes and
 account names are never recorded.
+
+## What it shares with your group
+
+When you loot a creature or an object in a group, Scarlet sends the other members' Scarlet what the loot window
+held: which creature or object, the items with their quantities, and coin. Their Scarlet records it as an `LW`
+line, and the app's drop rates then count the corpses the whole group opened, not only yours. On recordings from
+before this, a grouped character had a loot window for 255 of 531 kills.
+
+It goes through the game's addon channel to your party or raid only, and waits for the end of combat, because the
+client refuses addon messages in combat. No name, position, chat or other line is sent. "Share loot sources with
+your group" on the Settings page turns sending and receiving off. The message and its limits are in
+[docs/FORMAT.md](docs/FORMAT.md), "What is sent to your group".
 
 ## The capture map
 
