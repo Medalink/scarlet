@@ -360,6 +360,14 @@ function H.LOOT_HISTORY_UPDATE_DROP(encounterID, lootListKey)
     end
 end
 
+function H.ENCOUNTER_LOOT_RECEIVED(encounterID, itemID, _, quantity, playerName, className)
+    if not Num(encounterID) or not Num(itemID) then return end
+    local who = Resolve(playerName)
+    if not who then return end
+    ItemName(itemID)
+    Emit("EL", encounterID, itemID, Num(quantity) or 1, who, Str(className) or "")
+end
+
 -- API probe ----------------------------------------------------------------------------
 -- PR <name> <1 or 0>, once per client build and day, for the APIs and the client format
 -- strings this file reads, so a missing one is visible in the data.
