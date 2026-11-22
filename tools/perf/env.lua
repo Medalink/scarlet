@@ -192,6 +192,7 @@ local function Define(version)
     _G.GameTooltip = NewFrame("Frame", "GameTooltip")
     _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, msg) Env.chat[#Env.chat + 1] = msg end }
     _G.UISpecialFrames = {}
+    _G.NUM_CHAT_WINDOWS = 10
     _G.SlashCmdList = {}
     _G.C_Timer = {
         After = function(sec, fn) AddTimer(sec, fn) end,
