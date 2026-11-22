@@ -496,6 +496,7 @@ local function SpellName(id, fallback)
         spellNamed[id] = true
         spellPending[id] = nil
         Emit("SN", id, name)
+        ns.SpellFact(id)
     elseif not spellPending[id] and not spellFailed[id] and C_Spell.RequestLoadSpellData then
         spellPending[id] = true
         pcall(C_Spell.RequestLoadSpellData, id)
@@ -1604,6 +1605,7 @@ end
 -- Shared with Track.lua.
 ns.SpellName, ns.ItemName, ns.MapPoint, ns.NpcID, ns.Pattern = SpellName, ItemName, MapPoint, NpcID, Pattern
 ns.Round1, ns.TimerOn, ns.TimerOff = Round1, TimerOn, TimerOff
+ns.WriteCounts, ns.ListSig = WriteCounts, ListSig
 
 local LEVELLING_EVENTS = { "PLAYER_XP_UPDATE", "UPDATE_EXHAUSTION" }
 ns.Listen(frame, H, "Capture", { UNIT_HEALTH = true, PLAYER_XP_UPDATE = true, UPDATE_EXHAUSTION = true })
