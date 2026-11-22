@@ -905,6 +905,19 @@ function ns.Listen(frame, handlers, label, lazy)
     end
 end
 
+local MAIL_INFO = Enum.PlayerInteractionType and Enum.PlayerInteractionType.MailInfo or 17
+
+local function DispatchMailClosed(_, _, kind)
+    if not (ns.Plain(kind) and kind == MAIL_INFO) then return end
+    for _, l in ipairs(listeners) do
+        if l.handlers.MAIL_CLOSED then l.frame:GetScript("OnEvent")(l.frame, "MAIL_CLOSED") end
+    end
+end
+
+local mailCloser = CreateFrame("Frame")
+mailCloser:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
+mailCloser:SetScript("OnEvent", DispatchMailClosed)
+
 function ns.Print(msg)
     DEFAULT_CHAT_FRAME:AddMessage("|cffff2d55Scarlet|r " .. msg)
 end
