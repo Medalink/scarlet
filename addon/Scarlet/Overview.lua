@@ -736,7 +736,7 @@ function ns.OverviewPage(parent, ui)
         for i = 1, MATES do
             if b.mn[i] then
                 shown = i
-                m.mates:Set(i, b.mn[i], Duration(b.mv[i]))
+                m.mates:Set(i, ns.DisplayName(b.mn[i]), Duration(b.mv[i]))
             end
         end
         m.mates:Rows(shown, "No groups recorded")
@@ -758,7 +758,7 @@ function ns.OverviewPage(parent, ui)
         local _, classFile = UnitClass("player")
         classFile = CStr(classFile) or base.class
         local color = classFile and _G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[classFile] or T.fg
-        name:SetText(key)
+        name:SetText(ns.DisplayName(key))
         name:SetTextColor(color.r or color[1], color.g or color[2], color.b or color[3])
         local clientLevel = lvl
         lvl = lvl or (type(base.level0) == "number" and base.level0) or nil

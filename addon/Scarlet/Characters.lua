@@ -509,7 +509,7 @@ function ns.CharactersPage(parent, ui)
                 found = found + 1
                 local c = Place(findSec, found).cols
                 c[1]:SetText(h.name)
-                c[2]:SetText(h.key)
+                c[2]:SetText(ns.DisplayName(h.key))
                 Tint(c[2], classOf[h.key], T.fg)
                 c[3]:SetText(h.bags > 0 and Num(h.bags) or "")
                 c[4]:SetText(h.bank > 0 and Num(h.bank) or "")
@@ -544,7 +544,7 @@ function ns.CharactersPage(parent, ui)
             count = count + 1
             local line = Place(listSec, count)
             local c = line.cols
-            c[1]:SetText(r.key)
+            c[1]:SetText(ns.DisplayName(r.key))
             Tint(c[1], s.class, T.fg)
             local at = 2
             if withAccount then
@@ -569,7 +569,7 @@ function ns.CharactersPage(parent, ui)
             if s.wp > 0 or s.wq > 0 or s.wg ~= 0 or s.wr > 0 then
                 week = week + 1
                 local c = Place(weekSec, week).cols
-                c[1]:SetText(r.key)
+                c[1]:SetText(ns.DisplayName(r.key))
                 Tint(c[1], s.class, T.fg)
                 c[2]:SetText(Duration(s.wp))
                 c[3]:SetText(Num(s.wq))
@@ -601,7 +601,7 @@ function ns.CharactersPage(parent, ui)
             for i, e in ipairs(etas) do
                 local eta = e.r.eta
                 local c = Place(etaSec, i).cols
-                c[1]:SetText(e.r.key)
+                c[1]:SetText(ns.DisplayName(e.r.key))
                 Tint(c[1], e.s.class, T.fg)
                 c[2]:SetText(format("%d to %d", eta.level, eta.cap))
                 c[3]:SetText(Span(eta.secs))
@@ -616,8 +616,8 @@ function ns.CharactersPage(parent, ui)
             Open(togetherSec)
             for i, p in ipairs(pairsList) do
                 local c = Place(togetherSec, i).cols
-                c[1]:SetText(p.a)
-                c[2]:SetText(p.b)
+                c[1]:SetText(ns.DisplayName(p.a))
+                c[2]:SetText(ns.DisplayName(p.b))
                 c[3]:SetText(p.o > 0 and Duration(p.o) or "")
                 c[4]:SetText(p.p > 0 and Duration(p.p) or "")
                 c[5]:SetText(Ago(p.last, now, false))
@@ -637,7 +637,7 @@ function ns.CharactersPage(parent, ui)
             Open(impSec)
             for i, e in ipairs(imported) do
                 local c = Place(impSec, i).cols
-                c[1]:SetText(e.key)
+                c[1]:SetText(ns.DisplayName(e.key))
                 c[2]:SetText(table.concat(e.v.sources, " and "))
                 c[3]:SetText(Num(N(e.v.sales)))
                 c[4]:SetText(Money(N(e.v.sales_copper)))
@@ -649,7 +649,7 @@ function ns.CharactersPage(parent, ui)
 
             local days = type(v.days) == "table" and v.days or {}
             local shownDays = 0
-            impDaysSec.title:SetText(format("%s: sales by day", pick.key))
+            impDaysSec.title:SetText(format("%s: sales by day", ns.DisplayName(pick.key)))
             Open(impDaysSec)
             for _, d in ipairs(days) do
                 if type(d) == "table" and shownDays < IMPORTED_DAYS_SHOWN then
@@ -667,7 +667,7 @@ function ns.CharactersPage(parent, ui)
 
             local items = type(v.items) == "table" and v.items or {}
             local shownItems = 0
-            impItemsSec.title:SetText(format("%s: item prices", pick.key))
+            impItemsSec.title:SetText(format("%s: item prices", ns.DisplayName(pick.key)))
             Open(impItemsSec)
             for _, it in ipairs(items) do
                 if type(it) == "table" and N(it.sold) > 0 and shownItems < IMPORTED_ITEMS_SHOWN then
@@ -690,7 +690,7 @@ function ns.CharactersPage(parent, ui)
 
             local gold = type(v.gold) == "table" and v.gold or {}
             local shownGold = 0
-            impGoldSec.title:SetText(format("%s: gold by day", pick.key))
+            impGoldSec.title:SetText(format("%s: gold by day", ns.DisplayName(pick.key)))
             Open(impGoldSec)
             for i = #gold, 1, -1 do
                 local g = gold[i]

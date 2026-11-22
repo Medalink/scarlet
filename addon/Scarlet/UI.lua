@@ -470,7 +470,7 @@ local function PeoplePage(parent, source)
         for i = 1, MATE_ROWS do
             local key = mateList[i]
             rows[i].row:SetShown(key ~= nil)
-            rows[i].name:SetText(key or "")
+            rows[i].name:SetText(ns.DisplayName(key))
             if key then
                 local m = mates[key]
                 rows[i].value:SetText(format("%s together, %d group%s", Duration(m.secs), m.groups,

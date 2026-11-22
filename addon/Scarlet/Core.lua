@@ -66,6 +66,11 @@ function ns.Plain(v)
     return not issecretvalue(v) and v ~= nil
 end
 
+function ns.DisplayName(name)
+    if type(name) ~= "string" then return "" end
+    return (name:gsub("%-", " ", 1))
+end
+
 -- Max level -----------------------------------------------------------------------
 -- The one place that knows whether the character is still levelling. The cap comes from the
 -- client (never a constant here): the effective max level Blizzard's own UI uses, else the lower of
