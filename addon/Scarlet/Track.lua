@@ -797,6 +797,8 @@ local entered = false
 function H.PLAYER_ENTERING_WORLD()
     if entered then return end
     entered = true
+    quietEnds = 0
+    Quiet(15)
     local name = UnitName("player")
     me = Plain(name) and name or nil
     local rules = C_GameRules
@@ -811,8 +813,6 @@ function H.PLAYER_ENTERING_WORLD()
     H.UNIT_PET()
     Durability()
     C_Timer.After(2, Snapshot)
-    quietEnds = 0
-    Quiet(15)
     C_Timer.After(4, function()
         if not lastPlayed then AskPlayed() end
     end)
