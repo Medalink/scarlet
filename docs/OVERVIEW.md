@@ -86,7 +86,7 @@ a lost SavedVariables). Every figure is one of two kinds, and the two are never 
 addon did not record itself; the in-game Stats cards add it to the addon's own counters, which cover the
 sessions after the install, so no session is in both.
 
-**Unrecorded play.** The addon asks the game for `/played` a few seconds after login, 1.5 seconds after each
+**Unrecorded play.** The addon asks the game for `/played` 4 seconds after login (unless another addon's request already answered), 1.5 seconds after each
 level up and when the logout countdown starts (`TP` lines). The companion compares the counter at a session's
 start with where the session before it ended (its last read plus the seconds since). More than 120 seconds
 above is play Scarlet did not record: it is credited to no session, level or zone, and every level from the

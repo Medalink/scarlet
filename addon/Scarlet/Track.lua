@@ -695,37 +695,49 @@ function H.SCREENSHOT_FAILED()
     ns.shotTrigger = nil
 end
 
-local mutedFrames, ownRequest = {}, false
+local mutedFrames, quietEnds, quietToken = {}, math.huge, 0
 
-local function RestoreChat()
+local function Unmute()
+    quietEnds = 0
     for i = #mutedFrames, 1, -1 do
         mutedFrames[i]:RegisterEvent("TIME_PLAYED_MSG")
         mutedFrames[i] = nil
     end
 end
 
-if type(_G.RequestTimePlayed) == "function" then
-    hooksecurefunc("RequestTimePlayed", function()
-        if not ownRequest then RestoreChat() end
+local function Mute()
+    for i = 1, _G.NUM_CHAT_WINDOWS or 10 do
+        local f = _G["ChatFrame" .. i]
+        if f and f.IsEventRegistered and f:IsEventRegistered("TIME_PLAYED_MSG") then
+            f:UnregisterEvent("TIME_PLAYED_MSG")
+            mutedFrames[#mutedFrames + 1] = f
+        end
+    end
+end
+
+local function Quiet(seconds)
+    Mute()
+    local endsAt = GetTime() + seconds
+    if endsAt <= quietEnds then return end
+    quietEnds = endsAt
+    quietToken = quietToken + 1
+    local token = quietToken
+    C_Timer.After(seconds, function()
+        if token == quietToken then Unmute() end
     end)
+end
+
+Mute()
+
+if _G.SlashCmdList and type(_G.SlashCmdList.PLAYED) == "function" then
+    hooksecurefunc(_G.SlashCmdList, "PLAYED", Unmute)
 end
 
 local function AskPlayed()
     local request = _G.RequestTimePlayed
     if type(request) ~= "function" or not ns.charKey then return end
-    if #mutedFrames == 0 then
-        for i = 1, _G.NUM_CHAT_WINDOWS or 10 do
-            local f = _G["ChatFrame" .. i]
-            if f and f.IsEventRegistered and f:IsEventRegistered("TIME_PLAYED_MSG") then
-                f:UnregisterEvent("TIME_PLAYED_MSG")
-                mutedFrames[#mutedFrames + 1] = f
-            end
-        end
-    end
-    ownRequest = true
+    Quiet(5)
     request()
-    ownRequest = false
-    C_Timer.After(5, RestoreChat)
 end
 ns.AskPlayed = AskPlayed
 
@@ -733,7 +745,6 @@ ns.AskPlayed = AskPlayed
 -- an answer within a few seconds of the last one written is dropped.
 local lastPlayed, lastLevelSecs
 function H.TIME_PLAYED_MSG(total, thisLevel)
-    RestoreChat()
     if not Plain(total) or type(total) ~= "number" then return end
     local levelSecs = type(thisLevel) == "number" and Plain(thisLevel) and thisLevel or 0
     if lastPlayed and math.abs(total - lastPlayed) < 5 and math.abs(levelSecs - (lastLevelSecs or 0)) < 5 then return end
@@ -773,6 +784,7 @@ local function Snapshot()
 end
 
 function H.PLAYER_LEVEL_UP()
+    Quiet(8)
     C_Timer.After(1, Snapshot)
     C_Timer.After(1.5, ns.AskPlayed)
 end
@@ -799,7 +811,11 @@ function H.PLAYER_ENTERING_WORLD()
     H.UNIT_PET()
     Durability()
     C_Timer.After(2, Snapshot)
-    C_Timer.After(4, ns.AskPlayed)
+    quietEnds = 0
+    Quiet(15)
+    C_Timer.After(4, function()
+        if not lastPlayed then AskPlayed() end
+    end)
     C_Timer.After(10, function() titlesReady = true end)
 end
 
