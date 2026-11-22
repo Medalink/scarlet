@@ -612,21 +612,26 @@ addon's own group, such as `fishing`.
 - **store**: tells two histories of one addon apart, and is only a value the addon never rewrites while it keeps its
   records. `fl` and `ff` session lines have an empty store: a session is its character and its end. `mc` `life` lines
   use `life.since` for fishing and an empty store for `herb` and `ore` (Mastercraft's account-wide `nodes`, whose
-  oldest time moves when a node is gathered again).
+  oldest time moves when a node is gathered again). `rxp` level lines use the profile's `trackedGuid`. `fdj` run lines
+  use `<id>:<created>` of the run, since a run's `id` starts again at 1 when the addon's file is deleted.
 - **scope**: `c`, or `a` for a total the addon keeps for the whole game account. An `a` line names no character and
   no account, and is written with the same text into the payload of every character of that folder the companion
   exports.
 - **window**: `event` (`from` = `to`), `session`, `day`, `level` (`from` and `to` are the times the level was
-  reached and left) or `life` (`from` is the store's start, empty when it has none; `to` is the modification time of
+  reached and left; `from` equals `to` when the addon began inside the level, and a level still open is not written)
+  or `life` (`from` is the store's start, empty when it has none; `to` is the modification time of
   the saved-variables file).
 - **kind**: what is counted: `fishing`, `kill`, `run`, `xp`, `herb`, `ore`, and others as integrations add them.
 - **from**, **to**: epoch seconds on the addon's clock, as the addon stamped them.
-- **dims**: `key=value` pairs joined by `;` (`zone=`, `item=`, `npc=`, `level=`), or empty. A store writes each
+- **dims**: `key=value` pairs joined by `;` (`zone=`, `item=`, `npc=`, `level=`, `quest=`, `instance=`), or empty. A store writes each
   window once: one line with no dims, or lines split by the same dims that add up to the whole. `fl` and `ff`
-  sessions are one line with no dims.
+  sessions are one line with no dims. RXPGuides writes per level one `kill` line (`level=`) and one `xp` line per
+  quest turned in (`level=`, `quest=`, quest XP only); ForeverDungeonJournal one `run` line per closed run
+  (`instance=`, the instance map id), never joined by the companion.
 - **amounts**: `metric=number` pairs joined by `;`, with the addon's own field names mapped to Scarlet's metric names
   (`casts`, `landed`, `items`, `unknown` for fishing; `attempts` for `herb` and `ore`, the gathering attempts of
-  Scarlet's `gathers` rows). A field DESIGN.md does not map is not written.
+  Scarlet's `gathers` rows; `kills` for `kill`, `xp` for `xp`, `runs` for `run`). A field DESIGN.md does not map is
+  not written: RXPGuides' mob XP and deaths and ForeverDungeonJournal's kills, XP, money and deaths are not.
 
 The companion keeps every record it has read in an archive per character, `counts/archive.tsv`, one record per key
 (origin, store, scope, window, kind, dims, to, and from for `life`). The archive keeps the addon's own numeric fields
