@@ -233,6 +233,33 @@ A field the client marked secret is written as `?`. Missing values are empty.
 | `YS` | source, via, itemID, count, copper | Imported history: a sale another addon booked. via is `auction`, `vendor`, `trade` or `other`; copper is the whole amount received after the house's cut. No buyer is named. Group `imports` |
 | `YB` | source, via, itemID, count, copper | Imported history: a purchase another addon booked, as `YS`. Group `imports` |
 | `YM` | source, kind, copper | Imported history: other income or expense another addon booked (`money-transfer`, `repair-bill`, `postage`), copper signed. Group `imports` |
+| `JP` | xp, season, seasonXP, value, specimenItemID, specimenWeight, specimenWater, specimenAt | The Fishing Log: the character's angler profile. xp is its total experience, season the season number (months since year 0, UTC) and seasonXP the experience in it, value the copper its catches were worth; the four specimen fields are the latest specimen (item, pounds, water, epoch seconds). The line's time is when the profile last changed. Written by the companion into `fishing/payloads/fishing.scl`, never by the addon, like every `J` line. Group `fishing` |
+| `JR` | spotKey, itemID, weight, specimen | The Fishing Log: the character's heaviest fish of one species at one spot, in pounds, at the time it was caught. specimen `1` or `0`. Group `fishing` |
+| `JJ` | itemID, count, best, bestSpecimen, firstSpotKey, firstWater, uiMapID, x, y | The Fishing Log: one species in the character's journal: how many were caught, the heaviest and the heaviest specimen (pounds, `0` for none), and where the first was caught (x and y times 10000). The line's time is the first catch, or the profile's time when the addon kept none. Group `fishing` |
+| `JZ` | itemID, zone, count, best, bestSpecimen, spotKey | The Fishing Log: one species in one zone: count, heaviest and heaviest specimen in pounds, and the spot of the heaviest. The line's time is the profile's. Group `fishing` |
+| `JH` | zone, subzone, seconds, count, weight, biggest, biggestItemID, biggestName, specimens, value, solo, casts, landed, escaped, early, cancelled, unknown, recordsAll, recordsSeason | The Fishing Log: one fishing session of the character, timed at its end. weight is the pounds landed in all, biggest the heaviest fish (its item when the name is known), value copper, solo `1` or `0`; casts to unknown count the casts by outcome; recordsAll and recordsSeason the spot records it set. Group `fishing` |
+| `JW` | water, seconds, count, weight, biggest, biggestItemID, biggestName, junk, specimens, value | The Fishing Log: one water of the `JH` session with the same time, as `JH`. Group `fishing` |
+| `JB` | period, index, score, specimen, species, top | The Fishing Log: the character's progress in one bounty. period `day`, `week` or `month`; index counts those periods from 1970 (`day` 86400 s, `week` 604800 s, `month` 2419200 s), and the line's time is the period's start. specimen `1`, `0` or empty; species the itemIDs counted, comma-separated; top the weights of the best three fish, comma-separated. Group `fishing` |
+| `JX` | period, index, place, score, xp, entrants | The Fishing Log: the result of a bounty the character entered, timed when it was paid: its place among entrants and the experience it paid. Group `fishing` |
+| `JY` | period, index, rank, player, weight | The Fishing Log: one row of the standings of the `JX` result with the same period and index. player is another angler's `First-Last`, a pseudonym in uploads. Group `fishing` |
+| `JF` | itemID, name, count, water | The Fishing Log: a container or other find fished up, how many in all and the water of the latest, timed at the latest. Group `fishing` |
+| `JQ` | uiMapID, x, y, count | The Fishing Log: a feeding frenzy the character fished, x and y times 10000, count the fish it landed there. Group `fishing` |
+| `JG` | runs, best, cleared, mode, bestWeight | The Fishing Log: the character's Higher or Lower game. The line's time is the profile's. Group `fishing` |
+| `JK` | spotKey, scope, seasonID, itemID, weight, holder | The Fishing Log: a spot record as the addon's shared record book holds it: the heaviest fish of one species at one spot, timed when it was caught. scope `a` all time, `s` the season seasonID. holder is the angler's `First-Last`, a pseudonym in uploads unless it is the character. The record book is kept per game account, so every character of the account carries the same lines. Group `fishing` |
+| `JN` | spotKey, water, uiMapID, x, y, mine | The Fishing Log: a spot and where it is, x and y times 10000; mine `1` when you stood there. spotKey is the addon's: `a` and an area ID, `n` a map and a hash of a water's name, or a map and a grid cell. The line's time is when the account's data was last saved, as every `J` line of the account's own tables with no time of its own. Group `fishing` |
+| `JI` | itemID, name | The Fishing Log: a fish's name. Group `fishing` |
+| `JO` | period, format, index, player, score, specimen | The Fishing Log: one angler's entry on a bounty board the addon heard, timed at the period's start. format is the contest (`heaviest`, `top3`, `species`, `specimens`, `total`, `zone`, `count`, `specimenSpecies`), empty for the oldest boards. player as `JY`. Group `fishing` |
+| `JT` | period, index, itemID, zone | The Fishing Log: the fish a bounty named, timed at the period's start. period is the addon's (`dayH` the daily heaviest, `week`, `month`). Group `fishing` |
+| `JA` | player, guild, xp, version, xpAt | The Fishing Log: another angler the addon met, with their guild, their angler experience as of xpAt and their addon version, timed when last seen. player and guild are pseudonyms in uploads. Group `fishing` |
+| `JE` | player, faction | The Fishing Log: an angler's faction, `A` or `H`, for the players other `J` lines name. Group `fishing` |
+| `JD` | frenzyKey, uiMapID, x, y, player, count, mine | The Fishing Log: an angler who reported a feeding frenzy, where they stood and how many fish they landed there, timed when they reported it. player as `JY`; mine `1` for yours. Group `fishing` |
+| `JU` | name, uiMapID, x, y, mine, seenBy | The Fishing Log: a fish school seen, timed when it was seen. mine `1` when you saw it, seenBy how many anglers reported it. Group `fishing` |
+| `JV` | zone, uiMapID, total, itemID, name, count, skillLow, skillHigh, junk, pool | The Fishing Log: one item of the addon's zone survey: how many came up of the zone's total, the fishing skill range they came up at, junk and pool `1` or `0`. Group `fishing` |
+| `JC` | zone, water, count | The Fishing Log: the casts of the zone survey made in one water. Group `fishing` |
+| `JM` | zone, itemID, count | The Fishing Log: catches in a zone the addon's fish data does not cover. Group `fishing` |
+| `JS` | uiMapID, kind, band, landed, escaped | The Fishing Log: casts in one zone at one fishing skill band (band times 25 to that plus 24, lures and gear included). kind `o` open water, `p` a pool. Group `fishing` |
+| `JL` | uiMapID, source, skillLow, skillHigh, count | The Fishing Log: the fishing skill range at which skill-ups came in one zone. source is empty for your own, else who reported them, a pseudonym in uploads (`~older versions` is the addon's own label). Group `fishing` |
+| `JCH` | player, until | The Fishing Log: an angler the noticeboard named champion until the epoch second until. player as `JY`. Group `fishing` |
 | `RF` | factionID, reaction, standing, floor, ceiling, atWar, accountWide, why | A faction's standing differs from the last `RF` line for it. reaction is the client's tier (`1` hated, `2` hostile, `3` unfriendly, `4` neutral, `5` friendly, `6` honored, `7` revered, `8` exalted). standing is the client's number; floor and ceiling bound the tier. atWar and accountWide are `1` or `0`. why `s` on the first read of the session. Written from a scan 3 seconds after the client reports a change, with the standing, so a gain shows here once and `RP` keeps the amount by name. Each day starts with every faction again. Factions the player has never had expanded in the reputation list are found only after they change |
 | `FN` | factionID, name | Faction name, once per session, before the first `RF` or `RV` line for it |
 | `RG` | factionID, value, threshold, rewardPending, level, why | A paragon track (a faction at exalted) changed its reward-pending flag or its level. value and threshold are the progress toward the next reward. why `s` on the first read of the session |
@@ -520,6 +547,29 @@ what Scarlet did not record itself as `YG`, `YS`, `YB` and `YM` lines.
   `sales_copper`, `buys`, `buys_copper`, `dropped`, `gold` (one point a UTC day), `recent`, `items` and `days`.
 - The BeanCounter reader follows the order BeanCounter packs a completed auction in (stack, money, deposit, fee,
   buyout, bid, buyer or seller, time, reason, house); an entry in another layout is counted and left out.
+
+## The Fishing Log
+
+The companion reads The Fishing Log's saved variables and writes what they hold as `J` lines, group `fishing`: the
+character's file (`<account>/<realm>/<Name-Surname>/SavedVariables/TheFishingLog.lua`, table `TheFishingLogChar`)
+and its game account's file (`<account>/SavedVariables/TheFishingLog.lua`, table `TheFishingLogDB`).
+
+- From the character: the profile (`JP`), the best fish at each spot (`JR`), the journal (`JJ`), each species by zone
+  (`JZ`), every fishing session with its waters (`JH`, `JW`), bounty progress, results and standings (`JB`, `JX`,
+  `JY`), finds (`JF`), feeding frenzies (`JQ`) and the Higher or Lower game (`JG`).
+- From the account, on every character of it that has a file of its own: the shared record book of every spot, all
+  time and per season (`JK`), the spots (`JN`), fish names (`JI`), the bounty boards and targets the addon heard
+  (`JO`, `JT`), the anglers it met with their factions (`JA`, `JE`), frenzy reports (`JD`), fish schools (`JU`), the
+  zone survey (`JV`, `JC`, `JM`), catch skill (`JS`), skill-ups (`JL`) and champions (`JCH`).
+- Not read: settings, notices, the addon's sync and migration bookkeeping, its outfit links and its macro backups.
+- Every line is a snapshot of what the file holds now. A line has the time of the thing it describes (a catch, a
+  session's end, a period's start); a line with no time of its own takes the profile's time (character) or the time
+  the account's data was last saved (account). The character's own name stays as it is; other anglers are written
+  `First-Last`, with any realm suffix the addon kept removed.
+- Per character, `fishing/payloads/fishing.scl` (header `scarletfishing	1	<Name-Surname>`, then
+  `<epoch ms>	<code>	<fields...>`) replaces itself on every export, and is removed when the character has no file.
+- Every catch with its weight is the addon stream's `fl C` line (ADDONS.md), not a `J` line: The Fishing Log keeps
+  only the best of each.
 
 ## Companion output
 

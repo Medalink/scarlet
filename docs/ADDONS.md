@@ -66,7 +66,7 @@ only when its addon is loaded and its flag is on.
 
 | Code | Fields | Meaning |
 | --- | --- | --- |
-| `C` | itemID, weight, flags, zone, spot, uiMapID, x, y | A catch the addon recorded. weight is its pounds. flags: `s` specimen, `j` junk, `f` frenzy, `b` heavier than your previous best of that fish. spot is the addon's name for the water. Simulated catches are skipped. Read from the addon's `TFL_CATCH` message |
+| `C` | itemID, weight, flags, zone, spot, uiMapID, x, y, spotKey | A catch the addon recorded. weight is its pounds. flags: `s` specimen, `j` junk, `f` frenzy, `b` heavier than your previous best of that fish. spot is the addon's name for the water and spotKey its key for it, the one its record book files records under (FORMAT.md `JK`); lines from before 2026-11-22 end at y. Simulated catches are skipped. Read from the addon's `TFL_CATCH` message. The addon's own records, journal, sessions and leaderboards are read from its saved variables by the companion (FORMAT.md, "The Fishing Log") |
 
 ### `ff` Forever Fishing
 

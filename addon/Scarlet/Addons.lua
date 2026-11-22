@@ -226,7 +226,7 @@ local function StartFishingLog(emit)
         local flags = (c.specimen and "s" or "") .. (c.junk and "j" or "") .. (c.frenzy and "f" or "")
             .. (c.best and "b" or "")
         emit("C", Int(c.itemID), weight and floor(weight * 100 + 0.5) / 100 or nil, flags, Str(c.zone),
-            Str(spot.name), Int(spot.mapID), Coord(spot.x), Coord(spot.y))
+            Str(spot.name), Int(spot.mapID), Coord(spot.x), Coord(spot.y), Str(spot.key))
     end))
     return true
 end
