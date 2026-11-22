@@ -400,13 +400,14 @@ local function LootSources(isFromItem)
     for i = 1, #order do
         local kind, id = order[i]:match("^(%a):(.*)$")
         local src = sources[order[i]]
-        local again = ""
-        if kind == "c" or kind == "g" then again = ns.LootRead(src.guid) end
         local items = table.concat(src.items, ",")
-        Emit("LO", kind, id, src.slots, items, again)
         if kind == "c" or kind == "g" then
+            local again = ns.LootRead(src.guid)
+            Emit("LO", kind, id, src.slots, items, again, ns.CorpseKey(src.guid))
             ns.PlaceGUID(src.guid, "l")
             if ns.ShareLoot then ns.ShareLoot(src.guid, src.slots, items, again) end
+        else
+            Emit("LO", kind, id, src.slots, items, "")
         end
     end
 end

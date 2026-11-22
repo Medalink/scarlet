@@ -5,7 +5,7 @@ _G.Scarlet = ns
 
 local floor, select, type, tostring, concat, wipe = math.floor, select, type, tostring, table.concat, wipe
 local min, max = math.min, math.max
-local format = string.format
+local format, strbyte, find = string.format, string.byte, string.find
 local GetTime, time = GetTime, time
 local issecretvalue = issecretvalue or function(_) return false end
 
@@ -64,6 +64,25 @@ ns.Field = Field
 
 function ns.Plain(v)
     return not issecretvalue(v) and v ~= nil
+end
+
+local KEY_PRIME_HI, KEY_MULTIPLIER_HI = 1048573, 65599
+local KEY_PRIME_LO, KEY_MULTIPLIER_LO = 1048571, 1000003
+
+--- The corpse key of a creature, vehicle or object GUID: 10 hex digits that every client computes the same
+--- way (docs/FORMAT.md, "Corpse key"). nil for any other GUID, so a player's GUID is never hashed.
+function ns.CorpseKey(guid)
+    if issecretvalue(guid) or type(guid) ~= "string" then return nil end
+    if not (find(guid, "^Creature%-") or find(guid, "^Vehicle%-") or find(guid, "^GameObject%-")) then
+        return nil
+    end
+    local hi, lo = 0, 0
+    for i = 1, #guid do
+        local byte = strbyte(guid, i)
+        hi = (hi * KEY_MULTIPLIER_HI + byte) % KEY_PRIME_HI
+        lo = (lo * KEY_MULTIPLIER_LO + byte) % KEY_PRIME_LO
+    end
+    return format("%05x%05x", hi, lo)
 end
 
 function ns.DisplayName(name)

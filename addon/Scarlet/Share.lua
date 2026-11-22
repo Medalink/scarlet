@@ -163,7 +163,7 @@ function H.CHAT_MSG_ADDON(prefix, text, channel, sender)
     if not Rate(who, GetTime()) then return end
     local seen = ns.LootRead(guid)
     Emit("LW", who, kind, id, tonumber(fields[4]), fields[5], (fields[6] == "1" or seen == 1) and 1 or 0,
-        tonumber(fields[7]))
+        tonumber(fields[7]), ns.CorpseKey(guid))
 end
 
 local function Restart()

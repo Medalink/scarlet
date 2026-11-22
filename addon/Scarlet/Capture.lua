@@ -395,6 +395,11 @@ local function PlayerKill(guid, by)
         token and Str(UnitFactionGroup(token)) or "")
 end
 
+local function EmitKill(id, by, guid)
+    local key = ns.CorpseKey(guid)
+    if key then Emit("K", id, by, key) else Emit("K", id, by) end
+end
+
 function H.PARTY_KILL(attacker, target)
     local by = "?"
     if Plain(attacker) then
@@ -407,7 +412,7 @@ function H.PARTY_KILL(attacker, target)
     end
     local id = NpcID(target)
     NameNpc(id, target)
-    Emit("K", id, by)
+    EmitKill(id, by, target)
     Ov.Kill()
     if id == "p" and Plain(target) then
         PlayerKill(target, by)
@@ -459,7 +464,7 @@ local function Died(unit)
     C_Timer.After(KILL_WAIT, function()
         if reported[guid] then return end
         reported[guid] = true
-        Emit("K", id, 2)
+        EmitKill(id, 2, guid)
         Ov.Kill()
         ns.XPSource("k", id)
         Add("kills")
