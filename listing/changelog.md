@@ -1,12 +1,25 @@
 # Scarlet
 
+## 1.0.2
+
+- New Loot HUD: while you herb, mine, skin, fish or disenchant, outlined text around your character shows the zone, this session's items and nodes, your lifetime count, what the items are worth, gold per hour, your skill, the 7 latest items and the best one this session. It fades 8 seconds after the last gather. The Loot HUD page in Scarlet's window sets its size, layout, outline and professions; drag a part to move it.
+- Item values come from Auctionator, then TradeSkillMaster, then the auction prices Scarlet has seen you look up, then the vendor price.
+- The world map shows only your walking trail of the last 20 minutes. Flight and teleport lines, deaths, gathering and fishing, NPC windows, quests, discovered areas and camps are no longer drawn in game; the desktop app still shows them. With OpenMap, its Scarlet menu has the one "Trail walked" switch, and the game map's Scarlet switch no longer has a list of layers.
+- "Total time played" no longer prints two to four times at login. Other addons' /played requests stay out of chat for the first 15 seconds; typing /played still prints.
+- A camp visit now lasts as long as you are at the camp. The Camp Benefits, Warmth and Cozy Fire buffs, which you keep for an hour after leaving, no longer start or extend a visit, so Camps and Time at camp count only the time near a campfire or tent.
+- Opening the world map no longer counts as a /read emote, so it stops topping your favourite emotes.
+- The addon window shows characters as first name and surname.
+- A death now keeps every hit of the death recap (up to 20, was 3), says when a fall or drowning killed you, and a death the game reports twice counts once.
+- A character first recorded partway through its life now gets its completed quests, titles, explored map areas and instance and world boss locks, so lifetime numbers can cover the time before Scarlet.
+- Item search can find items in the warband bank, guild bank tabs you opened, your mailbox and your auctions.
+- Records auction prices you look up, which boss each item came from, the name of an object you loot, recipe reagents, hardcore death notices, /who results, full battleground scoreboards and the gear of players you inspect.
+- Kill and loot lines carry a corpse key, a hash that is the same on every client, so a corpse several players saw counts once. The creature's GUID itself is never stored.
+
 ## 1.0.1
 
 - In a group, Scarlet now tells the other members' Scarlet which corpse or object you looted and what its loot window held, and records what theirs tell you. Drop rates then count the corpses your group opened, not only yours. It goes to your group only, after combat, and carries no names, position or chat. "Share loot sources with your group" on the Settings page turns it off.
 - The Characters page lists every character from all your game accounts in one table, the one you are logged into first, with a Game account column when you have more than one account. "Group characters by game account" in the desktop app brings the split by account back.
 - A time-to-level target now needs five complete recorded levels, so a new character no longer shows a date years away.
-- A camp visit now lasts as long as you are at the camp. The Camp Benefits, Warmth and Cozy Fire buffs, which you keep for an hour after leaving, no longer start or extend a visit, so Camps and Time at camp count only the time near a campfire or tent.
-- The world map shows only your walking trail of the last 20 minutes. Flight and teleport lines, deaths, gathering and fishing, NPC windows, quests, discovered areas and camps are no longer drawn in game; the desktop app still shows them. With OpenMap, its Scarlet menu has the one "Trail walked" switch, and the game map's Scarlet switch no longer has a list of layers.
 
 ## 1.0.0
 
