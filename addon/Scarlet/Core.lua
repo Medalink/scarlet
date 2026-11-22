@@ -905,7 +905,7 @@ function ns.Listen(frame, handlers, label, lazy)
     end
 end
 
-local MAIL_INFO = Enum.PlayerInteractionType and Enum.PlayerInteractionType.MailInfo or 17
+local MAIL_INFO = _G.Enum and _G.Enum.PlayerInteractionType and _G.Enum.PlayerInteractionType.MailInfo or 17
 
 local function DispatchMailClosed(_, _, kind)
     if not (ns.Plain(kind) and kind == MAIL_INFO) then return end
@@ -915,7 +915,9 @@ local function DispatchMailClosed(_, _, kind)
 end
 
 local mailCloser = CreateFrame("Frame")
-mailCloser:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
+if not (C_EventUtils and C_EventUtils.IsEventValid) or C_EventUtils.IsEventValid("PLAYER_INTERACTION_MANAGER_FRAME_HIDE") then
+    mailCloser:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
+end
 mailCloser:SetScript("OnEvent", DispatchMailClosed)
 
 function ns.Print(msg)
