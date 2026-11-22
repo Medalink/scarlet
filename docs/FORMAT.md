@@ -110,7 +110,7 @@ A field the client marked secret is written as `?`. Missing values are empty.
 | `LG` | 0 or 1 | Combat logging to WoWCombatLog.txt turned off or on |
 | `A` | 1, spellID, helpful, duration, by, initial | You gained an aura. helpful `1` buff, `0` debuff. by `1` from you or your pet, `0` from someone else, empty if unknown. initial `s` when it was already on at session start |
 | `A` | 0, spellID, seconds | An aura ended, with how long it lasted |
-| `CP` | 1, spellID, continued | Camp visit started: the first camp aura (Forever camp spells, or any aura named "Camp...") appeared. continued `1` after a reload at the same camp |
+| `CP` | 1, spellID, continued | Camp visit started: the first camp aura (Forever camp spells, or any aura named "Camp...") appeared. Camp Benefits (1229741), Warmth (1289378) and Cozy Fire (1232234) stay on the character after it leaves the camp and never open or hold a visit. continued `1` after a reload at the same camp |
 | `CP` | 0, seconds | Camp visit ended: the last camp aura went away, or the session ended |
 | `RS` | 0 or 1 | Resting state (inn, city, camp) changed |
 | `RX` | 1, xp or 0 | Rested XP started or ran out. Not written at the level cap or with experience off |

@@ -755,10 +755,12 @@ for _, id in ipairs({ 1229432, 1229487, 1255248, 1307230, -- Camp Tent
     1229517, 1255250, 1307229,                            -- Camp Chair
     1229736, 1229737, 1307227, 1229739, 1289723,          -- Campfire, Basic, Welcoming
     1283400, 1307252, 1291341, 1307237,                   -- Journeyman, Expert Campfire
-    1229741, 1283391, 1289378, 1232234,                   -- Camp Benefits, Campfire Nearby, Warmth, Cozy Fire
+    1283391,
     1229451, 1325299,                                     -- Boosted Rest
     1290211, 1304323, 1308027, 1308302, 1310090, 1327906, -- Camping
 }) do CAMP[id] = true end
+
+local BUFFS_KEPT_AFTER_LEAVING_CAMP = { [1229741] = true, [1289378] = true, [1232234] = true }
 
 local auras = {}   -- auraInstanceID -> { id, t, camp }
 local campN, campT0 = 0, nil
@@ -771,7 +773,7 @@ local function AuraAdded(a, initial)
     if not Plain(iid) or not Plain(id) or not iid or not id or auras[iid] then return end
     local name = a.name
     local camp = CAMP[id] or false
-    if not camp and Plain(name) and type(name) == "string" and name:find("Camp", 1, true) then camp = true end
+    if not camp and not BUFFS_KEPT_AFTER_LEAVING_CAMP[id] and Plain(name) and type(name) == "string" and name:find("Camp", 1, true) then camp = true end
     local now = GetTime()
     auras[iid] = { id = id, t = now, camp = camp }
     SpellName(id, name)
