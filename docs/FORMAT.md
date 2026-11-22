@@ -230,10 +230,11 @@ A field the client marked secret is written as `?`. Missing values are empty.
 | `TK` | kind, value | WoW Token. kind `p` the market price changed (copper), `b` and `s` the client's result code for a buy or a sell, `a` your token sold (value empty) |
 | `LP` | specID | Loot specialization changed. `0` follows your current spec |
 | `DI` | itemID, count | You destroyed an item with the delete command. The item is the last one you picked up from your bags and still held |
-| `YG` | source, copper | Imported history: a gold balance another addon logged (`source` is `TSM`). Written by the companion into `imports/payloads/import.scl`, never by the addon. Group `imports` |
+| `YG` | source, copper | Imported history: a gold balance another addon logged (`source` is `TSM` or `Mastercraft`). Written by the companion into `imports/payloads/import.scl`, never by the addon. Group `imports` |
 | `YS` | source, via, itemID, count, copper | Imported history: a sale another addon booked. via is `auction`, `vendor`, `trade` or `other`; copper is the whole amount received after the house's cut. No buyer is named. Group `imports` |
 | `YB` | source, via, itemID, count, copper | Imported history: a purchase another addon booked, as `YS`. Group `imports` |
 | `YM` | source, kind, copper | Imported history: other income or expense another addon booked (`money-transfer`, `repair-bill`, `postage`), copper signed. Group `imports` |
+| `YU` | source, kind, itemID, count, stack | Imported history: an auction that came back, which another addon booked when the item was taken from the mail (`source` is `TSM`). kind is `e` expired or `x` cancelled, as in `AU`; the time is the mail's arrival, which is the auction's end; count is the items of that stack size taken together. Group `imports` |
 | `YC` | origin, store, scope, window, kind, from, to, dims, amounts | Addon count: one additive statement another addon's saved variables make (casts and catches in a fishing session, a lifetime total, a kill). Written by the companion into `counts/payloads/counts.scl`, never by the addon. Group `counts` |
 | `JP` | xp, season, seasonXP, value, specimenItemID, specimenWeight, specimenWater, specimenAt | The Fishing Log: the character's angler profile. xp is its total experience, season the season number (months since year 0, UTC) and seasonXP the experience in it, value the copper its catches were worth; the four specimen fields are the latest specimen (item, pounds, water, epoch seconds). The line's time is when the profile last changed. Written by the companion into `fishing/payloads/fishing.scl`, never by the addon, like every `J` line. Group `fishing` |
 | `JR` | spotKey, itemID, weight, specimen | The Fishing Log: the character's heaviest fish of one species at one spot, in pounds, at the time it was caught. specimen `1` or `0`. Group `fishing` |
@@ -562,14 +563,26 @@ other groups. Your own chat is reduced to counts of a few words.
 
 Imported history is a third kind of record beside lifetime and observed numbers (the data rule of
 2026-11-21). The companion reads TradeSkillMaster's saved variables (`TradeSkillMaster.lua`: the sales,
-purchases, income and expense accounting and each character's gold log) and Auctioneer's BeanCounter
-(`BeanCounter.lua`: `completedAuctions` and `completedBidsBuyouts`) from every game account folder, and writes
-what Scarlet did not record itself as `YG`, `YS`, `YB` and `YM` lines.
+purchases, income and expense accounting and each character's gold log) and its expired and cancelled auctions),
+Auctioneer's BeanCounter (`BeanCounter.lua`: `completedAuctions` and `completedBidsBuyouts`) and Mastercraft's
+daily history (`Mastercraft.lua`: `history[<GUID>][<day>].g`, the last balance of each day) from every game account
+folder, and writes what Scarlet did not record itself as `YG`, `YS`, `YB`, `YM` and `YU` lines.
 
 - A record is dropped when Scarlet has the same thing from its own lines or from history read in earlier: an auction
   sale or purchase that matches an `AV` invoice (item, count, amount within a copper a unit, 48 hours), a purchase that
   matches an `AU y` line, a vendor sale or purchase whose counts match `I` and `VB` lines within a minute, money that
   matches an `M` line within 90 seconds, and a gold point within 15 minutes of a balance Scarlet recorded.
+- Mastercraft's day is the PC's local calendar date. Its balance becomes a `YG` line at the last second of that local
+  day on the PC's clock, so two PCs write the same line, and is dropped when Scarlet has an `M` balance in that local
+  day or another `YG` point falls in it. Its daily skill ranks are not read: a rank is a maximum, and Scarlet's `SK`
+  and `SL` lines hold the same ranks (87 of 87 day and profession cells equal on the owner's data).
+- TradeSkillMaster writes an expired or cancelled auction when its mail hook takes the returned item, so a mail taken
+  another way leaves no row and its counts are a floor. Each row is one `YU` line, keyed by its own item, stack size,
+  character and time.
+- The companion keeps every imported record it has read in an archive per character, `imports/archive.tsv`, one
+  record per line key. A record that leaves the addon's file stays in the archive (Mastercraft keeps 35 days of
+  history, TradeSkillMaster 180), an unreadable file adds and removes nothing, and the payload is built from the
+  archive with the drop rules above applied on every export.
 - Imported records are never added to earned, spent, kills or any other observed number, and no public board reads
   them. They have their own sharing group, `imports`. Addon counts (below) are the one kind of addon data that is
   added to Scarlet's totals (owner, 2026-11-22).
@@ -598,20 +611,22 @@ addon's own group, such as `fishing`.
   NaowhForever, `fdj` ForeverDungeonJournal, `rxp` RXPGuides, `tsm` TradeSkillMaster.
 - **store**: tells two histories of one addon apart, and is only a value the addon never rewrites while it keeps its
   records. `fl` and `ff` session lines have an empty store: a session is its character and its end. `mc` `life` lines
-  use `life.since`.
+  use `life.since` for fishing and an empty store for `herb` and `ore` (Mastercraft's account-wide `nodes`, whose
+  oldest time moves when a node is gathered again).
 - **scope**: `c`, or `a` for a total the addon keeps for the whole game account. An `a` line names no character and
   no account, and is written with the same text into the payload of every character of that folder the companion
   exports.
 - **window**: `event` (`from` = `to`), `session`, `day`, `level` (`from` and `to` are the times the level was
   reached and left) or `life` (`from` is the store's start, empty when it has none; `to` is the modification time of
   the saved-variables file).
-- **kind**: what is counted: `fishing`, `kill`, `run`, `xp`, and others as integrations add them.
+- **kind**: what is counted: `fishing`, `kill`, `run`, `xp`, `herb`, `ore`, and others as integrations add them.
 - **from**, **to**: epoch seconds on the addon's clock, as the addon stamped them.
 - **dims**: `key=value` pairs joined by `;` (`zone=`, `item=`, `npc=`, `level=`), or empty. A store writes each
   window once: one line with no dims, or lines split by the same dims that add up to the whole. `fl` and `ff`
   sessions are one line with no dims.
 - **amounts**: `metric=number` pairs joined by `;`, with the addon's own field names mapped to Scarlet's metric names
-  (`casts`, `landed`, `items`, `unknown` for fishing). A field DESIGN.md does not map is not written.
+  (`casts`, `landed`, `items`, `unknown` for fishing; `attempts` for `herb` and `ore`, the gathering attempts of
+  Scarlet's `gathers` rows). A field DESIGN.md does not map is not written.
 
 The companion keeps every record it has read in an archive per character, `counts/archive.tsv`, one record per key
 (origin, store, scope, window, kind, dims, to, and from for `life`). The archive keeps the addon's own numeric fields
