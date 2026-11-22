@@ -31,7 +31,7 @@ ScarletDB = {
   ["gaps"] = { { from = 3, to = 9, at = 1763600999 } },  -- chunk numbers dropped for space
   ["chars"] = { ... },          -- lifetime counters for the in-game window; the companion ignores it
   ["opt"] = { ... },            -- settings; the companion ignores it
-  ["prices"] = { [2447] = 85 }, -- last auction unit price in copper per item ID (at most 2000), for the gathering popup; the companion ignores it
+  ["prices"] = { [2447] = 85 }, -- last auction unit price in copper per item ID (at most 2000), for the Loot HUD; the companion ignores it
 }
 ```
 

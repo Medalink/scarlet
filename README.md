@@ -58,11 +58,26 @@ the same rule. "Live" is a column that marks the APIs the client's UI calls; it 
 where you died), the session's numbers, time splits, people and a live view. A minimap icon shows that it is
 recording.
 
-While you herb, mine, skin, fish, survey or disenchant, a small popup lists the zone and one line per item:
-profession, item, this session's count / your lifetime count, and what the stack in your bags is worth. It fades
-12 seconds after the last gather. Drag it to move it, Shift-drag to scale it, and drag an edge to resize it. The
-Settings page has a live preview, the font size and which professions to show. `/scarlet gather` pins it on screen,
-`/scarlet gather reset` puts it back, and `/scarlet gather clear` empties the session.
+### Loot HUD
+
+While you herb, mine, skin, fish or disenchant, outlined text with no background appears around your character, in
+three parts:
+
+- **Left:** zone and subzone, items gathered and nodes opened this session, your lifetime count, what the session's
+  items are worth in your bags, time and gold per hour, and your skill in that profession while it is below its cap.
+- **Right:** the 7 items gathered most recently, each with its profession's icon, the item's icon, its name and the
+  price of one. Older items are summed up in a "+13 more items" line.
+- **Below:** the last item gathered, the best one this session (green quality or better), and End Session.
+
+Prices come from Auctionator, then TradeSkillMaster, then the auction prices Scarlet has seen, then the vendor price.
+A session survives `/reload` and logging out, and a new one starts after 30 minutes without a gather. The HUD fades
+8 seconds after the last gather. Left clicks pass through it to the world; a right-click hides it.
+
+The Loot HUD page in Scarlet's window has a preview and four tabs: General (on or off, hide after 0 to 60 seconds,
+where 0 never hides, and Reset session), Text (size, outline, shadow), Layout (straight, or an arc that bends each side
+around your character, and Reset layout) and Professions. While the page is open the HUD is on screen with outlines:
+drag a part to move it, Shift-drag to scale all three. `/scarlet gather` does the same from chat, `/scarlet gather
+reset` puts the layout back, and `/scarlet gather clear` ends the session.
 
 ## On the world map
 
