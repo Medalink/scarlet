@@ -42,7 +42,7 @@ do
     opt.scale = tonumber(opt.scale) or 1
 end
 
-local SCENARIOS = { "raid", "idle", "quest", "move", "seal", "window", "map" }
+local SCENARIOS = { "raid", "idle", "quest", "move", "seal", "window", "map", "ui" }
 if opt.list then print(table.concat(SCENARIOS, " ")) os.exit(0) end
 
 -- Deterministic random numbers, the same on every platform.
@@ -452,6 +452,15 @@ function SCEN.window(W, ns)
     s.call(17, "window: show again", function() ns.Toggle() end)
     s.sort()
     return s, 20
+end
+
+function SCEN.ui(W, ns)
+    Setup(W, 0)
+    local s = NewStream()
+    s.call(1, "ui: design sheet, first open", function() ns.UI.ToggleSheet() end)
+    s.call(2, "ui: design sheet, hide", function() ns.UI.ToggleSheet() end)
+    s.sort()
+    return s, 5
 end
 
 -- The map: the budgeted read of the stored chunks, one 4 ms pump per frame until it is done.

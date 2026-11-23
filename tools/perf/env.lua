@@ -109,6 +109,7 @@ function Frame:GetVerticalScroll() return self.vscroll or 0 end
 function Frame:IsMouseOver() return false end
 function Frame:CreateTexture() return NewFrame("Texture", nil, self) end
 function Frame:CreateFontString() return NewFrame("FontString", nil, self) end
+function Frame:CreateLine() return NewFrame("Line", nil, self) end
 function Frame:CreateAnimationGroup() return NewFrame("AnimationGroup", nil, self) end
 function Frame:CreateAnimation() return NewFrame("Animation", nil, self) end
 function Frame:GetCanvas() return NewFrame("Canvas", nil, self) end

@@ -20,6 +20,14 @@ local T = {
     accentSoft = { 0xff / 255, 0x6b / 255, 0x8e / 255 },
     accentDeep = { 0xc0 / 255, 0x10 / 255, 0x2e / 255 },
     ink = { 0x14 / 255, 0x14 / 255, 0x16 / 255 },
+    dim = { 0x6e / 255, 0x6e / 255, 0x7a / 255 },
+    rest = { 0x54 / 255, 0x54 / 255, 0x5d / 255 },
+    copper = { 0xc5 / 255, 0x8a / 255, 0x63 / 255 },
+    silver = { 0xc3 / 255, 0xc7 / 255, 0xcf / 255 },
+    gold = { 0xd9 / 255, 0xb2 / 255, 0x5f / 255 },
+    s2 = { 0x2f / 255, 0x9e / 255, 0xc4 / 255 },
+    s3 = { 0x98 / 255, 0x72 / 255, 0x1c / 255 },
+    s4 = { 0x9a / 255, 0x7d / 255, 0xf2 / 255 },
 }
 
 local WHITE = "Interface\\Buttons\\WHITE8X8"
@@ -270,7 +278,7 @@ end
 
 -- What Overview.lua draws with.
 ns.UI = { T = T, Fill = Fill, Border = Border, Hair = Hair, Text = Text, Num = Num, Money = Money,
-    Duration = Duration, SetFont = SetFontSafe, Face = FacePath }
+    Duration = Duration, Distance = Distance, SetFont = SetFontSafe, Face = FacePath }
 
 local CARDS = {
     { "Kills", function(s) return Num(s.kills) end },
@@ -848,6 +856,8 @@ local function CloseButton(parent, target)
     return b
 end
 
+ns.UI.CloseButton = CloseButton
+
 local RefreshIcon
 
 function ns.RefreshStatus()
@@ -1220,6 +1230,8 @@ SlashCmdList.SCARLET = function(msg)
         local n, bytes = ns.StoredChunks()
         ns.Print(format("%d chunks stored (%.1f KB), %d lines pending, %s.", n, bytes / 1024, ns.Pending(),
             ns.opt.paused and "paused" or "recording"))
+    elseif cmd == "sheet" then
+        ns.UI.ToggleSheet()
     elseif cmd == "gather" then
         if ns.Gather then
             if arg == "reset" then

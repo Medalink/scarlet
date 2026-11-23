@@ -48,3 +48,4 @@ MapData.lua
 Map.lua
 Gather.lua
 UI.lua
+Kit.lua
