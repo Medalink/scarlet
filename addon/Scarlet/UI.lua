@@ -607,12 +607,14 @@ local function SettingsPage(parent)
             function(v) if ns.Map then ns.Map.SetDraw(v) end end),
         Toggle(page, -308, "Share loot sources with your group", function() return opt.shareLoot ~= false end,
             function(v) opt.shareLoot = v if ns.ShareApply then ns.ShareApply() end end),
+        Toggle(page, -352, "Show the session summary at inns and at logout", function() return opt.summary ~= false end,
+            function(v) opt.summary = v end),
     }
     local save = Button(page, "Save chunk now", 150, function()
         SlashCmdList.SCARLET("save")
         ns.RefreshStatus()
     end)
-    save:SetPoint("TOPLEFT", 0, -372)
+    save:SetPoint("TOPLEFT", 0, -396)
     function page:Refresh()
         for i = 1, #toggles do toggles[i]:Refresh() end
     end
@@ -1054,11 +1056,21 @@ RefreshIcon = function()
     icon:SetShown(ns.opt.icon ~= false and not ns.opt.paused)
 end
 
+function ns.UI.RecordingIcon()
+    return icon
+end
+
+function ns.UI.Open(key)
+    if not window then Build() end
+    window:Show()
+    Show(key)
+end
+
 -- Login toast -------------------------------------------------------------------------
 
-local function Toast()
+local function Toast(last)
     local f = CreateFrame("Frame", nil, UIParent)
-    f:SetSize(300, 54)
+    f:SetSize(last and 340 or 300, last and 48 or 54)
     f:SetPoint("TOP", 0, -140)
     f:SetFrameStrata("HIGH")
     Fill(f, T.bg, 0.95):SetAllPoints()
@@ -1067,12 +1079,21 @@ local function Toast()
     rail:SetPoint("TOPLEFT", 1, -1)
     rail:SetPoint("BOTTOMLEFT", 1, 1)
     rail:SetWidth(2)
-    local title = Text(f, 22, T.fg, "LEFT", "display")
-    title:SetPoint("TOPLEFT", 16, -9)
-    title:SetText("Scarlet is recording")
-    local sub = Text(f, 13, T.muted)
-    sub:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -5)
-    sub:SetText("v" .. ns.VERSION .. "   /scarlet opens the window")
+    if last then
+        local line = Text(f, 14, T.fg, "LEFT", "strong")
+        line:SetPoint("TOPLEFT", 17, -10)
+        line:SetText(last)
+        local sub = Text(f, 12, T.muted)
+        sub:SetPoint("TOPLEFT", line, "BOTTOMLEFT", 0, -5)
+        sub:SetText("Scarlet is recording · /scarlet opens the window")
+    else
+        local title = Text(f, 22, T.fg, "LEFT", "display")
+        title:SetPoint("TOPLEFT", 16, -9)
+        title:SetText("Scarlet is recording")
+        local sub = Text(f, 13, T.muted)
+        sub:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -5)
+        sub:SetText("v" .. ns.VERSION .. "   /scarlet opens the window")
+    end
     local fade = f:CreateAnimationGroup()
     local alpha = fade:CreateAnimation("Alpha")
     alpha:SetFromAlpha(1)
@@ -1088,11 +1109,13 @@ function ns.OnLogin()
     BuildIcon()
     RefreshIcon()
     if ns.Gather and ns.Gather.Init then ns.Gather.Init(ns.UI) end
+    local last = ns.opt.chat and ns.Summary and ns.Summary.LoginLine()
     if ns.db.seenVersion ~= ns.VERSION then
         ns.db.seenVersion = ns.VERSION
-        Toast()
+        Toast(last)
     end
     if ns.opt.chat then
+        if last then ns.Print(last) end
         ns.Print((ns.opt.paused and "is paused" or "is recording") .. ". |cffff6b8e/scarlet|r opens the window.")
     end
 end
