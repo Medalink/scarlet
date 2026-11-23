@@ -586,6 +586,40 @@ local function Button(parent, label, width, onClick)
     return b
 end
 
+local function Cycle(parent, y, label, values, get, set)
+    local row = CreateFrame("Button", nil, parent)
+    row:SetHeight(44)
+    row:SetPoint("TOPLEFT", 0, y)
+    row:SetPoint("TOPRIGHT", 0, y)
+    local hover = Fill(row, T.fg, 0.03)
+    hover:SetAllPoints()
+    hover:Hide()
+    Hair(row, "BOTTOM")
+    local text = Text(row, 14, T.fg)
+    text:SetPoint("LEFT", 0, 0)
+    text:SetText(label)
+    local value = Text(row, 13, T.accent, "RIGHT", "strong")
+    value:SetPoint("RIGHT", -2, 0)
+    function row:Refresh()
+        local current = get()
+        for _, v in ipairs(values) do
+            if v[1] == current then value:SetText(v[2]) return end
+        end
+        value:SetText(values[1][2])
+    end
+    row:SetScript("OnClick", function(self)
+        local current, at = get(), 0
+        for i, v in ipairs(values) do
+            if v[1] == current then at = i end
+        end
+        set(values[at % #values + 1][1])
+        self:Refresh()
+    end)
+    row:SetScript("OnEnter", function() hover:Show() end)
+    row:SetScript("OnLeave", function() hover:Hide() end)
+    return row
+end
+
 ns.UI.Toggle = Toggle
 ns.UI.Button = Button
 
@@ -593,28 +627,44 @@ local function SettingsPage(parent)
     local page = CreateFrame("Frame", nil, parent)
     page:SetAllPoints()
     local opt = ns.opt
-    local toggles = {
-        Toggle(page, 0, "Record movement path", function() return opt.path end, function(v) opt.path = v end),
-        Toggle(page, -44, "Turn on combat logging at login", function() return opt.combatLog end,
-            function(v) opt.combatLog = v end),
-        Toggle(page, -88, "Show login message", function() return opt.chat end, function(v) opt.chat = v end),
-        Toggle(page, -132, "Pause recording", function() return opt.paused end, function(v) opt.paused = v end),
-        Toggle(page, -176, "Show recording icon", function() return opt.icon ~= false end,
-            function(v) opt.icon = v end),
-        Toggle(page, -220, "Take screenshots at key moments", function() return opt.shots end,
-            function(v) opt.shots = v end),
-        Toggle(page, -264, "Draw on the world map", function() return not ns.Map or ns.Map.Drawing() end,
-            function(v) if ns.Map then ns.Map.SetDraw(v) end end),
-        Toggle(page, -308, "Share loot sources with your group", function() return opt.shareLoot ~= false end,
-            function(v) opt.shareLoot = v if ns.ShareApply then ns.ShareApply() end end),
-        Toggle(page, -352, "Show the session summary at inns and at logout", function() return opt.summary ~= false end,
-            function(v) opt.summary = v end),
+    local left = CreateFrame("Frame", nil, page)
+    left:SetPoint("TOPLEFT")
+    left:SetPoint("BOTTOMLEFT")
+    left:SetWidth(300)
+    local right = CreateFrame("Frame", nil, page)
+    right:SetPoint("TOPLEFT", 316, 0)
+    right:SetPoint("BOTTOMRIGHT")
+    local alerts = {
+        { "all", "Toasts and nudges" }, { "toasts", "Toasts only" }, { "off", "Off" },
     }
-    local save = Button(page, "Save chunk now", 150, function()
+    local toggles = {
+        Toggle(left, 0, "Record movement path", function() return opt.path end, function(v) opt.path = v end),
+        Toggle(left, -44, "Turn on combat logging at login", function() return opt.combatLog end,
+            function(v) opt.combatLog = v end),
+        Toggle(left, -88, "Show login message", function() return opt.chat end, function(v) opt.chat = v end),
+        Toggle(left, -132, "Pause recording", function() return opt.paused end, function(v) opt.paused = v end),
+        Toggle(left, -176, "Show recording icon", function() return opt.icon ~= false end,
+            function(v) opt.icon = v end),
+        Toggle(left, -220, "Take screenshots at key moments", function() return opt.shots end,
+            function(v) opt.shots = v end),
+        Toggle(left, -264, "Draw on the world map", function() return not ns.Map or ns.Map.Drawing() end,
+            function(v) if ns.Map then ns.Map.SetDraw(v) end end),
+        Toggle(left, -308, "Share loot sources with your group", function() return opt.shareLoot ~= false end,
+            function(v) opt.shareLoot = v if ns.ShareApply then ns.ShareApply() end end),
+        Toggle(right, 0, "Show the session summary at inns and at logout", function() return opt.summary ~= false end,
+            function(v) opt.summary = v end),
+        Cycle(right, -44, "Feat alerts", alerts, function() return opt.featAlerts or "all" end,
+            function(v) opt.featAlerts = v end),
+        Toggle(right, -88, "Play a sound with a feat toast", function() return opt.featSound ~= false end,
+            function(v) opt.featSound = v end),
+        Toggle(right, -132, "Animate feats", function() return opt.featAnim ~= false end,
+            function(v) opt.featAnim = v end),
+    }
+    local save = Button(left, "Save chunk now", 150, function()
         SlashCmdList.SCARLET("save")
         ns.RefreshStatus()
     end)
-    save:SetPoint("TOPLEFT", 0, -396)
+    save:SetPoint("TOPLEFT", 0, -356)
     function page:Refresh()
         for i = 1, #toggles do toggles[i]:Refresh() end
     end
@@ -1112,6 +1162,7 @@ function ns.OnLogin()
     RefreshIcon()
     if ns.Gather and ns.Gather.Init then ns.Gather.Init(ns.UI) end
     local last = ns.opt.chat and ns.Summary and ns.Summary.LoginLine()
+    if ns.FeatToast then ns.FeatToast.Login() end
     local news = ns.db.seenVersion ~= ns.VERSION
     ns.db.seenVersion = ns.VERSION
     if news or last then Toast(last) end

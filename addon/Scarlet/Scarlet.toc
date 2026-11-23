@@ -56,3 +56,4 @@ SessionPage.lua
 FeatsPage.lua
 Alerts.lua
 Summary.lua
+FeatToast.lua

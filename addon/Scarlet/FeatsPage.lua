@@ -221,7 +221,8 @@ function ns.FeatsPage(parent, ui)
         card.chip:SetText(info.tier > 0 and names[info.tier] or "")
         local c = info.tier > 0 and ui.TierColor[info.tier] or T.muted
         card.chip:SetTextColor(c[1], c[2], c[3])
-        card.count:SetText(Feats.Count(f, info.value))
+        local fresh = ns.char and ns.char.featNew and ns.char.featNew[key]
+        card.count:SetText(Feats.Count(f, info.value) .. (fresh and fresh <= info.tier and " · new tier" or ""))
         local moves = Feats.Moves(f)
         local text = info.next and format("%s to %s", Num(info.left), names[info.tier + 1]) or "Highest tier held"
         card.left:SetText(text .. (moves and " ·" or ""))
@@ -298,6 +299,7 @@ function ns.FeatsPage(parent, ui)
         local b = cells[key]
         if not b then return end
         picked = key
+        if ns.char and ns.char.featNew then ns.char.featNew[key] = nil end
         Card(key)
         mark:ClearAllPoints()
         mark:SetPoint("CENTER", b, "CENTER")

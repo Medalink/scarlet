@@ -599,6 +599,10 @@ function Feats.Command(rest)
         end
     end
     local key = rest and rest:match("^(%S+)")
+    if key == "test" then
+        if ns.FeatToast then ns.FeatToast.Test() end
+        return
+    end
     local f = key and byKey[key]
     if key and not f then
         ns.Print("no feat called " .. key)
