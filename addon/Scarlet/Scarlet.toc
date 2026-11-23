@@ -16,6 +16,7 @@
 
 Core.lua
 FeatCatalog.lua
+CrestKit.lua
 Tiers.lua
 Recap.lua
 Feats.lua

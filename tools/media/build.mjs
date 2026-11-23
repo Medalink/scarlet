@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-// build.mjs <sc.js> <crests.js> [--out DIR] [--preview DIR]: renders addon/Scarlet/Media/Crests.tga, Tick.tga, Glow.tga
-// and Glyphs.tga (white on alpha, 32-bit, uncompressed, bottom-left origin) from GLYPHS in the design's sc.js and PIECES
-// in its crests.js, which the app and the site draw with too. Node only, no packages. Run it again after a shape changes.
+// build.mjs [--kit kit.json] [--glyphs Glyphs.php] [--out DIR] [--lua FILE] [--preview DIR]: renders addon/Scarlet/Media/
+// Crests.tga, Tick.tga, Glow.tga and Glyphs.tga (white on alpha, 32-bit, uncompressed, bottom-left origin) and writes
+// addon/Scarlet/CrestKit.lua. The pieces and every crest number come from the crest kit the app and the site draw
+// with (default: the sibling scarlet-web checkout's resources/crests/kit.json); the glyph paths come from the same
+// checkout's app/View/Sc/Glyphs.php. Node only, no packages. Run it again after the kit or a glyph changes.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,10 +16,13 @@ const flag = (name) => {
   return i < 0 ? null : args.splice(i, 2)[1];
 };
 const outDir = resolve(flag("--out") ?? join(here, "../../addon/Scarlet/Media"));
+const luaPath = resolve(flag("--lua") ?? join(here, "../../addon/Scarlet/CrestKit.lua"));
 const previewDir = flag("--preview");
-const [scPath, crestsPath] = args;
-if (!scPath || !crestsPath) {
-  console.error("usage: node tools/media/build.mjs <design/final/src/shared/sc.js> <design/crests/crests.js> [--out DIR] [--preview DIR]");
+const web = join(here, "../../../scarlet-web");
+const kitPath = resolve(flag("--kit") ?? join(web, "resources/crests/kit.json"));
+const glyphsPath = resolve(flag("--glyphs") ?? join(web, "app/View/Sc/Glyphs.php"));
+if (args.length) {
+  console.error("usage: node tools/media/build.mjs [--kit kit.json] [--glyphs Glyphs.php] [--out DIR] [--lua FILE] [--preview DIR]");
   process.exit(2);
 }
 
@@ -29,7 +34,6 @@ const GLYPH_ORDER = [
 ];
 const CREST_CELL = 128;
 const CREST_COLUMNS = 4;
-const CREST_UNITS = 96;
 const BACK_STROKE = 3.6;
 const CREST_CELLS = [
   "shield-character", "shield-class", "shield-account", "ring-account",
@@ -42,18 +46,14 @@ const GLYPH_STROKE = 1.8;
 const SUBSCANS = 8;
 const CURVE_STEPS = 20;
 
-const source = readFileSync(scPath, "utf8");
-const between = (from, to) => {
-  const a = source.indexOf(from);
-  const b = source.indexOf(to, a);
-  if (a < 0 || b < 0) throw new Error(`${scPath}: no block from "${from}" to "${to}"`);
-  return source.slice(a, b);
-};
-const GLYPHS = new Function(`${between("const GLYPHS = {", "const METAL")}; return GLYPHS;`)();
-const crestModule = { exports: {} };
-new Function("module", readFileSync(crestsPath, "utf8"))(crestModule);
-const PIECES = crestModule.exports.PIECES;
-if (!PIECES) throw new Error(`${crestsPath}: no PIECES`);
+const KIT = JSON.parse(readFileSync(kitPath, "utf8"));
+const PIECES = KIT.pieces;
+if (!PIECES) throw new Error(`${kitPath}: no pieces`);
+const CREST_UNITS = KIT.box;
+const GLYPHS = Object.fromEntries(
+  [...readFileSync(glyphsPath, "utf8").matchAll(/^\s*'([\w-]+)' => '((?:[^'\\]|\\.)*)',$/gm)].map(([, name, svg]) => [name, svg.replace(/\\(['\\])/g, "$1")]),
+);
+if (!Object.keys(GLYPHS).length) throw new Error(`${glyphsPath}: no glyph paths`);
 
 const num = (n) => Number.parseFloat(n);
 
@@ -353,7 +353,7 @@ function crests() {
     const back = name.endsWith("-back");
     const key = back ? name.slice(0, -5) : name;
     const piece = PIECES[key];
-    if (!piece || (back && !piece.back)) throw new Error(`crests.js has no ${back ? "back of " : "piece "}${key}`);
+    if (!piece || (back && !piece.back)) throw new Error(`${kitPath} has no ${back ? "back of " : "piece "}${key}`);
     const subpaths = flattenPath(piece.d);
     let cov = cover(subpaths.map((sp) => sp.pts));
     if (back) {
@@ -370,7 +370,7 @@ function glyphs() {
   const img = image(GLYPH_CELL * columns, GLYPH_CELL * (GLYPH_ORDER.length / columns));
   const scale = GLYPH_CELL / 24;
   GLYPH_ORDER.forEach((name, i) => {
-    if (!GLYPHS[name]) throw new Error(`sc.js has no glyph ${name}`);
+    if (!GLYPHS[name]) throw new Error(`${glyphsPath} has no glyph ${name}`);
     const polys = strokePolys(shapesOf(GLYPHS[name]), GLYPH_STROKE);
     blit(img, rasterize(transform(polys, scale, 0, 0), GLYPH_CELL, GLYPH_CELL), GLYPH_CELL, GLYPH_CELL, (i % columns) * GLYPH_CELL, Math.floor(i / columns) * GLYPH_CELL);
   });
@@ -466,7 +466,57 @@ function png(img, scale) {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", head), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }
 
+const luaKey = (k) => (/^[A-Za-z_]\w*$/.test(k) ? k : /^\d+$/.test(k) ? `[${k}]` : `["${k}"]`);
+
+function luaValue(v, pad) {
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (typeof v === "string") {
+    if (/^#[0-9a-f]{6}$/i.test(v)) return `0x${v.slice(1).toLowerCase()}`;
+    if (/[^\x20-\x7e]/.test(v)) throw new Error(`${kitPath}: non-ASCII string ${JSON.stringify(v)}`);
+    return JSON.stringify(v);
+  }
+  const entries = Array.isArray(v) ? v.map((x) => [null, x]) : Object.entries(v).filter(([, x]) => x !== null && x !== undefined);
+  const inner = pad + "    ";
+  const flat = entries.map(([k, x]) => (k === null ? "" : `${luaKey(k)} = `) + luaValue(x, inner));
+  const oneLine = `{ ${flat.join(", ")} }`;
+  if (!entries.length) return "{}";
+  if (!oneLine.includes("\n") && pad.length + oneLine.length <= 110) return oneLine;
+  return `{\n${flat.map((s) => `${inner}${s},\n`).join("")}${pad}}`;
+}
+
+function crestKitLua() {
+  const zeroBased = (list) => Object.fromEntries(list.map((x, i) => [i, x]));
+  const cell = Object.fromEntries(CREST_CELLS.map((name, i) => [name, i + 1]));
+  const pieces = {};
+  for (const [name, p] of Object.entries(PIECES)) pieces[name] = { box: p.box, fill: p.fill, back: p.back ? true : undefined };
+  const table = {
+    box: KIT.box,
+    center: KIT.center,
+    viewBox: Object.fromEntries(Object.entries(KIT.viewBox).map(([k, v]) => [k, v.split(/\s+/).map(Number)])),
+    atlas: { columns: CREST_COLUMNS, rows: CREST_CELLS.length / CREST_COLUMNS },
+    cells: CREST_CELLS,
+    cell,
+    pieces,
+    tierNames: zeroBased(KIT.tierNames),
+    attaches: KIT.attaches.slice(1),
+    scopes: KIT.scopes,
+    quality: zeroBased(KIT.quality),
+    material: KIT.material,
+    band: KIT.band,
+    gem: KIT.gem,
+    ink: KIT.ink,
+    light: KIT.light,
+    nearAt: KIT.nearAt,
+    unearned: KIT.unearned,
+    glyphSize: KIT.glyphSize,
+  };
+  return `local _, ns = ...\n\nns.CrestKit = ${luaValue(table, "")}\n`;
+}
+
 const files = { Crests: crests(), Tick: tick(), Glow: glow(), Glyphs: glyphs() };
+mkdirSync(dirname(luaPath), { recursive: true });
+writeFileSync(luaPath, crestKitLua());
+console.log(`${luaPath} written from ${kitPath}`);
 mkdirSync(outDir, { recursive: true });
 if (previewDir) mkdirSync(previewDir, { recursive: true });
 for (const [name, img] of Object.entries(files)) {

@@ -208,10 +208,21 @@ end
 
 local CRESTS = MEDIA .. "Crests.tga"
 
+local DOT_UV = {}
+do
+    local kit = ns.CrestKit
+    local piece = kit.scopes.account.shield
+    local cell, box = kit.cell[piece] - 1, kit.pieces[piece].box
+    local columns, rows, units = kit.atlas.columns, kit.atlas.rows, kit.box
+    local col, row = cell % columns, floor(cell / columns)
+    DOT_UV[1], DOT_UV[2] = (col + box[1] / units) / columns, (col + box[3] / units) / columns
+    DOT_UV[3], DOT_UV[4] = (row + box[2] / units) / rows, (row + box[4] / units) / rows
+end
+
 local function Dot(parent, color, alpha, layer, sub)
     local t = parent:CreateTexture(nil, layer or "BACKGROUND", nil, sub)
     t:SetTexture(CRESTS)
-    t:SetTexCoord((2 + 23 / 96) / 4, (2 + 73 / 96) / 4, 25 / 96 / 4, 75 / 96 / 4)
+    t:SetTexCoord(DOT_UV[1], DOT_UV[2], DOT_UV[3], DOT_UV[4])
     t:SetVertexColor(color[1], color[2], color[3], alpha or color[4] or 1)
     return t
 end
