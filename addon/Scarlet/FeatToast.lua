@@ -118,7 +118,7 @@ local function Build()
     f.label:SetPoint("TOPLEFT", 92, -11)
     f.name = ui.Text(f, 22, T.fg, "LEFT", "display")
     f.name:SetPoint("TOPLEFT", 92, -25)
-    f.chip = ui.Text(f, 11, T.fg, "CENTER", "strong")
+    f.chip = ui.TierChip(f, 11)
     f.chip:SetPoint("LEFT", f.name, "RIGHT", 8, -1)
     f.detail = ui.Text(f, 12.5, T.text)
     f.detail:SetPoint("TOPLEFT", 92, -53)
@@ -166,7 +166,7 @@ end
 local function Paint(item)
     local ui = ns.UI
     local T = ui.T
-    local color = item.tier > 0 and ns.Tiers[item.tier].color or T.accent
+    local color = ns.Tiers[item.tier].color
     plate.featKey, plate.featAccount = item.key or false, item.account or false
     TextAlpha(1)
     plate.rail:SetVertexColor(color[1], color[2], color[3], 1)
@@ -175,8 +175,8 @@ local function Paint(item)
     plate.plus:SetText(item.plus or "")
     plate.plus:SetShown(item.plus ~= nil)
     plate.crest:SetShown(item.plus == nil)
-    plate.chip:SetText(item.chip or "")
-    plate.chip:SetTextColor(color[1], color[2], color[3])
+    plate.chip:SetShown(item.chip ~= nil)
+    if item.chip then plate.chip:Set(item.tier) end
     plate.detail:SetText(item.detail or "")
 end
 
@@ -291,7 +291,7 @@ local function Pump()
             local it = queue[i]
             if it.key and not it.test then Record(it) end
         end
-        item = { plus = "+" .. n, tier = 2, label = "Earned this session",
+        item = { plus = "+" .. n, tier = 0, label = "Earned this session",
             name = format("%d more feat%s", n, n == 1 and "" or "s"), detail = "Open the Feats page to see them" }
         queue = {}
     else

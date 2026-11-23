@@ -213,6 +213,44 @@ function UI.Stack(parent, w, h)
     return f
 end
 
+local CHIP_EDGES = { { "TOPLEFT", "TOPRIGHT", false }, { "BOTTOMLEFT", "BOTTOMRIGHT", false },
+    { "TOPLEFT", "BOTTOMLEFT", true }, { "TOPRIGHT", "BOTTOMRIGHT", true } }
+
+--- A tier's name in a chip: light text on the tier's colour at 20% with a border of it at 70%; Scarlet is solid with
+--- its `on` text. Not earned is muted text alone. :Set(tier) fits the chip to the name.
+function UI.TierChip(parent, size)
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetHeight(size + 7)
+    f.bg = Fill(f, T.fg, 0.2, "BACKGROUND")
+    f.bg:SetAllPoints()
+    f.edges = {}
+    for i, e in ipairs(CHIP_EDGES) do
+        local t = Fill(f, T.fg, 0.7, "BORDER")
+        t:SetPoint(e[1])
+        t:SetPoint(e[2])
+        if e[3] then t:SetWidth(1) else t:SetHeight(1) end
+        f.edges[i] = t
+    end
+    f.text = Text(f, size, T.fg, "CENTER", "strong")
+    f.text:SetPoint("CENTER")
+    function f:Set(tier)
+        local q = ns.Tiers[tier or 0]
+        local solid = tier == 5
+        local c, ink = q.color, tier and tier > 0 and (solid and q.on or ns.Tiers.look.light) or T.muted
+        self.text:SetText(q.name)
+        self.text:SetTextColor(ink[1], ink[2], ink[3])
+        self:SetWidth((self.text:GetStringWidth() or 0) + 12)
+        local tinted = tier ~= nil and tier > 0
+        self.bg:SetShown(tinted)
+        self.bg:SetVertexColor(c[1], c[2], c[3], solid and 1 or 0.2)
+        for i = 1, #self.edges do
+            self.edges[i]:SetShown(tinted)
+            self.edges[i]:SetVertexColor(c[1], c[2], c[3], solid and 1 or 0.7)
+        end
+    end
+    return f
+end
+
 function UI.FeatRow(parent, w)
     local f = CreateFrame("Button", nil, parent)
     f:SetSize(w, 44)

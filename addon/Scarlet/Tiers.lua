@@ -29,6 +29,7 @@ ns.Tiers = {
     look = {
         ink = INK,
         white = { 1, 1, 1 },
+        light = LIGHT,
         glyphAlpha = 0.75,
         unearnedRim = 0.5,
         unearnedFill = 0.3,
