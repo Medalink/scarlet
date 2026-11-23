@@ -450,6 +450,22 @@ function SCEN.window(W, ns)
     end
     s.call(21, "window: hide", function() ns.Toggle() end)
     s.call(22, "window: show again", function() ns.Toggle() end)
+    local function Tab(label)
+        for _, f in ipairs(Env.frames) do
+            if f.kind == "Button" and f.scripts.OnClick then
+                for _, c in ipairs(Env.frames) do
+                    if c.parent == f and c.text == label then
+                        f.scripts.OnClick(f)
+                        return
+                    end
+                end
+            end
+        end
+        return false
+    end
+    for i, label in ipairs({ "Website", "Loot HUD", "Addons", "Fonts" }) do
+        s.call(22.4 + i * 0.5, "window: Settings tab", function() return Tab(label) end)
+    end
     s.sort()
     return s, 25
 end

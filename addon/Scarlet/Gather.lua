@@ -48,8 +48,8 @@ local SAMPLE_BEST = { itemID = 13468, name = "Black Lotus", quality = 2 }
 
 local PREVIEW_ZONE = "Elwynn Forest"
 local PREVIEW_SUBZONE = "Goldshire"
-local PREVIEW_BOX_H = 240
-local TAB_H = 30
+local PREVIEW_BOX_H = 200
+local TAB_H, SEG_W = 28, 112
 local ARC_DEPTH = 36
 local ARC_ROW_PAD = 8
 local ARC_LINE_PAD = 4
@@ -1259,10 +1259,10 @@ function Gather.Page(parent, ui)
     local previewView = CreateView(previewStage, false)
 
     local tabTop = -(PREVIEW_BOX_H + 12)
-    local tabLine = ui.Fill(page, T.line, nil, "ARTWORK")
-    tabLine:SetPoint("TOPLEFT", 0, tabTop - TAB_H)
-    tabLine:SetPoint("TOPRIGHT", 0, tabTop - TAB_H)
-    tabLine:SetHeight(1)
+    local segBox = CreateFrame("Frame", nil, page)
+    segBox:SetSize(SEG_W * #PAGE_TABS, TAB_H)
+    segBox:SetPoint("TOPLEFT", 0, tabTop)
+    ui.Border(segBox, T.line2)
 
     local tabButtons, tabBodies = {}, {}
     local selected = "general"
@@ -1276,38 +1276,30 @@ function Gather.Page(parent, ui)
         return body
     end
 
-    local x = 0
-    for _, def in ipairs(PAGE_TABS) do
-        local b = CreateFrame("Button", nil, page)
-        local text = ui.Text(b, 16, T.text)
-        text:SetPoint("TOPLEFT", 0, 0)
+    for i, def in ipairs(PAGE_TABS) do
+        local b = CreateFrame("Button", nil, segBox)
+        b:SetSize(SEG_W, TAB_H)
+        b:SetPoint("TOPLEFT", (i - 1) * SEG_W, 0)
+        local wash = ui.Fill(b, T.accent, 0.14)
+        wash:SetAllPoints()
+        wash:Hide()
+        if i > 1 then
+            local edge = ui.Fill(b, T.line2, nil, "ARTWORK")
+            edge:SetPoint("TOPLEFT")
+            edge:SetPoint("BOTTOMLEFT")
+            edge:SetWidth(1)
+        end
+        local text = ui.Text(b, 14, T.text, "CENTER")
+        text:SetPoint("CENTER")
         text:SetText(def.label)
-        local w = floor(TextWidth(text) + 0.5) + 8
-        b:SetSize(w, TAB_H)
-        b:SetPoint("TOPLEFT", x, tabTop)
-        x = x + w + 22
-        local underline = ui.Fill(b, T.accent, 1, "OVERLAY")
-        underline:SetPoint("BOTTOMLEFT", 0, 0)
-        underline:SetPoint("BOTTOMRIGHT", -8, 0)
-        underline:SetHeight(2)
-        local hoverLine = ui.Fill(b, T.line2, nil, "ARTWORK")
-        hoverLine:SetPoint("BOTTOMLEFT", 0, 0)
-        hoverLine:SetPoint("BOTTOMRIGHT", -8, 0)
-        hoverLine:SetHeight(2)
-        hoverLine:Hide()
-        b.key, b.text, b.underline = def.key, text, underline
+        b.key, b.text, b.underline = def.key, text, wash
         b:SetScript("OnEnter", function(self)
-            if self.key ~= selected then
-                self.text:SetTextColor(T.fg[1], T.fg[2], T.fg[3])
-                hoverLine:Show()
-            end
+            if self.key ~= selected then self.text:SetTextColor(T.fg[1], T.fg[2], T.fg[3]) end
         end)
         b:SetScript("OnLeave", function(self)
-            hoverLine:Hide()
             if self.key ~= selected then self.text:SetTextColor(T.text[1], T.text[2], T.text[3]) end
         end)
         b:SetScript("OnClick", function(self)
-            hoverLine:Hide()
             selected = self.key
             RefreshPage()
         end)
@@ -1514,7 +1506,7 @@ function Gather.Page(parent, ui)
         if hudState.mode ~= "pinned" then pinnedByPage = false end
         for _, b in ipairs(tabButtons) do
             local on = b.key == selected
-            ui.SetFont(b.text, ui.Face(on and "strong" or "body"), 16)
+            ui.SetFont(b.text, ui.Face(on and "strong" or "body"), 14)
             local c = on and T.fg or T.text
             b.text:SetTextColor(c[1], c[2], c[3])
             b.underline:SetShown(on)

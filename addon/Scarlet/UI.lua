@@ -41,6 +41,7 @@ local WALK_STRIDE_YARDS = 1.4 -- walking stride
 local REFRESH_SECONDS = 0.5
 
 local window, pages, navButtons, current, refreshTicker
+local settingsTab, settingsSubs = "general", {}
 
 -- Fonts ------------------------------------------------------------------------
 -- The choices are Sofia Sans (bundled in Media, the default), the game's own fonts and
@@ -138,7 +139,9 @@ end
 local function Relist()
     ListFonts()
     ApplyFont()
-    if window and window:IsShown() and current == "fonts" then pages.fonts:Refresh() end
+    if window and window:IsShown() and current == "settings" and settingsTab == "fonts" then
+        settingsSubs.fonts:Refresh()
+    end
 end
 
 -- An addon can register a font whose file this client does not have (LibSharedMedia lists
@@ -794,26 +797,56 @@ end
 
 -- Window -------------------------------------------------------------------------
 
+local SETTINGS_TABS = {
+    { key = "general", label = "General" },
+    { key = "website", label = "Website" },
+    { key = "loothud", label = "Loot HUD" },
+    { key = "addons", label = "Addons" },
+    { key = "fonts", label = "Fonts" },
+}
+
+local TAB_BUILDERS = {
+    general = SettingsPage,
+    website = function(body) return ns.WebsitePage(body, ns.UI) end,
+    loothud = function(body) return ns.Gather.Page(body, ns.UI) end,
+    addons = AddonsPage,
+    fonts = FontsPage,
+}
+
+local LIVE_TABS = { website = true, addons = true }
+
+local function SettingsTabs(parent)
+    local page = CreateFrame("Frame", nil, parent)
+    page:SetAllPoints()
+    local body = CreateFrame("Frame", nil, page)
+    body:SetPoint("TOPLEFT", 0, -40)
+    body:SetPoint("BOTTOMRIGHT")
+    local tabs = ns.UI.Tabs(page, SETTINGS_TABS, function(key) page:Open(key) end)
+    tabs:SetPoint("TOPLEFT")
+    function page:Open(key)
+        settingsTab = key
+        tabs:Select(key, true)
+        if not settingsSubs[key] then settingsSubs[key] = TAB_BUILDERS[key](body) end
+        for k, sub in pairs(settingsSubs) do sub:SetShown(k == key) end
+        settingsSubs[key]:Refresh()
+    end
+    function page:Refresh()
+        self:Open(settingsTab)
+    end
+    return page
+end
+
 local NAV = {
     { key = "recap", label = "Session" },
     { key = "overview", label = "Character" },
     { key = "feats", label = "Feats" },
     { key = "characters", label = "Characters" },
-    { key = "session", label = "This session" },
     { key = "stats", label = "Stats" },
-    { key = "time", label = "Time" },
-    { key = "more", label = "Combat and more" },
-    { key = "people", label = "People" },
-    { key = "live", label = "Live" },
-    { key = "addons", label = "Addons" },
-    { key = "loothud", label = "Loot HUD" },
     { key = "settings", label = "Settings" },
-    { key = "website", label = "Website" },
-    { key = "fonts", label = "Fonts" },
 }
 
 -- Pages that change only when you click them, not on the refresh ticker.
-local STATIC_PAGES = { settings = true, fonts = true, loothud = true }
+local STATIC_PAGES = { fonts = true, loothud = true }
 
 -- A page is built the first time it is shown, so opening the window pays for one page, not ten.
 local BUILDERS = {
@@ -837,8 +870,7 @@ local BUILDERS = {
     live = LivePage,
     addons = AddonsPage,
     loothud = function(body) return ns.Gather.Page(body, ns.UI) end,
-    settings = SettingsPage,
-    website = function(body) return ns.WebsitePage(body, ns.UI) end,
+    settings = SettingsTabs,
     fonts = FontsPage,
 }
 
@@ -996,7 +1028,7 @@ local function Build()
     web:SetPoint("BOTTOMRIGHT", -12, 52)
     window.web = Text(web, 12, T.muted)
     window.web:SetPoint("LEFT")
-    web:SetScript("OnClick", function() Show("website") end)
+    web:SetScript("OnClick", function() ns.UI.OpenSettings("website") end)
     web:SetScript("OnEnter", function() window.web:SetTextColor(T.fg[1], T.fg[2], T.fg[3]) end)
     web:SetScript("OnLeave", function() window.web:SetTextColor(T.muted[1], T.muted[2], T.muted[3]) end)
 
@@ -1022,7 +1054,11 @@ local function Build()
         ns.RefreshStatus()
         if not refreshTicker then
             refreshTicker = C_Timer.NewTicker(REFRESH_SECONDS, ns.Perf.Fn("UI:Refresh", function()
-                if not STATIC_PAGES[current] then pages[current]:Refresh() end
+                if current == "settings" then
+                    if LIVE_TABS[settingsTab] then settingsSubs[settingsTab]:Refresh() end
+                elseif not STATIC_PAGES[current] then
+                    pages[current]:Refresh()
+                end
                 ns.RefreshStatus()
             end))
         end
@@ -1031,7 +1067,7 @@ local function Build()
         if refreshTicker then refreshTicker:Cancel(); refreshTicker = nil end
     end)
     window:Hide()
-    Show("overview")
+    Show("recap")
 end
 
 function ns.Toggle()
@@ -1136,6 +1172,11 @@ function ns.UI.Open(key)
     if not window then Build() end
     window:Show()
     Show(key)
+end
+
+function ns.UI.OpenSettings(tab)
+    ns.UI.Open("settings")
+    pages.settings:Open(tab)
 end
 
 -- Login toast -------------------------------------------------------------------------
