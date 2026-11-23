@@ -60,7 +60,7 @@ recording.
 
 ### Loot HUD
 
-While you herb, mine, skin, fish or disenchant, outlined text with no background appears around your character, in
+The Loot HUD is off until you turn on Show Loot HUD on its page. While it is on and you herb, mine, skin, fish or disenchant, outlined text with no background appears around your character, in
 three parts:
 
 - **Left:** zone and subzone, items gathered and nodes opened this session, your lifetime count, what the session's
