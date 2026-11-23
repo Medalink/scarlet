@@ -118,6 +118,11 @@ function Recap.Zone(name, kind)
     Touch()
 end
 
+--- Seconds since the open session began; 0 before login.
+function Recap.Elapsed()
+    return S and GetTime() - S.g0 or 0
+end
+
 function Recap.Moment(kind, text, feat, tier)
     local st = S
     if not st or #st.moments >= MOMENTS_MAX then return end

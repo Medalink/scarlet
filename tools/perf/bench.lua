@@ -459,23 +459,25 @@ function SCEN.ui(W, ns)
     local s = NewStream()
     s.call(1, "ui: design sheet, first open", function() ns.UI.ToggleSheet() end)
     s.call(2, "ui: design sheet, hide", function() ns.UI.ToggleSheet() end)
-    local function Press(label)
+    local function Labelled(label, within)
         for _, f in ipairs(Env.frames) do
-            if f.kind == "Button" and f.scripts.OnClick then
+            if f.kind == "Button" and f.scripts.OnClick and (not within or f.parent == within) then
                 for _, c in ipairs(Env.frames) do
-                    if c.parent == f and c.text == label then
-                        f.scripts.OnClick(f)
-                        return
-                    end
+                    if c.parent == f and c.text == label then return f end
                 end
             end
         end
-        return false
+    end
+    local function Press(label, tabs)
+        local anchor = tabs and Labelled("Last session")
+        local b = Labelled(label, anchor and anchor.parent)
+        if not b then return false end
+        b.scripts.OnClick(b)
     end
     s.call(3, "ui: open the window", function() ns.Toggle() end)
     s.call(4, "ui: Session page", function() return Press("Session") end)
     for k, tab in ipairs({ "Last session", "Earlier", "Log", "This session" }) do
-        s.call(4 + k, "ui: Session tab", function() return Press(tab) end)
+        s.call(4 + k, "ui: Session tab", function() return Press(tab, true) end)
     end
     s.sort()
     return s, 12

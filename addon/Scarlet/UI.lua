@@ -1242,7 +1242,10 @@ end
 SLASH_SCARLET1, SLASH_SCARLET2 = "/scarlet", "/scar"
 SlashCmdList.SCARLET = function(msg)
     local cmd, arg = (msg or ""):lower():match("^%s*(%S*)%s*(%S*)")
-    if cmd == "perf" then
+    local rest = (msg or ""):lower():match("^%s*%S*%s*(.-)%s*$")
+    if cmd == "feats" then
+        if ns.Feats then ns.Feats.Command(rest) end
+    elseif cmd == "perf" then
         Perf(arg)
     elseif cmd == "pause" then
         ns.opt.paused = not ns.opt.paused

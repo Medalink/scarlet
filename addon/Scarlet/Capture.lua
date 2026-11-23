@@ -738,6 +738,8 @@ function H.UNIT_SPELLCAST_SUCCEEDED(_, _, spellID)
     end
     Emit("C", spellID, secs)
     Add("casts")
+    local feats = ns.Feats
+    if feats then feats.Cast(spellID) end
 end
 
 function H.UNIT_SPELLCAST_CHANNEL_STOP()

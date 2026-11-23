@@ -290,10 +290,15 @@ function ns.LiveLines(out)
     return out
 end
 
+local watch = {}
+ns.AddWatch = watch
+
 function ns.Add(key, n)
     n = n or 1
     ns.sess[key] = ns.sess[key] + n
     if ns.char then ns.char[key] = (ns.char[key] or 0) + n end
+    local w = watch[key]
+    if w then w(key, n) end
 end
 
 function ns.Pending()
@@ -464,6 +469,7 @@ function Ov.Start(t, lv, money, xp, xpMax)
     mark, level, zone, instType, zoneN = GetTime(), lv, nil, nil, 0
     wipe(seen)
     ns.Recap.Start(t)
+    if ns.Feats then ns.Feats.Start(t) end
 end
 
 -- The session ends (logout or reload).
