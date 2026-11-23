@@ -808,6 +808,7 @@ local NAV = {
     { key = "addons", label = "Addons" },
     { key = "loothud", label = "Loot HUD" },
     { key = "settings", label = "Settings" },
+    { key = "website", label = "Website" },
     { key = "fonts", label = "Fonts" },
 }
 
@@ -837,6 +838,7 @@ local BUILDERS = {
     addons = AddonsPage,
     loothud = function(body) return ns.Gather.Page(body, ns.UI) end,
     settings = SettingsPage,
+    website = function(body) return ns.WebsitePage(body, ns.UI) end,
     fonts = FontsPage,
 }
 
@@ -916,7 +918,7 @@ end
 
 ns.UI.CloseButton = CloseButton
 
-local RefreshIcon
+local RefreshIcon, footShown
 
 function ns.RefreshStatus()
     if RefreshIcon then RefreshIcon() end
@@ -927,6 +929,11 @@ function ns.RefreshStatus()
     window.status:SetText(paused and "Paused" or "Recording")
     local n, bytes = ns.StoredChunks()
     window.store:SetText(format("%d chunks  %.1f KB\n%d lines pending", n, bytes / 1024, ns.Pending()))
+    local foot = ns.Web and ns.Web.Foot() or ""
+    if foot ~= footShown then
+        footShown = foot
+        window.web:SetText(foot)
+    end
 end
 
 local function Build()
@@ -983,6 +990,15 @@ local function Build()
     window.store:SetPoint("BOTTOMLEFT", 16, 14)
     window.store:SetWordWrap(true)
     window.store:SetJustifyV("BOTTOM")
+    local web = CreateFrame("Button", nil, sidebar)
+    web:SetHeight(18)
+    web:SetPoint("BOTTOMLEFT", 16, 52)
+    web:SetPoint("BOTTOMRIGHT", -12, 52)
+    window.web = Text(web, 12, T.muted)
+    window.web:SetPoint("LEFT")
+    web:SetScript("OnClick", function() Show("website") end)
+    web:SetScript("OnEnter", function() window.web:SetTextColor(T.fg[1], T.fg[2], T.fg[3]) end)
+    web:SetScript("OnLeave", function() window.web:SetTextColor(T.muted[1], T.muted[2], T.muted[3]) end)
 
     local content = CreateFrame("Frame", nil, window)
     content:SetPoint("TOPLEFT", SIDEBAR_W + 1 + PAD, -HEADER_H - PAD)
