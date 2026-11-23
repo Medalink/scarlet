@@ -171,7 +171,10 @@ local function Opt()
         if not fallbackOpt then fallbackOpt = {} end
         g = fallbackOpt
     end
-    if g.enabled == nil then g.enabled = true end
+    if not g.offReset then
+        g.enabled = false
+        g.offReset = true
+    end
     local fs = tonumber(g.fontSize)
     g.fontSize = Clamp(floor((fs or DEFAULT_FONT_SIZE) + 0.5), MIN_FONT_SIZE, MAX_FONT_SIZE)
     local sc = tonumber(g.scale)
