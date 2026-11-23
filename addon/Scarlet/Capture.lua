@@ -1102,20 +1102,30 @@ function H.PLAYER_REGEN_ENABLED()
 end
 
 local encStart
+local SAME_KILL_SECONDS = 5
+local bossAt, bossId
+local function BossKill(id, name)
+    local now = GetTime()
+    if bossAt and id == bossId and now - bossAt < SAME_KILL_SECONDS then return end
+    bossAt, bossId = now, id
+    Emit("B", id, name)
+    Add("bosses")
+    ns.AutoShot("bk")
+end
+
 function H.ENCOUNTER_START(id, name, difficulty, size)
     encStart = GetTime()
     Emit("E", 1, id, difficulty, size, name)
 end
 
-function H.ENCOUNTER_END(id, _, _, _, success)
+function H.ENCOUNTER_END(id, name, _, _, success)
     Emit("E", 0, id, success, encStart and Round1(GetTime() - encStart) or "")
     encStart = nil
+    if success then BossKill(id, name) end
 end
 
 function H.BOSS_KILL(id, name)
-    Emit("B", id, name)
-    Add("bosses")
-    ns.AutoShot("bk")
+    BossKill(id, name)
 end
 
 -- Progress: xp, money, loot, quests, gear, skills, reputation --------------------
