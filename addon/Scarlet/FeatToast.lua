@@ -9,7 +9,8 @@ ns.FeatToast = Toast
 
 local W, H = 344, 78
 local TOP_OFFSET = -170
-local SEAL = 64
+local CREST = 64
+local TEXT = { "label", "name", "chip", "detail" }
 local AFTER_COMBAT, AFTER_LEVEL = 0.6, 4
 local GAP, HOLD, FADE = 1, 4.8, 0.4
 local FULL_IN_ROW, FULL_PER_WINDOW, WINDOW = 2, 3, 600
@@ -95,13 +96,13 @@ local function Build()
     f.glow = f:CreateTexture(nil, "ARTWORK", nil, 2)
     f.glow:SetTexture(MEDIA .. "Glow")
     f.glow:SetBlendMode("ADD")
-    f.glow:SetSize(SEAL * 1.5, SEAL * 1.5)
-    f.glow:SetPoint("CENTER", f, "LEFT", 12 + SEAL / 2 + 4, 0)
+    f.glow:SetSize(CREST * 1.5, CREST * 1.5)
+    f.glow:SetPoint("CENTER", f, "LEFT", 12 + CREST / 2 + 4, 0)
     f.glow:SetAlpha(0)
-    f.seal = ui.Seal(f, SEAL)
-    f.seal:SetPoint("LEFT", 16, 0)
+    f.crest = ui.Crest(f, CREST)
+    f.crest:SetPoint("LEFT", 16, 0)
     f.plus = ui.Text(f, 30, T.fg, "CENTER", "display")
-    f.plus:SetPoint("CENTER", f.seal, "CENTER")
+    f.plus:SetPoint("CENTER", f.crest, "CENTER")
     f.label = ui.Text(f, 12, T.muted)
     f.label:SetPoint("TOPLEFT", 92, -11)
     f.name = ui.Text(f, 22, T.fg, "LEFT", "display")
@@ -119,9 +120,16 @@ local function Build()
     f.hide = Group(f)
     Alpha(f.hide, 1, 0, FADE)
     f.hide:SetScript("OnFinished", function() Toast.Done() end)
-    f.seal.pop = Group(f.seal)
     f.glow.burst = Group(f.glow)
+    Alpha(f.glow.burst, 1, 0, 0.62)
+    Scale(f.glow.burst, 0.6, 1.5, 0.62)
+    f.glow.burst:SetScript("OnFinished", function() f.glow:SetAlpha(0) end)
     f.sweep.cross = Group(f.sweep)
+    f.fades = {}
+    for i = 1, #TEXT do
+        f.fades[i] = Group(f[TEXT[i]])
+        Alpha(f.fades[i], 0, 1, 0.28)
+    end
     f:SetScript("OnClick", function(self)
         if InCombatLockdown() then return end
         if self.featKey then ns.OpenFeat(self.featKey) else ns.UI.Open("feats") end
@@ -130,22 +138,32 @@ local function Build()
     return f
 end
 
-local function SetSeal(item, tier, progress)
-    plate.seal:Set({ family = item.family, glyph = item.glyph, tier = tier, progress = progress or 0,
-        spell = item.spell, bg = ns.UI.T.bg })
+local function TextAlpha(a)
+    for i = 1, #TEXT do plate[TEXT[i]]:SetAlpha(a) end
+end
+
+local function Burst(item)
+    local ui = ns.UI
+    local c = ns.Tiers[item.tier].color
+    local glow = plate.glow
+    glow:SetVertexColor(c[1], c[2], c[3], 1)
+    glow.burst:Stop()
+    glow:SetAlpha(1)
+    glow.burst:Play()
 end
 
 local function Paint(item)
     local ui = ns.UI
     local T = ui.T
-    local color = item.tier > 0 and ui.TierColor[item.tier] or T.accent
+    local color = item.tier > 0 and ns.Tiers[item.tier].color or T.accent
     plate.featKey = item.key or false
+    TextAlpha(1)
     plate.rail:SetVertexColor(color[1], color[2], color[3], 1)
     plate.label:SetText(item.label or "")
     plate.name:SetText(item.name or "")
     plate.plus:SetText(item.plus or "")
     plate.plus:SetShown(item.plus ~= nil)
-    plate.seal:SetShown(item.plus == nil)
+    plate.crest:SetShown(item.plus == nil)
     plate.chip:SetText(item.chip or "")
     plate.chip:SetTextColor(color[1], color[2], color[3])
     plate.detail:SetText(item.detail or "")
@@ -178,42 +196,33 @@ local function Play(item)
     end
     plate:Show()
     plate.show:Play()
-    Sound()
-    local from = item.from or 0
+    local function Hold()
+        C_Timer.After(HOLD, function() if mine == token then plate.hide:Play() end end)
+    end
     if item.plus then
-        C_Timer.After(HOLD, function() if mine == token then plate.hide:Play() end end)
+        Sound()
+        Hold()
         return
     end
+    local spells = item.spell
     if not animate then
-        SetSeal(item, item.tier, item.progress)
-        C_Timer.After(HOLD, function() if mine == token then plate.hide:Play() end end)
+        Sound()
+        plate.crest:Set(item.crest, item.glyph, item.tier, item.progress, spells)
+        Hold()
         return
     end
-    plate.seal:SetAlpha(0)
-    SetSeal(item, from > 0 and from or item.tier, 0)
+    TextAlpha(0)
+    plate.crest:Set(item.crest, item.glyph, item.tier, item.progress, spells, "earning")
     C_Timer.After(0.12, function()
         if mine ~= token then return end
-        plate.seal:SetAlpha(1)
-        plate.seal.pop = Group(plate.seal)
-        Scale(plate.seal.pop, 1.35, 1, 0.32)
-        plate.seal.pop:Play()
-        plate.glow.burst:Stop()
-        plate.glow.burst = Group(plate.glow)
-        Alpha(plate.glow.burst, 1, 0, 0.62)
-        Scale(plate.glow.burst, 0.6, 1.5, 0.62)
-        plate.glow:SetAlpha(1)
-        plate.glow.burst:SetScript("OnFinished", function() plate.glow:SetAlpha(0) end)
-        plate.glow.burst:Play()
+        Sound()
+        plate.crest:Attach()
+        Burst(item)
         if item.tier == 5 then
             C_Timer.After(0.26, function()
-                if mine ~= token then return end
-                plate.glow:SetAlpha(1)
-                plate.glow.burst:Play()
+                if mine == token then Burst(item) end
             end)
         end
-    end)
-    C_Timer.After(0.28, function()
-        if mine == token and from > 0 then SetSeal(item, item.tier, 0) end
     end)
     C_Timer.After(0.5, function()
         if mine ~= token then return end
@@ -227,13 +236,15 @@ local function Play(item)
         plate.sweep.cross:SetScript("OnFinished", function() plate.sweep:SetAlpha(0) end)
         plate.sweep.cross:Play()
     end)
+    C_Timer.After(0.52, function()
+        if mine ~= token then return end
+        TextAlpha(1)
+        for i = 1, #TEXT do plate.fades[i]:Play() end
+    end)
     C_Timer.After(0.9, function()
-        if mine == token then SetSeal(item, item.tier, 1) end
+        if mine == token then plate.crest:Reveal() end
     end)
-    C_Timer.After(1.2, function()
-        if mine == token then SetSeal(item, item.tier, item.progress) end
-    end)
-    C_Timer.After(HOLD, function() if mine == token then plate.hide:Play() end end)
+    Hold()
 end
 
 local function Pump()
@@ -301,10 +312,9 @@ end
 
 local function Describe(f, tier, from, value)
     local spells = ns.char and ns.char.featSpell
-    local names = ns.FEAT_TIER_NAMES
-    return { key = f.key, name = f.name, tier = tier, from = from, value = value, family = f.family, glyph = f.glyph,
-        spell = spells and spells[f.key], chip = names[tier],
-        label = from > 0 and ("Upgraded from " .. names[from]) or "Feat earned",
+    return { key = f.key, name = f.name, tier = tier, from = from, value = value, crest = f.crest, glyph = f.glyph,
+        spell = spells and spells[f.key], chip = ns.TierName(tier),
+        label = from > 0 and ("Upgraded from " .. ns.TierName(from)) or "Feat earned",
         detail = ns.Feats.Count(f, value), progress = ns.Feats.Progress(f, value, tier), at = GetTime() }
 end
 

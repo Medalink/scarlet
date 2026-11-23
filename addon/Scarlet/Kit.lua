@@ -5,20 +5,13 @@ local floor, max, min, sin, cos, pi, format = math.floor, math.max, math.min, ma
 local T, Fill, Border, Hair, Text = UI.T, UI.Fill, UI.Border, UI.Hair, UI.Text
 
 local MEDIA = "Interface\\AddOns\\Scarlet\\Media\\"
-local PLATES, TICK, GLYPHS = MEDIA .. "Plates.tga", MEDIA .. "Tick.tga", MEDIA .. "Glyphs.tga"
+local TICK, GLYPHS = MEDIA .. "Tick.tga", MEDIA .. "Glyphs.tga"
 
-local FAMILY_CELL = { journey = 1, combat = 2, quests = 3, dungeons = 4, world = 5, trade = 6, class = 7, role = 8 }
 local GLYPH_NAMES = { "characters", "level", "hours", "kills", "deaths", "quests", "dungeons", "gold", "zones",
     "distance", "skills", "fish", "gather", "jumps", "swim", "emote", "crown", "shield", "clock", "pin", "creature",
     "item", "talents", "spell", "pet", "heal", "fire", "wing", "link", "arrow", "lock", "check" }
 local GLYPH_CELL = {}
 for i, name in ipairs(GLYPH_NAMES) do GLYPH_CELL[name] = i - 1 end
-
-local METAL = { [0] = T.fg, T.copper, T.silver, T.gold, T.accent, T.accent }
-local NEXT = { [0] = T.copper, T.silver, T.gold, T.accent, T.gold, T.gold }
-local TIER_NAMES = { "Copper", "Silver", "Gold", "Scarlet", "Legend" }
-
-UI.TierNames, UI.TierColor, UI.NextColor = TIER_NAMES, METAL, NEXT
 
 local function Tint(t, c, a)
     t:SetVertexColor(c[1], c[2], c[3], a or c[4] or 1)
@@ -31,12 +24,6 @@ local function Glyph(t, name)
     t:SetTexCoord(col / 8, (col + 1) / 8, row / 4, (row + 1) / 4)
 end
 UI.SetGlyph = Glyph
-
-local function SetPlate(t, family)
-    local i = FAMILY_CELL[family] or 1
-    t:SetTexture(PLATES)
-    t:SetTexCoord((i - 1) / 8, i / 8, 0, 1)
-end
 
 local function Pool(make)
     local p, used = {}, 0
@@ -226,133 +213,6 @@ function UI.Stack(parent, w, h)
     return f
 end
 
-local function SpellTexture(id)
-    local api = _G.C_Spell
-    if not (id and api and api.GetSpellTexture) then return end
-    local ok, tex = pcall(api.GetSpellTexture, id)
-    if ok and ns.Plain(tex) and tex then return tex end
-end
-
---- A feat seal. Set takes family, glyph, tier 0..5, progress 0..1, spell (an id whose icon is engraved), ghost (a tier,
---- drawn as an outline toward it) and bg (the colour behind the plate, T.panel by default).
-function UI.Seal(parent, size)
-    local f = CreateFrame("Frame", nil, parent)
-    f:SetSize(size, size)
-    local full, tiny = size >= 44, size < 22
-    local k = size / 64
-    local layers = {}
-    for i = 1, 6 do
-        local t = f:CreateTexture(nil, "ARTWORK", nil, i - 1)
-        t:SetPoint("CENTER")
-        layers[i] = t
-    end
-    local glyph = f:CreateTexture(nil, "OVERLAY", nil, 1)
-    glyph:SetPoint("CENTER")
-    local ticks, pips = {}, {}
-    if full then
-        for i = 0, 19 do
-            local a = (222 + 276 / 19 * i) * pi / 180
-            local t = f:CreateTexture(nil, "ARTWORK")
-            t:SetTexture(TICK)
-            t:SetPoint("CENTER", f, "CENTER", sin(a) * 29.2 * k, cos(a) * 29.2 * k)
-            t:SetRotation(-a)
-            ticks[i + 1] = t
-        end
-        for i = 0, 4 do
-            local a = (201 - 10.5 * i) * pi / 180
-            local t = Fill(f, T.fg, 1, "ARTWORK")
-            t:SetSize(3.6 * k + 1, 3.6 * k + 1)
-            t:SetPoint("CENTER", f, "CENTER", sin(a) * 29.4 * k, cos(a) * 29.4 * k)
-            t:SetRotation(pi / 4)
-            pips[i + 1] = t
-        end
-    end
-
-    local function Layer(i, family, scale, color, alpha)
-        local t = layers[i]
-        SetPlate(t, family)
-        local d = size * scale * (full and 1 or 1.36)
-        t:SetSize(d, d)
-        Tint(t, color, alpha)
-        t:Show()
-    end
-
-    function f:Set(spec)
-        local tier, p, ghost = spec.tier or 0, spec.progress or 0, spec.ghost
-        local family, bg = spec.family or "journey", spec.bg or T.panel
-        for i = 1, 6 do layers[i]:Hide() end
-        local s = full and 0.9 or 1
-        local w = full and 0.07 or 0.09
-        local metal = METAL[ghost or tier]
-        if tiny then
-            if tier == 0 and not ghost then
-                Layer(1, family, 1, T.fg, 0.3)
-                Layer(2, family, 1 - 0.14, bg)
-            elseif tier == 5 then
-                Layer(1, family, 1, T.gold)
-                Layer(2, family, 0.86, T.accent)
-            else
-                Layer(1, family, 1, metal and (tier >= 4 and T.accent or metal) or T.fg)
-            end
-            glyph:Hide()
-        else
-            if ghost then
-                Layer(1, family, s, metal, 0.9)
-                Layer(2, family, s - w, bg)
-            elseif tier == 0 then
-                Layer(1, family, s, T.fg, 0.22)
-                Layer(2, family, s - w, bg)
-            elseif tier < 4 then
-                Layer(1, family, s, metal)
-                Layer(2, family, s - w, bg)
-                Layer(3, family, s - w, metal, tier == 1 and 0.14 or tier == 2 and 0.18 or 0.22)
-                if tier == 3 then
-                    Layer(4, family, s * 0.85, metal, 0.75)
-                    Layer(5, family, s * 0.85 - 0.05, bg)
-                    Layer(6, family, s * 0.85 - 0.05, metal, 0.22)
-                end
-            else
-                Layer(1, family, s, tier == 5 and T.gold or T.accent)
-                Layer(2, family, s - w, bg)
-                Layer(3, family, s * 0.84, T.accent)
-            end
-            local ink = ghost and metal or tier >= 4 and T.ink or tier > 0 and metal or T.muted
-            local g = size * 24 * (full and 0.9 or 1.2) / 64
-            local tex = spec.spell and SpellTexture(spec.spell)
-            glyph:SetSize(g, g)
-            if tex then
-                glyph:SetTexture(tex)
-                glyph:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-                glyph:SetDesaturated(true)
-                glyph:SetSize(g * 0.9, g * 0.9)
-            else
-                Glyph(glyph, spec.glyph or "spell")
-                glyph:SetDesaturated(false)
-            end
-            Tint(glyph, ink, (tier > 0 or ghost) and 1 or 0.75)
-            glyph:Show()
-        end
-        if full then
-            local lit = tier == 5 and 20 or floor(p * 20 + 0.5)
-            local c = NEXT[tier]
-            for i = 1, 20 do
-                local t = ticks[i]
-                if i <= lit then
-                    t:SetSize(5.4 * k, 5.2 * k)
-                    Tint(t, c, 1)
-                else
-                    t:SetSize(3.3 * k, 5.2 * k)
-                    Tint(t, T.fg, 0.16)
-                end
-            end
-            for i = 1, 5 do
-                if i <= tier then Tint(pips[i], tier == 5 and T.gold or METAL[tier], 1) else Tint(pips[i], T.fg, 0.22) end
-            end
-        end
-    end
-    return f
-end
-
 function UI.FeatRow(parent, w)
     local f = CreateFrame("Button", nil, parent)
     f:SetSize(w, 44)
@@ -360,8 +220,8 @@ function UI.FeatRow(parent, w)
     hover:SetAllPoints()
     hover:Hide()
     Hair(f, "BOTTOM")
-    f.seal = UI.Seal(f, 28)
-    f.seal:SetPoint("LEFT", 0, 2)
+    f.crest = UI.Crest(f, 28)
+    f.crest:SetPoint("LEFT", 0, 2)
     f.name = Text(f, 14, T.fg, "LEFT", "strong")
     f.name:SetPoint("TOPLEFT", 38, -5)
     f.name:SetPoint("RIGHT", -4, 0)
@@ -379,24 +239,24 @@ function UI.FeatRow(parent, w)
     f:SetScript("OnLeave", function() hover:Hide() end)
     function f:Set(feat)
         self.feat = feat
-        self.seal:Set(feat)
+        self.crest:Set(feat.crest, feat.glyph, feat.tier or 0, feat.progress, feat.spell, feat.state)
         self.name:SetText(feat.name or "")
         self.line:SetText(feat.line or "")
         self.bar:SetWidth(max(0.01, (w - 42) * min(1, max(0, feat.progress or 0))))
-        Tint(self.bar, NEXT[feat.tier or 0])
+        Tint(self.bar, ns.Tiers[min(5, (feat.tier or 0) + 1)].color)
         local c = (feat.tier or 0) > 0 and T.fg or T.text
         self.name:SetTextColor(c[1], c[2], c[3])
     end
     return f
 end
 
---- A seal that opens its feat on the Feats page. Set takes the feat definition, its tier, progress and whether the addon
---- moves it while the player plays (the scarlet mark), and the colour behind the plate.
-function UI.FeatSeal(parent, size)
+--- A crest that opens its feat on the Feats page. Set takes the feat definition, its tier, progress and whether the addon
+--- moves it while the player plays (the scarlet mark).
+function UI.FeatCrest(parent, size)
     local b = CreateFrame("Button", nil, parent)
     b:SetSize(size, size)
-    b.seal = UI.Seal(b, size)
-    b.seal:SetAllPoints()
+    b.crest = UI.Crest(b, size)
+    b.crest:SetAllPoints()
     b.dot = Fill(b, T.accent, 1, "OVERLAY")
     b.dot:SetSize(5, 5)
     b.dot:SetRotation(pi / 4)
@@ -413,11 +273,10 @@ function UI.FeatSeal(parent, size)
         GameTooltip:Show()
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    function b:Set(def, info, moves, bg)
+    function b:Set(def, info, moves)
         self.featKey = def.key
         local spells = ns.char and ns.char.featSpell
-        self.seal:Set({ family = def.family, glyph = def.glyph, tier = info.tier, progress = info.progress,
-            spell = spells and spells[def.key], bg = bg })
+        self.crest:Set(def.crest, def.glyph, info.tier, info.progress, spells and spells[def.key])
         self.dot:SetShown(moves)
     end
     return b
@@ -518,10 +377,6 @@ function UI.Tabs(parent, defs, onSelect)
     return f
 end
 
-local function FeatFamily(key)
-    return ns.Feats and ns.Feats.Family and ns.Feats.Family(key) or "combat"
-end
-
 --- The session strip of a recap (CONTRACTS.md, SessionRecap): zones, buckets, levels and moments. Compact drops the clock; by default it is compact under 70 px high.
 function UI.Strip(parent, w, h, compact)
     local f = CreateFrame("Frame", nil, parent)
@@ -536,6 +391,7 @@ function UI.Strip(parent, w, h, compact)
         return t
     end)
     local marks = Pool(function() return f:CreateTexture(nil, "OVERLAY") end)
+    local crests = Pool(function() return UI.Crest(f, 18) end)
 
     local function R(x, y, rw, rh, c, a, rot)
         local t = rects.Get()
@@ -560,6 +416,7 @@ function UI.Strip(parent, w, h, compact)
         rects.Reset()
         texts.Reset()
         marks.Reset()
+        crests.Reset()
         span = max(60, span or ((recap["end"] or recap.start) - recap.start))
         local function X(sec) return min(w, max(0, sec / span * w)) end
         local zones = recap.zones or {}
@@ -604,12 +461,11 @@ function UI.Strip(parent, w, h, compact)
                 g:SetPoint("TOP", f, "TOPLEFT", at, -(ey + 1))
                 Tint(g, T.fg, 1)
             elseif m.kind == "feat" then
-                local g = marks.Get()
-                SetPlate(g, FeatFamily(m.feat))
-                g:SetSize(16, 16)
+                local g = crests.Get()
+                local def = ns.Feats and ns.Feats.Def(m.feat)
+                g:Set(def and def.crest, nil, max(1, min(5, m.tier or 1)), 0)
                 g:ClearAllPoints()
-                g:SetPoint("TOP", f, "TOPLEFT", at, -(ey - 2))
-                Tint(g, METAL[max(1, min(5, m.tier or 1))])
+                g:SetPoint("TOP", f, "TOPLEFT", at, -(ey - 4))
             elseif m.kind == "boss" or m.kind == "discovery" then
                 R(at - 1.5, ey + 6, 3, 3, T.muted)
             end
@@ -627,6 +483,7 @@ function UI.Strip(parent, w, h, compact)
         rects.Finish()
         texts.Finish()
         marks.Finish()
+        crests.Finish()
     end
     return f
 end
@@ -854,37 +711,40 @@ local function BuildSheet()
     route:Set(SampleRoute())
     y = y + 100
 
-    Heading("Feat seals: six tiers in every family")
-    local order = { "journey", "combat", "quests", "dungeons", "world", "trade", "class", "role" }
-    local glyphOf = { journey = "hours", combat = "kills", quests = "quests", dungeons = "dungeons", world = "zones",
-        trade = "fish", class = "spell", role = "heal" }
-    for row, fam in ipairs(order) do
+    Heading("Feat crests: six tiers in every scope, and the next tier outlined")
+    local order = { "character", "class", "account" }
+    local glyphOf = { character = "kills", class = "spell", account = "hours" }
+    for row, scope in ipairs(order) do
         for tier = 0, 5 do
-            local s = UI.Seal(body, 48)
-            s:SetPoint("TOPLEFT", body, "TOPLEFT", tier * 56 + ((row - 1) % 2) * 380, -(y + floor((row - 1) / 2) * 56))
-            s:Set({ family = fam, glyph = glyphOf[fam], tier = tier, progress = 0.55, bg = T.win })
+            local s = UI.Crest(body, 48)
+            s:SetPoint("TOPLEFT", body, "TOPLEFT", tier * 56, -(y + (row - 1) * 56))
+            s:Set(scope, glyphOf[scope], tier, 0.55)
+            if tier < 5 then
+                local n = UI.Crest(body, 48)
+                n:SetPoint("TOPLEFT", body, "TOPLEFT", 380 + tier * 56, -(y + (row - 1) * 56))
+                n:Set(scope, glyphOf[scope], tier, 0, nil, "next")
+            end
         end
     end
-    y = y + 4 * 56 + 12
+    y = y + 3 * 56 + 12
     local x = 0
     for _, size in ipairs({ 104, 64, 48, 28, 18 }) do
-        local s = UI.Seal(body, size)
+        local s = UI.Crest(body, size)
         s:SetPoint("TOPLEFT", body, "TOPLEFT", x, -y)
-        s:Set({ family = "combat", glyph = "kills", tier = 3, progress = 0.5, bg = T.win })
+        s:Set("account", "kills", 3, 0.5)
         x = x + size + 24
     end
     y = y + 116
 
     Heading("Feat rows")
     local rows = {
-        { name = "Slayer", line = "9,912 kills  -  88 to Gold", tier = 2, progress = 0.82, family = "combat", glyph = "kills" },
-        { name = "Rampage", line = "312 kills this session  -  268 to Gold", tier = 2, progress = 0.3, family = "combat", glyph = "kills" },
-        { name = "Soloist", line = "1 run alone  -  1 to Copper", tier = 0, progress = 0, family = "dungeons", glyph = "dungeons" },
+        { name = "Slayer", line = "9,912 kills  -  88 to Gold", tier = 2, progress = 0.82, crest = "character", glyph = "kills" },
+        { name = "Rampage", line = "312 kills this session  -  268 to Gold", tier = 2, progress = 0.3, crest = "character", glyph = "kills" },
+        { name = "Soloist", line = "1 run alone  -  1 to Copper", tier = 0, progress = 0, crest = "character", glyph = "dungeons" },
     }
     for _, d in ipairs(rows) do
         local r = UI.FeatRow(body, 380)
         Place(r, 46)
-        d.bg = T.win
         r:Set(d)
     end
 

@@ -16,6 +16,7 @@
 
 Core.lua
 FeatCatalog.lua
+Tiers.lua
 Recap.lua
 Feats.lua
 Capture.lua
@@ -52,6 +53,7 @@ Map.lua
 Gather.lua
 UI.lua
 Kit.lua
+Crest.lua
 SessionPage.lua
 FeatsPage.lua
 StatsPage.lua

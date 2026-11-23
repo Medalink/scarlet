@@ -54,18 +54,19 @@ local function Feat(key)
 end
 
 local function TierName(tier)
-    return ns.FEAT_TIER_NAMES and ns.FEAT_TIER_NAMES[tier] or ""
+    return ns.TierName(tier)
 end
 
 local function FeatLine(recap)
     local feats = recap.feats
     if not feats then return end
-    local parts, seal = {}, nil
+    local parts, mark = {}, nil
+    local spells = ns.char and ns.char.featSpell
     local earned = feats.earned and feats.earned[1]
     local def = earned and Feat(earned.key)
     if def then
         parts[#parts + 1] = format("|cfff0f1f3%s|r reached %s", def.name, TierName(earned.tier))
-        seal = { family = def.family, glyph = def.glyph, tier = earned.tier, spell = def.spells and def.spells[1] }
+        mark = { crest = def.crest, glyph = def.glyph, tier = earned.tier, spell = spells and spells[def.key] }
     end
     local near = feats.near and feats.near[1]
     local nearDef = near and Feat(near.key)
@@ -73,11 +74,11 @@ local function FeatLine(recap)
         local left = near.left or 0
         parts[#parts + 1] = format("%s is %s %s from %s", nearDef.name, ns.UI.Num(left),
             left == 1 and nearDef.one or nearDef.many, TierName(near.tier + 1))
-        seal = seal or { family = nearDef.family, glyph = nearDef.glyph, tier = near.tier, ghost = near.tier + 1,
-            progress = near.next and near.next > 0 and near.value / near.next or 0 }
+        mark = mark or { crest = nearDef.crest, glyph = nearDef.glyph, tier = near.tier, state = "next",
+            spell = spells and spells[nearDef.key] }
     end
     if #parts == 0 then return end
-    return table.concat(parts, " · "), seal
+    return table.concat(parts, " · "), mark
 end
 
 local function BuildChip()
@@ -155,10 +156,10 @@ local function BuildCard()
     f.totals:SetPoint("TOPLEFT", CARD_PAD, -62)
     f.strip = ui.Strip(f, CARD_W - CARD_PAD - 16, CARD_STRIP_H, true)
     f.strip:SetPoint("TOPLEFT", CARD_PAD, -88)
-    f.seal = ui.Seal(f, 22)
-    f.seal:SetPoint("TOPLEFT", CARD_PAD, -88 - CARD_STRIP_H - 6)
+    f.crest = ui.Crest(f, 22)
+    f.crest:SetPoint("TOPLEFT", CARD_PAD, -88 - CARD_STRIP_H - 6)
     f.feats = ui.Text(f, 12.5, T.text)
-    f.feats:SetPoint("LEFT", f.seal, "RIGHT", 8, 0)
+    f.feats:SetPoint("LEFT", f.crest, "RIGHT", 8, 0)
     f.feats:SetWidth(CARD_W - CARD_PAD - 16 - 30)
     f:Hide()
     return f
@@ -186,13 +187,17 @@ local function ShowCard()
     card.title:SetText(recap.title and recap.title.text or "")
     card.totals:SetText(Summary.CardTotals(recap))
     card.strip:Set(recap)
-    local line, seal = FeatLine(recap)
-    card.seal:SetShown(line ~= nil)
+    local line, mark = FeatLine(recap)
+    card.crest:SetShown(line ~= nil)
     card.feats:SetShown(line ~= nil)
     local height = 88 + CARD_STRIP_H + 14
     if line then
         card.feats:SetText(line)
-        card.seal:Set(seal or { family = "journey", tier = 0 })
+        if mark then
+            card.crest:Set(mark.crest, mark.glyph, mark.tier, 0, mark.spell, mark.state)
+        else
+            card.crest:Set("character", nil, 0, 0)
+        end
         height = height + 28
     end
     card:SetHeight(height)

@@ -961,16 +961,15 @@ function ns.OverviewPage(parent, ui)
             local held, total = Feats.Held()
             closeHeld:SetText(total > 0 and format("%d of %d held", held, total) or "")
             local near = Feats.Closest(3, Feats.Shown)
-            local names = ns.FEAT_TIER_NAMES
             local spells = ns.char and ns.char.featSpell
             for i = 1, 3 do
                 local info = near[i]
                 closeRows[i]:SetShown(info ~= nil)
                 if info then
                     local f = info.def
-                    closeRows[i]:Set({ key = f.key, name = f.name, line = format("%s to %s", Num(info.left), names[info.tier + 1]),
-                        progress = info.progress, tier = info.tier, family = f.family, glyph = f.glyph,
-                        spell = spells and spells[f.key], bg = T.win })
+                    closeRows[i]:Set({ key = f.key, name = f.name, line = format("%s to %s", Num(info.left), ns.TierName(info.tier + 1)),
+                        progress = info.progress, tier = info.tier, crest = f.crest, glyph = f.glyph,
+                        spell = spells and spells[f.key] })
                 end
             end
             closeTitle:SetShown(true)
@@ -980,9 +979,9 @@ function ns.OverviewPage(parent, ui)
                 for _, group in ipairs(groups) do
                     local first = group.feats[1]
                     if first and (first.scope == "class" or first.scope == "tree") then
-                        local g = { label = Text(lvlPage, 11, T.muted), seals = {}, feats = group.feats }
+                        local g = { label = Text(lvlPage, 11, T.muted), crests = {}, feats = group.feats }
                         for i = 1, #group.feats do
-                            g.seals[i] = ui.FeatSeal(lvlPage, 28)
+                            g.crests[i] = ui.FeatCrest(lvlPage, 28)
                         end
                         g.label:SetText(group.name)
                         classGroups[#classGroups + 1] = g
@@ -994,18 +993,18 @@ function ns.OverviewPage(parent, ui)
             for _, g in ipairs(classGroups) do
                 local at = 0
                 for i, f in ipairs(g.feats) do
-                    local seal = g.seals[i]
+                    local crest = g.crests[i]
                     if Feats.Shown(f) then
                         local info = Feats.Info(f.key)
-                        seal:ClearAllPoints()
-                        seal:SetPoint("TOPLEFT", lvlPage, "TOPLEFT", x + at * 32, -366)
-                        seal:Set(f, info, Feats.Moves(f), T.win)
-                        seal:Show()
+                        crest:ClearAllPoints()
+                        crest:SetPoint("TOPLEFT", lvlPage, "TOPLEFT", x + at * 32, -366)
+                        crest:Set(f, info, Feats.Moves(f))
+                        crest:Show()
                         at = at + 1
                         totalClass = totalClass + 1
                         if info.tier > 0 then heldClass = heldClass + 1 end
                     else
-                        seal:Hide()
+                        crest:Hide()
                     end
                 end
                 g.label:ClearAllPoints()

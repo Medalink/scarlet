@@ -42,7 +42,7 @@ do
     opt.scale = tonumber(opt.scale) or 1
 end
 
-local SCENARIOS = { "raid", "idle", "quest", "move", "seal", "window", "map", "ui" }
+local SCENARIOS = { "raid", "idle", "quest", "move", "seal", "window", "map", "ui", "feats" }
 if opt.list then print(table.concat(SCENARIOS, " ")) os.exit(0) end
 
 -- Deterministic random numbers, the same on every platform.
@@ -509,6 +509,58 @@ function SCEN.ui(W, ns)
     s.call(11.5, "ui: Stats page", function() return Press("Stats") end)
     s.sort()
     return s, 14
+end
+
+function SCEN.feats(W, ns)
+    Setup(W, 0)
+    local rows = {}
+    for _, f in ipairs(ns.FEATS) do
+        if f.scope == "general" then
+            local t = f.thresholds
+            rows[f.key] = { v = t[3] * 0.6, b = 0 }
+        end
+    end
+    local function Char(scale)
+        local c = { held = 0, total = 0, through = 0, f = {} }
+        for key, r in pairs(rows) do c.f[key] = { v = r.v * scale, b = 0 } end
+        return c
+    end
+    _G.ScarletFeats = { source = "web", made = 1, chars = { [ns.charKey] = Char(1), ["Alt-One"] = Char(2), ["Alt-Two"] = Char(0.4) } }
+    local count = 0
+    for _, f in ipairs(Env.frames) do if f.kind == "Texture" then count = count + 1 end end
+    local before = count
+    local s = NewStream()
+    s.call(1, "feats: open the window", function() ns.Toggle() end)
+    s.call(2, "feats: Feats page build", function()
+        for _, f in ipairs(Env.frames) do
+            if f.kind == "Button" and f.scripts.OnClick then
+                for _, c in ipairs(Env.frames) do
+                    if c.parent == f and c.text == "Feats" then f.scripts.OnClick(f) return end
+                end
+            end
+        end
+        return false
+    end)
+    s.call(3, "feats: textures made by the page", function()
+        local n = 0
+        for _, f in ipairs(Env.frames) do if f.kind == "Texture" then n = n + 1 end end
+        print(("feats: %d textures after the page build, %d before"):format(n, before))
+        return false
+    end)
+    local make = ns.UI.Crest or ns.UI.Seal
+    local crest
+    local function Tint(tier, p)
+        if ns.UI.Crest then crest:Set("character", "kills", tier, p) else crest:Set({ family = "combat", glyph = "kills", tier = tier, progress = p }) end
+    end
+    s.call(3.5, "feats: one 28 px crest built", function()
+        crest = make(UIParent, 28)
+        for tier = 0, 5 do Tint(tier, 0.5) end
+    end)
+    for i = 1, 50 do
+        s.call(4 + i * 0.01, "feats: re-tint one crest", function() Tint(1 + i % 5, (i % 10) / 10) end)
+    end
+    s.sort()
+    return s, 6
 end
 
 -- The map: the budgeted read of the stored chunks, one 4 ms pump per frame until it is done.

@@ -255,11 +255,6 @@ function Feats.Tier(key)
     return TierOf(f, value), value
 end
 
-function Feats.Family(key)
-    local f = byKey[key]
-    return f and f.family
-end
-
 function Feats.Def(key)
     return byKey[key]
 end
@@ -314,7 +309,7 @@ local function Check(f)
         local first = changed[f.key]
         changed[f.key] = { key = f.key, from = first and first.from or was, tier = tier, at = floor(ns.Recap.Elapsed()),
             value = value }
-        ns.Recap.Moment("feat", format("%s reached %s", f.name, ns.FEAT_TIER_NAMES[tier] or ""), f.key, tier)
+        ns.Recap.Moment("feat", format("%s reached %s", f.name, ns.TierName(tier)), f.key, tier)
         for i = 1, #hooks.tier do hooks.tier[i](f, value, tier, was) end
     end
     for i = 1, #hooks.move do hooks.move[i](f, value, tier) end
@@ -587,10 +582,10 @@ function Feats.Changes()
     return out
 end
 
-local function Row(f, tier, value, line, ghost)
+local function Row(f, tier, value, line)
     local spells = ns.char and ns.char.featSpell
-    return { name = f.name, line = line, progress = Feats.Progress(f, value, tier), tier = tier, family = f.family,
-        glyph = f.glyph, spell = spells and spells[f.key], ghost = ghost, key = f.key }
+    return { name = f.name, line = line, progress = Feats.Progress(f, value, tier), tier = tier, crest = f.crest,
+        glyph = f.glyph, spell = spells and spells[f.key], key = f.key }
 end
 
 --- Rows for the Feats column of a recap: the tiers it earned, then the feats it moved closest to the next tier.
@@ -602,7 +597,7 @@ function Feats.SessionRows(recap)
     for _, e in ipairs(feats.earned or {}) do
         local f = byKey[e.key]
         if f and #rows < 3 then
-            rows[#rows + 1] = Row(f, e.tier, e.value or 0, format("Reached %s · %s", ns.FEAT_TIER_NAMES[e.tier] or "",
+            rows[#rows + 1] = Row(f, e.tier, e.value or 0, format("Reached %s · %s", ns.TierName(e.tier),
                 Feats.Count(f, e.value or 0)))
         end
     end
@@ -610,7 +605,7 @@ function Feats.SessionRows(recap)
         local f = byKey[n.key]
         if f and #rows < 3 then
             rows[#rows + 1] = Row(f, n.tier, n.value or 0, format("%s · %s to %s", Feats.Count(f, n.value or 0),
-                Num(n.left or 0), ns.FEAT_TIER_NAMES[n.tier + 1] or ""))
+                Num(n.left or 0), ns.TierName(n.tier + 1)))
         end
     end
     return rows
@@ -722,8 +717,8 @@ function Feats.Command(rest)
     if f then
         local info = Feats.Info(f.key)
         ns.Print(format("%s: %s, %s%s", f.name, Feats.Count(f, info.value),
-            info.tier > 0 and (ns.FEAT_TIER_NAMES[info.tier] .. " held") or "no tier yet",
-            info.left and format(", %s to %s", ui.Num(info.left), ns.FEAT_TIER_NAMES[info.tier + 1]) or ""))
+            info.tier > 0 and (ns.TierName(info.tier) .. " held") or "no tier yet",
+            info.left and format(", %s to %s", ui.Num(info.left), ns.TierName(info.tier + 1)) or ""))
         return
     end
     ns.Print(format("%d feats move while you play; %d are at Copper or better.", live, above))

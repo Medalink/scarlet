@@ -4,7 +4,7 @@ local floor, max, min, format = math.floor, math.max, math.min, string.format
 
 local LEFT_W, GAP = 226, 20
 local WALL_W = 656 - LEFT_W - GAP - 12
-local SEAL, STEP, LABEL_W, ROW_PAD = 28, 32, 96, 10
+local CREST, STEP, LABEL_W, ROW_PAD = 28, 32, 96, 10
 local PER_ROW = floor((WALL_W - LABEL_W) / STEP)
 local CLOSEST_ROWS = 3
 local WHEEL_STEP = 64
@@ -20,7 +20,7 @@ end
 
 function ns.FeatsPage(parent, ui)
     local T, Text, Fill, Hair, Num = ui.T, ui.Text, ui.Fill, ui.Hair, ui.Num
-    local Feats, names = ns.Feats, ns.FEAT_TIER_NAMES
+    local Feats, tierName = ns.Feats, ns.TierName
     local page = CreateFrame("Frame", nil, parent)
     page:SetAllPoints()
     current = page
@@ -58,24 +58,24 @@ function ns.FeatsPage(parent, ui)
 
     local card = CreateFrame("Frame", nil, left)
     card:SetPoint("TOPLEFT", 0, -304)
-    card:SetSize(LEFT_W, 100)
+    card:SetSize(LEFT_W, 104)
     Fill(card, T.panel, 1):SetAllPoints()
     ui.Border(card, T.line)
-    card.seal = ui.Seal(card, 56)
-    card.seal:SetPoint("TOPLEFT", 12, -12)
+    card.crest = ui.Crest(card, 64)
+    card.crest:SetPoint("TOPLEFT", 12, -12)
     card.name = Text(card, 21, T.fg, "LEFT", "display")
-    card.name:SetPoint("TOPLEFT", 78, -14)
+    card.name:SetPoint("TOPLEFT", 86, -14)
     card.chip = Text(card, 11, T.fg, "LEFT", "strong")
     card.chip:SetPoint("LEFT", card.name, "RIGHT", 7, -1)
     card.count = Text(card, 12, T.text)
-    card.count:SetPoint("TOPLEFT", 78, -42)
-    card.count:SetWidth(LEFT_W - 90)
+    card.count:SetPoint("TOPLEFT", 86, -42)
+    card.count:SetWidth(LEFT_W - 98)
     card.dot = Fill(card, T.accent, 1, "ARTWORK")
     card.dot:SetSize(5, 5)
     card.dot:SetRotation(math.pi / 4)
-    card.dot:SetPoint("TOPLEFT", 14, -83)
+    card.dot:SetPoint("TOPLEFT", 14, -87)
     card.left = Text(card, 12, T.muted)
-    card.left:SetPoint("TOPLEFT", 12, -78)
+    card.left:SetPoint("TOPLEFT", 12, -82)
     card.left:SetWidth(LEFT_W - 24)
     card.liveText = Text(card, 12, T.muted)
     card.liveText:SetText("counts while you play")
@@ -116,7 +116,7 @@ function ns.FeatsPage(parent, ui)
     end)
 
     local mark = CreateFrame("Frame", nil, child)
-    mark:SetSize(SEAL + 4, SEAL + 4)
+    mark:SetSize(CREST + 4, CREST + 4)
     mark:SetFrameLevel(child:GetFrameLevel() + 5)
     ui.Border(mark, T.fg)
     mark:Hide()
@@ -130,9 +130,9 @@ function ns.FeatsPage(parent, ui)
 
     local function Cell(f)
         local b = CreateFrame("Button", nil, child)
-        b:SetSize(SEAL, SEAL)
-        b.seal = ui.Seal(b, SEAL)
-        b.seal:SetAllPoints()
+        b:SetSize(CREST, CREST)
+        b.crest = ui.Crest(b, CREST)
+        b.crest:SetAllPoints()
         b.dot = Fill(b, T.accent, 1, "OVERLAY")
         b.dot:SetSize(5, 5)
         b.dot:SetRotation(math.pi / 4)
@@ -215,16 +215,15 @@ function ns.FeatsPage(parent, ui)
         if not info then return end
         local f = info.def
         local spells = ns.char and ns.char.featSpell
-        card.seal:Set({ family = f.family, glyph = f.glyph, tier = info.tier, progress = info.progress,
-            spell = spells and spells[f.key] })
+        card.crest:Set(f.crest, f.glyph, info.tier, info.progress, spells and spells[f.key])
         card.name:SetText(f.name)
-        card.chip:SetText(info.tier > 0 and names[info.tier] or "")
-        local c = info.tier > 0 and ui.TierColor[info.tier] or T.muted
+        card.chip:SetText(tierName(info.tier))
+        local c = info.tier > 0 and ns.Tiers[info.tier].color or T.muted
         card.chip:SetTextColor(c[1], c[2], c[3])
         local fresh = ns.char and ns.char.featNew and ns.char.featNew[key]
         card.count:SetText(Feats.Count(f, info.value) .. (fresh and fresh <= info.tier and " · new tier" or ""))
         local moves = Feats.Moves(f)
-        local text = info.next and format("%s to %s", Num(info.left), names[info.tier + 1]) or "Highest tier held"
+        local text = info.next and format("%s to %s", Num(info.left), tierName(info.tier + 1)) or "Highest tier held"
         card.left:SetText(text .. (moves and " ·" or ""))
         card.dot:SetShown(moves)
         card.dot:ClearAllPoints()
@@ -245,8 +244,7 @@ function ns.FeatsPage(parent, ui)
                     local info = Feats.Info(f.key)
                     local b = cells[f.key]
                     local spells = ns.char and ns.char.featSpell
-                    b.seal:Set({ family = f.family, glyph = f.glyph, tier = info.tier, progress = info.progress,
-                        spell = spells and spells[f.key], bg = T.win })
+                    b.crest:Set(f.crest, f.glyph, info.tier, info.progress, spells and spells[f.key])
                     b.dot:SetShown(Feats.Moves(f))
                     total = total + 1
                     if info.tier > 0 then
@@ -261,7 +259,7 @@ function ns.FeatsPage(parent, ui)
         of:SetText(format("of %d feats", total))
         local parts = {}
         for t = 5, 1, -1 do
-            if counts[t] > 0 then parts[#parts + 1] = format("%d %s", counts[t], names[t]) end
+            if counts[t] > 0 then parts[#parts + 1] = format("%d %s", counts[t], tierName(t)) end
         end
         tiers:SetText(table.concat(parts, " · "))
         local shown = Feats.Closest(CLOSEST_ROWS, Shown)
@@ -271,9 +269,9 @@ function ns.FeatsPage(parent, ui)
             if info then
                 local f = info.def
                 local spells = ns.char and ns.char.featSpell
-                rows[i]:Set({ key = f.key, name = f.name, line = format("%s to %s", Num(info.left), names[info.tier + 1]),
-                    progress = info.progress, tier = info.tier, family = f.family, glyph = f.glyph,
-                    spell = spells and spells[f.key], bg = T.win })
+                rows[i]:Set({ key = f.key, name = f.name, line = format("%s to %s", Num(info.left), tierName(info.tier + 1)),
+                    progress = info.progress, tier = info.tier, crest = f.crest, glyph = f.glyph,
+                    spell = spells and spells[f.key] })
             end
         end
         closestTitle:SetShown(#shown > 0)

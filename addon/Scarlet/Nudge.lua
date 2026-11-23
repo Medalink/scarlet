@@ -7,7 +7,7 @@ local format, ceil = string.format, math.ceil
 local Nudge = {}
 ns.UI.Nudge = Nudge
 
-local W, H, SEAL, HOLD = 236, 38, 28, 8
+local W, H, CREST, HOLD = 236, 38, 28, 8
 local CLOSE_SECONDS, CLOSE_COUNT = 180, 5
 local SPACING, BUDGET, QUIET_LOGIN, QUIET_TOAST = 900, 3, 60, 60
 
@@ -22,8 +22,8 @@ local function Build()
     f:EnableMouse(false)
     ui.Fill(f, T.bg, 0.94):SetAllPoints()
     ui.Border(f, T.line2)
-    f.seal = ui.Seal(f, SEAL)
-    f.seal:SetPoint("LEFT", 6, 0)
+    f.crest = ui.Crest(f, CREST)
+    f.crest:SetPoint("LEFT", 6, 0)
     f.name = ui.Text(f, 12, T.fg, "LEFT", "strong")
     f.name:SetPoint("TOPLEFT", 42, -6)
     f.left = ui.Text(f, 12, T.muted)
@@ -71,12 +71,11 @@ local function Show(f, info)
     lastAt, shown = GetTime(), shown + 1
     plate = plate or Build()
     local spells = ns.char.featSpell
-    plate.seal:Set({ family = f.family, glyph = f.glyph, tier = info.tier, ghost = nextTier, progress = info.progress,
-        spell = spells and spells[f.key], bg = ui.T.bg })
-    local color = ui.TierColor[nextTier]
+    plate.crest:Set(f.crest, f.glyph, info.tier, 0, spells and spells[f.key], "next")
+    local color = ns.Tiers[nextTier].color
     plate.bar:SetVertexColor(color[1], color[2], color[3], 1)
     plate.bar:SetWidth(math.max(0.01, (W - 50) * info.progress))
-    plate.name:SetText(format("%s · %s", f.name, ns.FEAT_TIER_NAMES[nextTier]))
+    plate.name:SetText(format("%s · %s", f.name, ns.TierName(nextTier)))
     local left = ceil(info.left - 0.0001)
     plate.left:SetText(format("%s %s to go", ui.Num(left), left == 1 and f.one or f.many))
     ns.Alerts.Beside(plate, W, H)
