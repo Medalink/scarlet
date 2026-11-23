@@ -620,8 +620,9 @@ end
 local ROUTE_PAD = 16
 local VIOLET = T.s4
 
---- The route card. Set takes a sheet: aspect, points (x, y pairs from 0 to 1000, y up), breaks (point indexes where a leg
---- starts), air (point indexes whose arriving segment was a flight) and marks ({ point index, "level" or "death" }).
+--- The route card. Set takes a sheet: aspect (width over height, 0.4 to 2.5), points (x, y pairs with the long side at
+--- 1000, y up), breaks (the 1-based index of the first point of each leg after the first), air (true at a point reached
+--- by a teleport or flight) and marks ({ point index, "level" or "death" }, only the addon's own recap has them).
 function UI.Route(parent, w, h)
     local f = CreateFrame("Frame", nil, parent)
     f:SetSize(w, h)
@@ -682,7 +683,7 @@ function UI.Route(parent, w, h)
         self.empty:SetShown(n < 2)
         if n >= 2 then
             local aw, ah = w - 2 * ROUTE_PAD, h - 2 * ROUTE_PAD
-            local aspect = sheet.aspect or 1
+            local aspect = max(0.4, min(2.5, tonumber(sheet.aspect) or 1))
             local sw, sh = aw, aw / aspect
             if sh > ah then sw, sh = ah * aspect, ah end
             local ox, oy = (w - sw) / 2, (h - sh) / 2

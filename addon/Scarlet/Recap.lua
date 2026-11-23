@@ -12,6 +12,7 @@ local SHORT_STRETCH = 30
 local SESSIONS_COMPARED = 30
 local SESSIONS_MIN = 5
 local LONG_ENOUGH = 600
+local SHEET_ASPECT_MIN, SHEET_ASPECT_MAX = 0.4, 2.5
 
 local Recap = {}
 ns.Recap = Recap
@@ -294,6 +295,15 @@ local function Route(st)
         end
     end
     local w, h = max(maxX - minX, 1), max(maxY - minY, 1)
+    if w > h * SHEET_ASPECT_MAX then
+        local grown = w / SHEET_ASPECT_MAX
+        minY = minY - (grown - h) / 2
+        h = grown
+    elseif w < h * SHEET_ASPECT_MIN then
+        local grown = h * SHEET_ASPECT_MIN
+        minX = minX - (grown - w) / 2
+        w = grown
+    end
     local scale = 1000 / max(w, h)
     local points, breaks, air, index, k, prev = {}, {}, {}, {}, 0, 0
     for i = 1, n do
