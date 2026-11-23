@@ -743,6 +743,7 @@ end
 local NAV = {
     { key = "recap", label = "Session" },
     { key = "overview", label = "Character" },
+    { key = "feats", label = "Feats" },
     { key = "characters", label = "Characters" },
     { key = "session", label = "This session" },
     { key = "stats", label = "Stats" },
@@ -781,6 +782,7 @@ local BUILDERS = {
     people = function(body)
         return PeoplePage(body, function() return Snapshot(ns.char or ns.sess, true) end)
     end,
+    feats = function(body) return ns.FeatsPage(body, ns.UI) end,
     live = LivePage,
     addons = AddonsPage,
     loothud = function(body) return ns.Gather.Page(body, ns.UI) end,
@@ -794,7 +796,7 @@ local function Show(key)
     for k, page in pairs(pages) do page:SetShown(k == key) end
     for _, b in ipairs(navButtons) do b:SetActive(b.key == key) end
     -- The Character page opens on the character's name; the others open on their title.
-    local home = key == "overview" or key == "recap"
+    local home = key == "overview" or key == "recap" or key == "feats"
     window.pageTitle:SetShown(not home)
     local title = navButtons[key].label
     if ns.char and (FROM_INSTALL[key] or (key == "stats" and not ns.History(ns.charKey))) then

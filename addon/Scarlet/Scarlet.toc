@@ -53,5 +53,6 @@ Gather.lua
 UI.lua
 Kit.lua
 SessionPage.lua
+FeatsPage.lua
 Alerts.lua
 Summary.lua

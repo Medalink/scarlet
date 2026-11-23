@@ -89,12 +89,14 @@ function Frame:IsVisible() return self.shown end
 function Frame:SetSize(w, h) self.w, self.h = w, h end
 function Frame:SetWidth(w) self.w = w end
 function Frame:SetHeight(h) self.h = h end
-function Frame:GetWidth() return self.w end
-function Frame:GetHeight() return self.h end
+function Frame:GetWidth() return self.w or 0 end
+function Frame:GetHeight() return self.h or 0 end
+function Frame:SetVerticalScroll(v) self.vscroll = v end
 function Frame:GetLeft() return 0 end
 function Frame:GetTop() return 0 end
 function Frame:GetCenter() return 400, 300 end
 function Frame:GetEffectiveScale() return 1 end
+function Frame:GetFrameLevel() return 1 end
 function Frame:GetScale() return 1 end
 function Frame:GetStringWidth() return 10 end
 function Frame:GetNumPoints() return 0 end
@@ -105,7 +107,7 @@ function Frame:SetFont() return true end
 function Frame:GetFont() return "Fonts\\FRIZQT__.TTF", 12, "" end
 function Frame:SetFontObject() end
 function Frame:SetVerticalScroll(v) self.vscroll = v end
-function Frame:GetVerticalScroll() return self.vscroll or 0 end
+function Frame:GetVerticalScroll() return rawget(self, "vscroll") or 0 end
 function Frame:IsMouseOver() return false end
 function Frame:CreateTexture() return NewFrame("Texture", nil, self) end
 function Frame:CreateFontString() return NewFrame("FontString", nil, self) end

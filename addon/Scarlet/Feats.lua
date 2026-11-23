@@ -255,9 +255,12 @@ local function Check(f)
     for i = 1, #hooks.move do hooks.move[i](f, value, tier) end
 end
 
+local stamp = 0
+
 local function Flush()
     pending = false
     if not cur then return end
+    stamp = stamp + 1
     for f in pairs(dirty) do
         dirty[f] = nil
         Check(f)
@@ -431,6 +434,7 @@ function Feats.Start(t)
     Fold(ch)
     live[t] = live[t] or { secs = 0, c = {} }
     cur = live[t]
+    stamp = stamp + 1
     cur.c = cur.c or {}
     playedAt, pending, clockAt = -1, false, GetTime()
     for key in pairs(dirty) do dirty[key] = nil end
@@ -522,6 +526,54 @@ function Feats.SessionRows(recap)
         end
     end
     return rows
+end
+
+--- A number that changes whenever a feat's value may have changed, for pages that redraw only then.
+function Feats.Stamp()
+    return stamp
+end
+
+--- True while the addon moves this feat as the player plays (its gate holds for this session).
+function Feats.Moves(f)
+    return f.live ~= nil and visible[f.key] == true and Holds(f)
+end
+
+local collections
+--- The feats this character can hold, grouped by collection in catalog order: { name, feats }.
+function Feats.Collections()
+    if collections then return collections end
+    collections = {}
+    local at = {}
+    for _, f in ipairs(ns.FEATS) do
+        if visible[f.key] then
+            local name = f.tree or f.collection or "Feats"
+            local group = at[name]
+            if not group then
+                group = { name = name, feats = {} }
+                at[name] = group
+                collections[#collections + 1] = group
+            end
+            group.feats[#group.feats + 1] = f
+        end
+    end
+    return collections
+end
+
+--- The n feats nearest their next tier among those shown, by progress: { def, value, tier, left, progress }.
+function Feats.Closest(n, shown)
+    local out = {}
+    for _, f in ipairs(ns.FEATS) do
+        if visible[f.key] and (not shown or shown(f)) then
+            local info = Feats.Info(f.key)
+            if info.next and info.value > 0 then out[#out + 1] = info end
+        end
+    end
+    table.sort(out, function(a, b)
+        if a.progress ~= b.progress then return a.progress > b.progress end
+        return a.def.key < b.def.key
+    end)
+    for i = #out, n + 1, -1 do out[i] = nil end
+    return out
 end
 
 --- The tiers this session started from, by feat key.

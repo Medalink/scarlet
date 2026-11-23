@@ -474,13 +474,24 @@ function SCEN.ui(W, ns)
         if not b then return false end
         b.scripts.OnClick(b)
     end
+    local function Pick()
+        local list = {}
+        for _, f in ipairs(Env.frames) do
+            if f.kind == "Button" and rawget(f, "def") and f.shown then list[#list + 1] = f end
+        end
+        local b = list[2]
+        if not b then return false end
+        b.scripts.OnClick(b)
+    end
     s.call(3, "ui: open the window", function() ns.Toggle() end)
     s.call(4, "ui: Session page", function() return Press("Session") end)
     for k, tab in ipairs({ "Last session", "Earlier", "Log", "This session" }) do
         s.call(4 + k, "ui: Session tab", function() return Press(tab, true) end)
     end
+    s.call(10, "ui: Feats page", function() return Press("Feats") end)
+    s.call(10.5, "ui: Feats page, a pick", function() return Pick() end)
     s.sort()
-    return s, 12
+    return s, 14
 end
 
 -- The map: the budgeted read of the stored chunks, one 4 ms pump per frame until it is done.
