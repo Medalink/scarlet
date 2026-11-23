@@ -135,6 +135,8 @@ function ns.FeatsPage(parent, ui)
         return Feats.Count(f, info.value) .. (info.account and " on the account" or "")
     end
 
+    local waiting, order, nextAt, pumping = {}, {}, 1, false
+
     local function Cell(f, account)
         local b = CreateFrame("Button", nil, child)
         b:SetSize(CREST, CREST)
@@ -161,6 +163,54 @@ function ns.FeatsPage(parent, ui)
         return b
     end
 
+    local function Slot(b, i, y)
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", child, "TOPLEFT", LABEL_W + ((i - 1) % PER_ROW) * STEP,
+            -(y + floor((i - 1) / PER_ROW) * STEP + 2))
+        b:Show()
+    end
+
+    local function Paint(b, f, info, spells)
+        b.crest:Set("account", f.glyph, info.tier, info.progress, spells and spells[f.key])
+        b.dot:SetShown(Feats.Moves(f))
+    end
+
+    local function Build(key)
+        local w = waiting[key]
+        if not w then return acells[key] end
+        waiting[key] = nil
+        local b = Cell(w.f, true)
+        Slot(b, w.i, w.y)
+        Paint(b, w.f, Feats.AccountInfo(key), ns.char and ns.char.featSpell)
+        return b
+    end
+
+    local function Pump()
+        pumping = false
+        local n = 0
+        while nextAt <= #order and n < PER_ROW do
+            local key = order[nextAt]
+            nextAt = nextAt + 1
+            if waiting[key] then
+                Build(key)
+                n = n + 1
+            end
+        end
+        if nextAt <= #order then
+            pumping = true
+            C_Timer.After(0, Pump)
+        end
+    end
+
+    local function Defer(f, i, y)
+        waiting[f.key] = { f = f, i = i, y = y }
+        order[#order + 1] = f.key
+        if not pumping then
+            pumping = true
+            C_Timer.After(0, Pump)
+        end
+    end
+
     local function Group(name, list, account, y)
         local g = groups[name]
         if not g then
@@ -183,11 +233,14 @@ function ns.FeatsPage(parent, ui)
         g.list = list
         local pool = account and acells or cells
         for i, f in ipairs(list) do
-            local b = pool[f.key] or Cell(f, account)
-            b:ClearAllPoints()
-            b:SetPoint("TOPLEFT", child, "TOPLEFT", LABEL_W + ((i - 1) % PER_ROW) * STEP,
-                -(y + floor((i - 1) / PER_ROW) * STEP + 2))
-            b:Show()
+            local b = pool[f.key]
+            if b then
+                Slot(b, i, y)
+            elseif account then
+                Defer(f, i, y)
+            else
+                Slot(Cell(f, false), i, y)
+            end
         end
         return h
     end
@@ -233,7 +286,7 @@ function ns.FeatsPage(parent, ui)
 
     local function CellOf(token)
         if not token then return end
-        if token:sub(1, 8) == "account:" then return acells[token:sub(9)] end
+        if token:sub(1, 8) == "account:" then return Build(token:sub(9)) end
         return cells[token]
     end
 
@@ -272,8 +325,7 @@ function ns.FeatsPage(parent, ui)
             for _, f in ipairs(ag.list) do
                 local info = Feats.AccountInfo(f.key)
                 local b = acells[f.key]
-                b.crest:Set("account", f.glyph, info.tier, info.progress, spells and spells[f.key])
-                b.dot:SetShown(Feats.Moves(f))
+                if b then Paint(b, f, info, spells) end
                 if info.tier > 0 then own = own + 1 end
             end
             ag.count:SetText(format("%d of %d", own, #ag.list))
