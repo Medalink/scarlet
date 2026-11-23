@@ -381,6 +381,14 @@ function Events.PLAYER_REGEN_ENABLED()
     C_Timer.After(AFTER_COMBAT + 0.05, Pump)
 end
 
+function Events.CINEMATIC_STOP()
+    if #queue > 0 then C_Timer.After(AFTER_COMBAT, Pump) end
+end
+
+function Events.STOP_MOVIE()
+    if #queue > 0 then C_Timer.After(AFTER_COMBAT, Pump) end
+end
+
 function Events.PLAYER_LEVEL_UP()
     holdUntil = max(holdUntil, GetTime() + AFTER_LEVEL)
     C_Timer.After(AFTER_LEVEL + 0.05, Pump)
