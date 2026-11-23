@@ -37,6 +37,17 @@ local function Mark(key, tier)
     ch.featSeen[key] = max(ch.featSeen[key] or 0, tier)
 end
 
+local function MarkAccount(key, tier)
+    local db = ns.db
+    if not db then return end
+    db.accountSeen = db.accountSeen or {}
+    db.accountSeen[key] = max(db.accountSeen[key] or 0, tier)
+end
+
+local function Record(item)
+    if item.account then MarkAccount(item.key, item.tier) else Mark(item.key, item.tier) end
+end
+
 local function MarkNew(key, tier)
     local ch = ns.char
     if not ch then return end
@@ -132,7 +143,7 @@ local function Build()
     end
     f:SetScript("OnClick", function(self)
         if InCombatLockdown() then return end
-        if self.featKey then ns.OpenFeat(self.featKey) else ns.UI.Open("feats") end
+        if self.featKey then ns.OpenFeat(self.featKey, self.featAccount) else ns.UI.Open("feats") end
     end)
     f:Hide()
     return f
@@ -156,7 +167,7 @@ local function Paint(item)
     local ui = ns.UI
     local T = ui.T
     local color = item.tier > 0 and ns.Tiers[item.tier].color or T.accent
-    plate.featKey = item.key or false
+    plate.featKey, plate.featAccount = item.key or false, item.account or false
     TextAlpha(1)
     plate.rail:SetVertexColor(color[1], color[2], color[3], 1)
     plate.label:SetText(item.label or "")
@@ -265,8 +276,8 @@ local function Pump()
         local it = queue[i]
         if now - it.at > STALE then
             if it.key and not it.test then
-                Mark(it.key, it.tier)
-                MarkNew(it.key, it.tier)
+                Record(it)
+                if not it.account then MarkNew(it.key, it.tier) end
             end
             table.remove(queue, i)
         end
@@ -278,14 +289,14 @@ local function Pump()
         local n = #queue
         for i = 1, n do
             local it = queue[i]
-            if it.key and not it.test then Mark(it.key, it.tier) end
+            if it.key and not it.test then Record(it) end
         end
         item = { plus = "+" .. n, tier = 2, label = "Earned this session",
             name = format("%d more feat%s", n, n == 1 and "" or "s"), detail = "Open the Feats page to see them" }
         queue = {}
     else
         item = table.remove(queue, 1)
-        if item.key and not item.test then Mark(item.key, item.tier) end
+        if item.key and not item.test then Record(item) end
         recent[#recent + 1] = now
         fullInRow = fullInRow + 1
     end
@@ -318,16 +329,38 @@ local function Describe(f, tier, from, value)
         detail = ns.Feats.Count(f, value), progress = ns.Feats.Progress(f, value, tier), at = GetTime() }
 end
 
+local function DescribeAccount(f, info, from)
+    local spells = ns.char and ns.char.featSpell
+    return { key = f.key, account = true, name = f.name, tier = info.tier, from = from, value = info.value,
+        crest = "account", glyph = f.glyph, spell = spells and spells[f.key], chip = ns.TierName(info.tier),
+        label = from > 0 and ("Account feat upgraded from " .. ns.TierName(from)) or "Account feat earned",
+        detail = ns.Feats.Count(f, info.value) .. " on the account", progress = info.progress, at = GetTime() }
+end
+
 function Toast.Queue(item)
     queue[#queue + 1] = item
     Pump()
 end
 
+local ownKey, ownTier, ownAt = false, 0, -1
+
 local function OnTier(f, value, tier, from)
     if not Enabled() then return end
     local seen = ns.char and ns.char.featSeen and ns.char.featSeen[f.key] or 0
     if tier <= seen then return end
+    ownKey, ownTier, ownAt = f.key, tier, GetTime()
     Toast.Queue(Describe(f, tier, from, value))
+end
+
+local function OnAccount(f, info, from)
+    if not Enabled() then return end
+    local db = ns.db
+    if info.tier <= (db and db.accountSeen and db.accountSeen[f.key] or 0) then return end
+    if ownKey == f.key and ownTier == info.tier and ownAt == GetTime() then
+        MarkAccount(f.key, info.tier)
+        return
+    end
+    Toast.Queue(DescribeAccount(f, info, from))
 end
 
 local function AwaySummary()
@@ -371,14 +404,21 @@ end
 
 --- /scarlet feats test: two full plates and the folded line.
 function Toast.Test()
-    local picked = {}
+    local items, account = {}, nil
     for _, f in ipairs(ns.FEATS) do
-        if ns.Feats.Visible(f) and f.live and #picked < 4 then picked[#picked + 1] = f end
+        if ns.Feats.Visible(f) then
+            if f.live and #items < 3 then
+                local tier = min(#items + 2, 5)
+                items[#items + 1] = Describe(f, tier, #items == 1 and 1 or 0, f.thresholds[tier])
+            end
+            if f.account_thresholds and not account then
+                account = DescribeAccount(f, { tier = 3, value = f.account_thresholds[3], progress = 0.4 }, 2)
+            end
+        end
     end
+    if account then table.insert(items, min(2, #items + 1), account) end
     local now = GetTime()
-    for i, f in ipairs(picked) do
-        local tier = min(i + 1, 5)
-        local item = Describe(f, tier, i == 2 and 1 or 0, f.thresholds[tier])
+    for _, item in ipairs(items) do
         item.test, item.at = true, now
         queue[#queue + 1] = item
     end
@@ -406,3 +446,4 @@ end
 
 ns.Listen(frame, Events, "FeatToast")
 ns.Feats.OnTier(OnTier)
+ns.Feats.OnAccount(OnAccount)

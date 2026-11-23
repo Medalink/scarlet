@@ -13,9 +13,9 @@ local SITE = "scarletweb.io"
 local current
 
 --- Opens the Feats page on one feat.
-function ns.OpenFeat(key)
+function ns.OpenFeat(key, account)
     ns.UI.Open("feats")
-    if current then current:Pick(key) end
+    if current then current:Pick(key, account) end
 end
 
 function ns.FeatsPage(parent, ui)
@@ -51,7 +51,7 @@ function ns.FeatsPage(parent, ui)
         local r = ui.FeatRow(left, LEFT_W)
         r:SetPoint("TOPLEFT", 0, -160 - (i - 1) * 44)
         r:SetScript("OnClick", function(self)
-            if self.feat and self.feat.key then page:Pick(self.feat.key) end
+            if self.feat and self.feat.key then page:Pick(self.feat.key, self.feat.account) end
         end)
         rows[i] = r
     end
@@ -70,6 +70,9 @@ function ns.FeatsPage(parent, ui)
     card.count = Text(card, 12, T.text)
     card.count:SetPoint("TOPLEFT", 86, -42)
     card.count:SetWidth(LEFT_W - 98)
+    card.holder = Text(card, 12, T.muted)
+    card.holder:SetPoint("TOPLEFT", 86, -58)
+    card.holder:SetWidth(LEFT_W - 98)
     card.dot = Fill(card, T.accent, 1, "ARTWORK")
     card.dot:SetSize(5, 5)
     card.dot:SetRotation(math.pi / 4)
@@ -121,14 +124,18 @@ function ns.FeatsPage(parent, ui)
     ui.Border(mark, T.fg)
     mark:Hide()
 
-    local cells, groups = {}, {}
+    local cells, acells, groups = {}, {}, {}
     local function Web()
         local file = Feats.File()
         return file ~= nil and file.source == "web"
     end
     local function Shown(f) return f.live ~= nil or Web() end
 
-    local function Cell(f)
+    local function CountText(f, info)
+        return Feats.Count(f, info.value) .. (info.account and " on the account" or "")
+    end
+
+    local function Cell(f, account)
         local b = CreateFrame("Button", nil, child)
         b:SetSize(CREST, CREST)
         b.crest = ui.Crest(b, CREST)
@@ -138,59 +145,74 @@ function ns.FeatsPage(parent, ui)
         b.dot:SetRotation(math.pi / 4)
         b.dot:SetPoint("CENTER", b, "TOPRIGHT", -2, -2)
         b.def = f
-        b:SetScript("OnClick", function() page:Pick(f.key) end)
+        b:SetScript("OnClick", function() page:Pick(f.key, account) end)
         b:SetScript("OnEnter", function(self)
-            local info = Feats.Info(f.key)
+            local info = account and Feats.AccountInfo(f.key) or Feats.Info(f.key)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:AddLine(f.name)
-            GameTooltip:AddLine(Feats.Count(f, info.value), T.muted[1], T.muted[2], T.muted[3])
+            GameTooltip:AddLine(CountText(f, info), T.muted[1], T.muted[2], T.muted[3])
+            if account and f.account == "max" and info.holder then
+                GameTooltip:AddLine("Held by " .. info.holder, T.muted[1], T.muted[2], T.muted[3])
+            end
             GameTooltip:Show()
         end)
         b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        cells[f.key] = b
+        if account then acells[f.key] = b else cells[f.key] = b end
         return b
+    end
+
+    local function Group(name, list, account, y)
+        local g = groups[name]
+        if not g then
+            g = CreateFrame("Frame", nil, child)
+            g.name = Text(g, 13, T.fg, "LEFT", "strong")
+            g.name:SetPoint("TOPLEFT", 0, -3)
+            g.name:SetWidth(LABEL_W - 8)
+            g.count = Text(g, 12, T.muted)
+            g.count:SetPoint("TOPLEFT", 0, -20)
+            Hair(g, "BOTTOM")
+            g.name:SetText(name)
+            groups[name] = g
+        end
+        local lines = floor((#list - 1) / PER_ROW) + 1
+        local h = lines * STEP + ROW_PAD
+        g:ClearAllPoints()
+        g:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -y)
+        g:SetSize(WALL_W, h)
+        g:Show()
+        g.list = list
+        local pool = account and acells or cells
+        for i, f in ipairs(list) do
+            local b = pool[f.key] or Cell(f, account)
+            b:ClearAllPoints()
+            b:SetPoint("TOPLEFT", child, "TOPLEFT", LABEL_W + ((i - 1) % PER_ROW) * STEP,
+                -(y + floor((i - 1) / PER_ROW) * STEP + 2))
+            b:Show()
+        end
+        return h
     end
 
     local function Layout()
         built = true
         local y = 0
+        local account = {}
+        if Feats.HasAccount() then
+            for _, f in ipairs(Feats.AccountFeats()) do
+                if Shown(f) then account[#account + 1] = f end
+            end
+        end
+        if #account > 0 then y = y + Group("Account", account, true, y) end
         for _, group in ipairs(Feats.Collections()) do
             local list = {}
             for _, f in ipairs(group.feats) do
                 if Shown(f) then list[#list + 1] = f end
             end
-            if #list > 0 then
-                local g = groups[group.name]
-                if not g then
-                    g = CreateFrame("Frame", nil, child)
-                    g.name = Text(g, 13, T.fg, "LEFT", "strong")
-                    g.name:SetPoint("TOPLEFT", 0, -3)
-                    g.name:SetWidth(LABEL_W - 8)
-                    g.count = Text(g, 12, T.muted)
-                    g.count:SetPoint("TOPLEFT", 0, -20)
-                    Hair(g, "BOTTOM")
-                    g.name:SetText(group.name)
-                    groups[group.name] = g
-                end
-                local lines = floor((#list - 1) / PER_ROW) + 1
-                local h = lines * STEP + ROW_PAD
-                g:ClearAllPoints()
-                g:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -y)
-                g:SetSize(WALL_W, h)
-                g:Show()
-                g.list = list
-                for i, f in ipairs(list) do
-                    local b = cells[f.key] or Cell(f)
-                    b:ClearAllPoints()
-                    b:SetPoint("TOPLEFT", child, "TOPLEFT", LABEL_W + ((i - 1) % PER_ROW) * STEP,
-                        -(y + floor((i - 1) / PER_ROW) * STEP + 2))
-                    b:Show()
-                end
-                y = y + h
-            end
+            if #list > 0 then y = y + Group(group.name, list, false, y) end
         end
-        for _, b in pairs(cells) do
-            if not Shown(b.def) then b:Hide() end
+        for _, pool in ipairs({ cells, acells }) do
+            for _, b in pairs(pool) do
+                if not Shown(b.def) then b:Hide() end
+            end
         end
         if not Web() then
             local more = groups.__more
@@ -209,19 +231,28 @@ function ns.FeatsPage(parent, ui)
         child:SetHeight(max(1, y))
     end
 
-    local function Card(key)
-        local info = key and Feats.Info(key)
+    local function CellOf(token)
+        if not token then return end
+        if token:sub(1, 8) == "account:" then return acells[token:sub(9)] end
+        return cells[token]
+    end
+
+    local function Card(token)
+        local account = token ~= nil and token:sub(1, 8) == "account:"
+        local key = token and (account and token:sub(9) or token)
+        local info = key and (account and Feats.AccountInfo(key) or Feats.Info(key))
         card:SetShown(info ~= nil)
         if not info then return end
         local f = info.def
         local spells = ns.char and ns.char.featSpell
-        card.crest:Set(f.crest, f.glyph, info.tier, info.progress, spells and spells[f.key])
+        card.crest:Set(account and "account" or f.crest, f.glyph, info.tier, info.progress, spells and spells[f.key])
         card.name:SetText(f.name)
         card.chip:SetText(tierName(info.tier))
-        local c = info.tier > 0 and ns.Tiers[info.tier].color or T.muted
+        local c = ns.Tiers[info.tier].color
         card.chip:SetTextColor(c[1], c[2], c[3])
-        local fresh = ns.char and ns.char.featNew and ns.char.featNew[key]
-        card.count:SetText(Feats.Count(f, info.value) .. (fresh and fresh <= info.tier and " · new tier" or ""))
+        local fresh = not account and ns.char and ns.char.featNew and ns.char.featNew[key]
+        card.count:SetText(CountText(f, info) .. (fresh and fresh <= info.tier and " · new tier" or ""))
+        card.holder:SetText(account and f.account == "max" and info.holder and ("Held by " .. info.holder) or "")
         local moves = Feats.Moves(f)
         local text = info.next and format("%s to %s", Num(info.left), tierName(info.tier + 1)) or "Highest tier held"
         card.left:SetText(text .. (moves and " ·" or ""))
@@ -236,6 +267,19 @@ function ns.FeatsPage(parent, ui)
     local function Redraw()
         local held, total = 0, 0
         local counts = { 0, 0, 0, 0, 0 }
+        local spells = ns.char and ns.char.featSpell
+        local ag = groups.Account
+        if ag and ag.list then
+            local own = 0
+            for _, f in ipairs(ag.list) do
+                local info = Feats.AccountInfo(f.key)
+                local b = acells[f.key]
+                b.crest:Set("account", f.glyph, info.tier, info.progress, spells and spells[f.key])
+                b.dot:SetShown(Feats.Moves(f))
+                if info.tier > 0 then own = own + 1 end
+            end
+            ag.count:SetText(format("%d of %d", own, #ag.list))
+        end
         for _, group in ipairs(Feats.Collections()) do
             local own = 0
             local list = groups[group.name] and groups[group.name].list
@@ -243,7 +287,6 @@ function ns.FeatsPage(parent, ui)
                 for _, f in ipairs(list) do
                     local info = Feats.Info(f.key)
                     local b = cells[f.key]
-                    local spells = ns.char and ns.char.featSpell
                     b.crest:Set(f.crest, f.glyph, info.tier, info.progress, spells and spells[f.key])
                     b.dot:SetShown(Feats.Moves(f))
                     total = total + 1
@@ -266,26 +309,22 @@ function ns.FeatsPage(parent, ui)
         for i = 1, CLOSEST_ROWS do
             local info = shown[i]
             rows[i]:SetShown(info ~= nil)
-            if info then
-                local f = info.def
-                local spells = ns.char and ns.char.featSpell
-                rows[i]:Set({ key = f.key, name = f.name, line = format("%s to %s", Num(info.left), tierName(info.tier + 1)),
-                    progress = info.progress, tier = info.tier, crest = f.crest, glyph = f.glyph,
-                    spell = spells and spells[f.key] })
-            end
+            if info then rows[i]:Set(Feats.ClosestRow(info)) end
         end
         closestTitle:SetShown(#shown > 0)
         local file = Feats.File()
         foot:SetText(file and file.through and "Counted through the last export" or "Counted since install")
-        if not picked or not cells[picked] or not cells[picked]:IsShown() then
-            picked = shown[1] and shown[1].def.key or nil
+        local at = CellOf(picked)
+        if not at or not at:IsShown() then
+            local first = shown[1]
+            picked = first and ((first.account and "account:" or "") .. first.def.key) or nil
             if not picked then
-                local first = Feats.Collections()[1]
-                picked = first and first.feats[1] and first.feats[1].key
+                local one = Feats.Collections()[1]
+                picked = one and one.feats[1] and one.feats[1].key
             end
         end
         Card(picked)
-        local b = picked and cells[picked]
+        local b = CellOf(picked)
         mark:SetShown(b ~= nil and b:IsShown())
         if b then
             mark:ClearAllPoints()
@@ -293,12 +332,13 @@ function ns.FeatsPage(parent, ui)
         end
     end
 
-    function page:Pick(key)
-        local b = cells[key]
+    function page:Pick(key, account)
+        local token = account and ("account:" .. key) or key
+        local b = CellOf(token)
         if not b then return end
-        picked = key
-        if ns.char and ns.char.featNew then ns.char.featNew[key] = nil end
-        Card(key)
+        picked = token
+        if not account and ns.char and ns.char.featNew then ns.char.featNew[key] = nil end
+        Card(token)
         mark:ClearAllPoints()
         mark:SetPoint("CENTER", b, "CENTER")
         mark:Show()

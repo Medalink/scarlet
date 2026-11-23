@@ -19,7 +19,8 @@ local watching, clocks, onceAt = {}, {}, {}
 local exactSpells, prefixSpells = {}, {}
 local castCache, castTries = {}, {}
 local tier0, known, touched, changed = {}, {}, {}, {}
-local dirty, hooks = {}, { tier = {}, move = {} }
+local dirty, hooks = {}, { tier = {}, move = {}, account = {} }
+local accountKnown, others, othersFor, othersKey = {}, nil, nil, nil
 local cur, myClass
 local pend = {}
 local pending, clockAt = false, 0
@@ -239,8 +240,8 @@ function Feats.Value(key)
     return v
 end
 
-local function TierOf(f, value)
-    local t, n = f.thresholds, 0
+local function TierOf(f, value, thresholds)
+    local t, n = thresholds or f.thresholds, 0
     for i = 1, #t do
         if value >= t[i] then n = i else break end
     end
@@ -297,6 +298,83 @@ end
 --- Calls fn(def, value, tier, from) when a feat the session moves reaches a tier.
 function Feats.OnTier(fn) hooks.tier[#hooks.tier + 1] = fn end
 
+--- Calls fn(def, info, from) when a feat the session moves lifts the account's crest to a tier (Feats.AccountInfo's shape).
+function Feats.OnAccount(fn) hooks.account[#hooks.account + 1] = fn end
+
+local function HasFile()
+    local d = _G.ScarletFeats
+    return type(d) == "table" and type(d.chars) == "table"
+end
+
+--- True when the app's file lists the account's characters, so the account has more to say than this character.
+Feats.HasAccount = HasFile
+
+local function Others()
+    local d = _G.ScarletFeats
+    if others and othersFor == d and othersKey == ns.charKey then return others end
+    others, othersFor, othersKey = {}, d, ns.charKey
+    local chars = type(d) == "table" and type(d.chars) == "table" and d.chars
+    if not chars then return others end
+    local names = {}
+    for name in pairs(chars) do
+        if name ~= ns.charKey then names[#names + 1] = name end
+    end
+    table.sort(names)
+    for _, f in ipairs(ns.FEATS) do
+        if f.account_thresholds then
+            local sum, best, holder = 0, 0, nil
+            for i = 1, #names do
+                local c = chars[names[i]]
+                local row = type(c) == "table" and type(c.f) == "table" and c.f[f.key]
+                local v = type(row) == "table" and tonumber(row.v) or 0
+                sum = sum + v
+                if v > best then best, holder = v, names[i] end
+            end
+            others[f.key] = { sum = sum, max = best, holder = holder }
+        end
+    end
+    return others
+end
+
+local function AccountOf(f, mine)
+    local o = Others()[f.key]
+    if f.account == "sum" then return (o and o.sum or 0) + mine, nil end
+    if o and o.max > mine then return o.max, o.holder end
+    return mine, ns.charKey
+end
+
+local function AccountInfoOf(f, value, holder)
+    local t = f.account_thresholds
+    local tier = TierOf(f, value, t)
+    local nextAt = t[tier + 1]
+    local from = tier > 0 and t[tier] or 0
+    return { def = f, value = value, tier = tier, next = nextAt, left = nextAt and nextAt - value or nil,
+        progress = nextAt and max(0, min(1, (value - from) / (nextAt - from))) or 1, holder = holder, account = true }
+end
+
+--- The account's value, tier, next threshold, progress and (for a record) the holder of a general feat: Feats.Info's shape
+--- with account = true. mine is this character's value when the caller has it. Nil for a feat with no account crest.
+function Feats.AccountInfo(key, mine)
+    local f = byKey[key]
+    if not f or not f.account_thresholds then return end
+    local value, holder = AccountOf(f, mine or Feats.Value(key))
+    return AccountInfoOf(f, value, holder)
+end
+
+--- The feats that have an account crest, in catalog order.
+function Feats.AccountFeats()
+    local out = {}
+    for _, f in ipairs(ns.FEATS) do
+        if f.account_thresholds and visible[f.key] then out[#out + 1] = f end
+    end
+    return out
+end
+
+--- The account tier of a feat as the session last saw it.
+function Feats.AccountKnown(key)
+    return accountKnown[key] or 0
+end
+
 --- Calls fn(def, value, tier) when a feat's own counter has moved, at most once a second for each.
 function Feats.OnMove(fn) hooks.move[#hooks.move + 1] = fn end
 
@@ -311,6 +389,16 @@ local function Check(f)
             value = value }
         ns.Recap.Moment("feat", format("%s reached %s", f.name, ns.TierName(tier)), f.key, tier)
         for i = 1, #hooks.tier do hooks.tier[i](f, value, tier, was) end
+    end
+    if f.account_thresholds and HasFile() then
+        local total, holder = AccountOf(f, value)
+        local atier = TierOf(f, total, f.account_thresholds)
+        local before = accountKnown[f.key] or 0
+        if atier > before then
+            accountKnown[f.key] = atier
+            local info = AccountInfoOf(f, total, holder)
+            for i = 1, #hooks.account do hooks.account[i](f, info, before) end
+        end
     end
     for i = 1, #hooks.move do hooks.move[i](f, value, tier) end
 end
@@ -504,10 +592,24 @@ function Feats.Start(t)
     for key in pairs(changed) do changed[key] = nil end
     for key in pairs(tier0) do tier0[key] = nil end
     for key in pairs(known) do known[key] = nil end
+    for key in pairs(accountKnown) do accountKnown[key] = nil end
     for _, f in ipairs(ns.FEATS) do
-        if visible[f.key] and f.live then
-            local tier = TierOf(f, Feats.Value(f.key))
-            tier0[f.key], known[f.key] = tier, tier
+        if visible[f.key] and (f.live or f.account_thresholds) then
+            local value = Feats.Value(f.key)
+            if f.live then
+                local tier = TierOf(f, value)
+                tier0[f.key], known[f.key] = tier, tier
+            end
+            if f.account_thresholds then
+                accountKnown[f.key] = TierOf(f, (AccountOf(f, value)), f.account_thresholds)
+            end
+        end
+    end
+    local db = ns.db
+    if db and type(db.accountSeen) ~= "table" and HasFile() then
+        db.accountSeen = {}
+        for key, tier in pairs(accountKnown) do
+            if tier > 0 then db.accountSeen[key] = tier end
         end
     end
 end
@@ -628,7 +730,7 @@ function Feats.Shown(f)
     return file ~= nil and file.source == "web"
 end
 
---- How many of the feats shown are held at Copper or better, and how many are shown.
+--- How many of the feats shown are held at Uncommon or better, and how many are shown.
 function Feats.Held()
     local held, total = 0, 0
     for _, f in ipairs(ns.FEATS) do
@@ -661,21 +763,41 @@ function Feats.Collections()
     return collections
 end
 
---- The n feats nearest their next tier among those shown, by progress: { def, value, tier, left, progress }.
+--- The n feats nearest their next tier among those shown, by progress: { def, value, tier, left, progress }. An account
+--- crest takes part when it is not the character's own crest again (same tier and progress), with account = true.
 function Feats.Closest(n, shown)
     local out = {}
+    local withAccount = HasFile()
     for _, f in ipairs(ns.FEATS) do
         if visible[f.key] and (not shown or shown(f)) then
             local info = Feats.Info(f.key)
             if info.next and info.value > 0 then out[#out + 1] = info end
+            if f.account_thresholds and withAccount then
+                local acc = Feats.AccountInfo(f.key, info.value)
+                if acc.next and acc.value > 0 and not (acc.tier == info.tier and math.abs(acc.progress - info.progress) < 1e-9) then
+                    out[#out + 1] = acc
+                end
+            end
         end
     end
     table.sort(out, function(a, b)
         if a.progress ~= b.progress then return a.progress > b.progress end
-        return a.def.key < b.def.key
+        if a.def.key ~= b.def.key then return a.def.key < b.def.key end
+        return not a.account and b.account == true
     end)
     for i = #out, n + 1, -1 do out[i] = nil end
     return out
+end
+
+--- The row Feats.Closest gave for one feat, as ui.FeatRow:Set takes it; an account row ends "on the account".
+function Feats.ClosestRow(info)
+    local f = info.def
+    local spells = ns.char and ns.char.featSpell
+    local line = format("%s to %s", ns.UI.Num(info.left), ns.TierName(info.tier + 1))
+    if info.account then line = line .. " on the account" end
+    return { key = f.key, name = f.name, line = line, progress = info.progress, tier = info.tier,
+        crest = info.account and "account" or f.crest, glyph = f.glyph, spell = spells and spells[f.key],
+        account = info.account }
 end
 
 --- The tiers this session started from, by feat key.
@@ -721,7 +843,7 @@ function Feats.Command(rest)
             info.left and format(", %s to %s", ui.Num(info.left), ns.TierName(info.tier + 1)) or ""))
         return
     end
-    ns.Print(format("%d feats move while you play; %d are at Copper or better.", live, above))
+    ns.Print(format("%d feats move while you play; %d are at Uncommon or better.", live, above))
     local info = Feats.Info("slayer")
     if info then ns.Print("slayer " .. Feats.Count(info.def, info.value)) end
 end

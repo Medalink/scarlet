@@ -738,9 +738,9 @@ local function BuildSheet()
 
     Heading("Feat rows")
     local rows = {
-        { name = "Slayer", line = "9,912 kills  -  88 to Gold", tier = 2, progress = 0.82, crest = "character", glyph = "kills" },
-        { name = "Rampage", line = "312 kills this session  -  268 to Gold", tier = 2, progress = 0.3, crest = "character", glyph = "kills" },
-        { name = "Soloist", line = "1 run alone  -  1 to Copper", tier = 0, progress = 0, crest = "character", glyph = "dungeons" },
+        { name = "Slayer", line = "9,912 kills  -  88 to Epic", tier = 2, progress = 0.82, crest = "character", glyph = "kills" },
+        { name = "Rampage", line = "312 kills this session  -  268 to Epic", tier = 2, progress = 0.3, crest = "character", glyph = "kills" },
+        { name = "Soloist", line = "1 run alone  -  1 to Uncommon", tier = 0, progress = 0, crest = "character", glyph = "dungeons" },
     }
     for _, d in ipairs(rows) do
         local r = UI.FeatRow(body, 380)

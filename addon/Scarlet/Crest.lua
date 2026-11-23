@@ -164,9 +164,9 @@ local function Clip(f, i, cell, c, a)
     return t
 end
 
-local function Ghost(f, slot, fillSlot, cell, color)
+local function Ghost(f, slot, fillSlot, cell, color, of)
     local n = f.gn
-    local dim = f.p >= LOOK.nearAt and LOOK.near or LOOK.ghost
+    local dim = f.p >= LOOK.nearAt and of.near or of.ghost
     f.ghost[n + 1] = Put(f, slot, cell, 1, color, dim)
     f.gn = n + 1
     local t = Clip(f, fillSlot, cell, color, 1)
@@ -216,7 +216,7 @@ local function Draw(f, pending)
     local tier = outline and min(5, held + 1) or held
     local compact, tiny = f.form ~= "full", f.form == "plain"
     local look = TIERS[tier]
-    local nextColor = tier < 5 and TIERS[tier + 1].color or nil
+    local coming = TIERS[tier + 1]
     local want = (tier < 5 and not tiny and not outline and not state) and ATTACH[tier + 1] or nil
     local shield, ring = SHIELD[scope], scope == "account"
     local settled = not (pending and tier == 4)
@@ -225,7 +225,7 @@ local function Draw(f, pending)
     if tier >= 4 and not compact and settled then
         Put(f, S_SIDE, SIDE[scope], 1, look.side, 1)
     elseif want == "side" and not compact then
-        Ghost(f, S_SIDE, S_SIDE_FILL, SIDE[scope], nextColor)
+        Ghost(f, S_SIDE, S_SIDE_FILL, SIDE[scope], coming.color, coming)
     end
     if tier == 5 and not compact and not pending then
         Put(f, S_RAYS_BACK, RAYS_BACK, 1, INK, 1)
@@ -233,18 +233,17 @@ local function Draw(f, pending)
     elseif want == "rays" and not compact then
         f.ghost[f.gn + 1] = Backed(f, S_RAYS_BACK, RAYS_BACK)
         f.gn = f.gn + 1
-        Ghost(f, S_RAYS, S_RAYS_FILL, RAYS, LOOK.raysGhost)
+        Ghost(f, S_RAYS, S_RAYS_FILL, RAYS, coming.rays, coming)
     end
 
     if tier == 0 then
         local k = compact and 0.88 or 0.92
-        if ring then Put(f, S_RING, RING, 1, WHITE, LOOK.outline) end
-        Put(f, S_RIM, shield, 1, WHITE, LOOK.outline)
+        if ring then Put(f, S_RING, RING, 1, look.rim, LOOK.unearnedRim) end
+        Put(f, S_RIM, shield, 1, look.rim, LOOK.unearnedRim)
         Put(f, S_INSET, shield, k, INK, 1)
         if not tiny then
-            local first = TIERS[1].color
-            Put(f, S_FIELD, shield, k, first, f.p >= LOOK.nearAt and LOOK.near or LOOK.ghost)
-            Clip(f, S_FILL, shield, first, LOOK.unearnedFill)
+            Put(f, S_FIELD, shield, k, coming.color, f.p >= LOOK.nearAt and coming.near or 0)
+            Clip(f, S_FILL, shield, coming.color, LOOK.unearnedFill)
         end
     else
         if not compact then Put(f, S_GAP, shield, ring and 1.3 or 1.09, INK, 1) end
@@ -252,11 +251,13 @@ local function Draw(f, pending)
         Put(f, S_RIM, shield, 1, look.rim, 1)
         Put(f, S_INSET, shield, compact and 0.86 or 0.9, INK, 1)
         if not outline then
-            local alpha = settled and look.fieldAlpha or TIERS[tier - 1].fieldAlpha
-            if alpha >= 1 or tiny then
-                Put(f, S_FIELD, shield, compact and 0.8 or 0.84, look.field, 1)
+            local from = settled and look or TIERS[tier - 1]
+            if tiny then
+                Put(f, S_FIELD, shield, 0.8, look.color, from.plain)
+            elseif from.field >= 1 then
+                Put(f, S_FIELD, shield, compact and 0.8 or 0.84, look.color, 1)
             else
-                Put(f, S_FIELD, shield, compact and 0.86 or 0.9, look.field, alpha)
+                Put(f, S_FIELD, shield, compact and 0.86 or 0.9, look.color, from.field)
             end
         end
     end
@@ -265,29 +266,29 @@ local function Draw(f, pending)
         local c, a = TIERS[0].glyph, LOOK.glyphAlpha
         if tier > 0 then
             a = 1
-            if outline then c = look.lead elseif settled then c = look.glyph else c = look.color end
+            c = outline and look.rim or (settled and look or TIERS[tier - 1]).glyph
         end
         PutGlyph(f, c, a, compact, tier)
     end
 
     if tier >= 3 and not (pending and tier == 3) then
         Backed(f, S_BANNER_BACK, BANNER_BACK)
-        Put(f, S_BANNER, BANNER, 1, look.lead, 1)
+        Put(f, S_BANNER, BANNER, 1, look.color, 1)
     elseif want == "banner" then
         f.ghost[f.gn + 1] = Backed(f, S_BANNER_BACK, BANNER_BACK)
         f.gn = f.gn + 1
-        Ghost(f, S_BANNER, S_BANNER_FILL, BANNER, nextColor)
+        Ghost(f, S_BANNER, S_BANNER_FILL, BANNER, coming.color, coming)
     end
 
     if tier >= 2 and not (pending and tier == 2) then
         local great = tier == 5 and not pending
         Backed(f, S_CROWN_BACK, great and GREAT_BACK or CROWN_BACK)
-        Put(f, S_CROWN, great and GREAT or CROWN, 1, look.lead, 1)
+        Put(f, S_CROWN, great and GREAT or CROWN, 1, look.color, 1)
         if great then Put(f, S_GEM, GEM, 1, look.gem, 1) end
     elseif want == "crown" then
         f.ghost[f.gn + 1] = Backed(f, S_CROWN_BACK, CROWN_BACK)
         f.gn = f.gn + 1
-        Ghost(f, S_CROWN, S_CROWN_FILL, CROWN, nextColor)
+        Ghost(f, S_CROWN, S_CROWN_FILL, CROWN, coming.color, coming)
     end
 
     local gen, tx = f.gen, f.tx

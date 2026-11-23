@@ -595,7 +595,7 @@ function ns.OverviewPage(parent, ui)
         r:SetHeight(40)
         r:SetPoint("TOPLEFT", 0, -204 - (i - 1) * 40)
         r:SetScript("OnClick", function(self)
-            if self.feat and self.feat.key and ns.OpenFeat then ns.OpenFeat(self.feat.key) end
+            if self.feat and self.feat.key and ns.OpenFeat then ns.OpenFeat(self.feat.key, self.feat.account) end
         end)
         closeRows[i] = r
     end
@@ -961,15 +961,11 @@ function ns.OverviewPage(parent, ui)
             local held, total = Feats.Held()
             closeHeld:SetText(total > 0 and format("%d of %d held", held, total) or "")
             local near = Feats.Closest(3, Feats.Shown)
-            local spells = ns.char and ns.char.featSpell
             for i = 1, 3 do
                 local info = near[i]
                 closeRows[i]:SetShown(info ~= nil)
                 if info then
-                    local f = info.def
-                    closeRows[i]:Set({ key = f.key, name = f.name, line = format("%s to %s", Num(info.left), ns.TierName(info.tier + 1)),
-                        progress = info.progress, tier = info.tier, crest = f.crest, glyph = f.glyph,
-                        spell = spells and spells[f.key] })
+                    closeRows[i]:Set(Feats.ClosestRow(info))
                 end
             end
             closeTitle:SetShown(true)
