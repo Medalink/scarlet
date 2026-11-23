@@ -44,10 +44,13 @@ local move = { on = false }
 local ticker
 local taxi = { on = false }
 
+local FORMS_LIKE_A_MOUNT = { ["Travel Form"] = true, ["Ghost Wolf"] = true }
+local formMounted = 0
+
 local function Mode()
     if IsFlying() then return "a" end
     if IsSwimming() then return "s" end
-    if IsMounted() then return "m" end
+    if IsMounted() or formMounted > 0 then return "m" end
     -- There is no walk-toggle API, so walking is told apart by speed. A slow
     -- (Hamstring, Crippling Poison) can also put a run under this line.
     local speed = GetUnitSpeed("player")
@@ -780,8 +783,10 @@ local function AuraAdded(a, initial)
     local name = a.name
     local camp = CAMP[id] or false
     if not camp and not BUFFS_KEPT_AFTER_LEAVING_CAMP[id] and Plain(name) and type(name) == "string" and name:find("Camp", 1, true) then camp = true end
+    local travel = Plain(name) and type(name) == "string" and FORMS_LIKE_A_MOUNT[name] and true or false
     local now = GetTime()
-    auras[iid] = { id = id, t = now, camp = camp }
+    auras[iid] = { id = id, t = now, camp = camp, travel = travel }
+    if travel then formMounted = formMounted + 1 end
     SpellName(id, name)
     local helpful = a.isHelpful
     local src = a.sourceUnit
@@ -810,6 +815,7 @@ local function AuraRemoved(iid)
     local e = auras[iid]
     if not e then return end
     auras[iid] = nil
+    if e.travel then formMounted = formMounted - 1 end
     local now = GetTime()
     Emit("A", 0, e.id, Round1(now - e.t))
     if e.camp then
