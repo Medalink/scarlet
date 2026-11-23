@@ -1112,6 +1112,10 @@ function ns.UI.RecordingIcon()
     return icon
 end
 
+function ns.UI.WindowOpen()
+    return window ~= nil and window:IsShown()
+end
+
 function ns.UI.Open(key)
     if not window then Build() end
     window:Show()

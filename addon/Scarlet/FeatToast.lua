@@ -23,6 +23,7 @@ local Events = {}
 local queue, recent = {}, {}
 local active, holdUntil, fullInRow, retrying = false, 0, 0, false
 local plate, token = nil, 0
+local lastShown = -1e9
 
 local function Alerts() return ns.opt and ns.opt.featAlerts or "all" end
 local function Enabled() return Alerts() ~= "off" end
@@ -152,6 +153,7 @@ end
 
 local function Play(item)
     token = token + 1
+    lastShown = GetTime()
     local mine = token
     plate:ClearAllPoints()
     plate:SetPoint("TOP", UIParent, "TOP", 0, TOP_OFFSET)
@@ -279,6 +281,11 @@ local function Pump()
     active = true
     plate = plate or Build()
     Play(item)
+end
+
+--- When a plate last began to show, in GetTime seconds.
+function Toast.LastAt()
+    return lastShown
 end
 
 --- The plate has faded: after a second the next one may show.

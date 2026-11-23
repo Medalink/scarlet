@@ -463,6 +463,15 @@ local function Delta(f, played)
     end
 end
 
+--- Units a feat has gained each second this session, once five minutes are played; nil before that.
+function Feats.Pace(f)
+    if not cur then return nil end
+    local played = Played()
+    if played < PACE_MIN_PLAYED then return nil end
+    local delta = f.live and Delta(f, played)
+    if delta and delta > 0 then return delta / played end
+end
+
 --- The session's feats as a recap holds them: tiers reached, and the three closest to the next tier.
 function Feats.Changes()
     local out = { earned = {}, near = {} }
@@ -601,6 +610,10 @@ function Feats.Command(rest)
     local key = rest and rest:match("^(%S+)")
     if key == "test" then
         if ns.FeatToast then ns.FeatToast.Test() end
+        return
+    end
+    if key == "near" then
+        if ns.UI.Nudge then ns.UI.Nudge.Test(rest:match("^%S+%s+(%S+)")) end
         return
     end
     local f = key and byKey[key]
