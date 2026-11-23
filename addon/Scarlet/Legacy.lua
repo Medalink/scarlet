@@ -102,7 +102,15 @@ local function Currency(treeID)
     end
 end
 
+local function AnyTreeHasStagedPicks()
+    for i = 1, #TREES do
+        local cfg = cfgOf[TREES[i]]
+        if cfg and Call(TRAITS.ConfigHasStagedChanges, cfg) then return true end
+    end
+end
+
 local function Balance()
+    if AnyTreeHasStagedPicks() then return end
     local info
     local spent = {}
     for i = 1, #TREES do
