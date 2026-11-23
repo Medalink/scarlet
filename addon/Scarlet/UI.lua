@@ -1110,12 +1110,10 @@ function ns.OnLogin()
     RefreshIcon()
     if ns.Gather and ns.Gather.Init then ns.Gather.Init(ns.UI) end
     local last = ns.opt.chat and ns.Summary and ns.Summary.LoginLine()
-    if ns.db.seenVersion ~= ns.VERSION then
-        ns.db.seenVersion = ns.VERSION
-        Toast(last)
-    end
+    local news = ns.db.seenVersion ~= ns.VERSION
+    ns.db.seenVersion = ns.VERSION
+    if news or last then Toast(last) end
     if ns.opt.chat then
-        if last then ns.Print(last) end
         ns.Print((ns.opt.paused and "is paused" or "is recording") .. ". |cffff6b8e/scarlet|r opens the window.")
     end
 end
