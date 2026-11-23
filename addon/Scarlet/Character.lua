@@ -384,7 +384,7 @@ TalentScan = function()
     if not cfg then return Retry() end
     cfgs[cfg] = true
     local specID, specName = CurrentSpec()
-    ns.specName = specName
+    if ns.Feats then ns.Feats.Spec(specName) else ns.specName = specName end
     local tree = TreeFor(cfg, specID)
     if not tree then return Retry() end
     tal.tree = tree

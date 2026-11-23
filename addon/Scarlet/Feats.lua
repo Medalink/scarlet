@@ -21,6 +21,7 @@ local castCache, castTries = {}, {}
 local tier0, known, touched, changed = {}, {}, {}, {}
 local dirty, hooks = {}, { tier = {}, move = {} }
 local cur, myClass
+local pend = {}
 local pending, clockAt = false, 0
 local playedAt, playedVal = -1, 0
 local indexed = false
@@ -67,13 +68,50 @@ local function GateHolds(f, spec)
     return true
 end
 
+local function Land()
+    local spec, sp = cur.spec, cur.sp
+    local unknown = sp and sp["?"]
+    if unknown then
+        sp[spec] = (sp[spec] or 0) + unknown
+        sp["?"] = nil
+    end
+    for key, n in pairs(pend) do
+        pend[key] = nil
+        local f = byKey[key]
+        if f and GateHolds(f, spec) then cur.c[key] = (cur.c[key] or 0) + n end
+    end
+end
+
 local function SessionSpec()
-    if cur and not cur.spec and ns.specName then cur.spec = ns.specName end
+    if cur and not cur.spec and ns.specName then
+        cur.spec = ns.specName
+        Land()
+    end
     return cur and cur.spec or ns.specName
 end
 
+local function ActiveSpec()
+    SessionSpec()
+    return ns.specName or (cur and cur.spec)
+end
+
 local function Holds(f)
-    return GateHolds(f, SessionSpec())
+    return GateHolds(f, ActiveSpec())
+end
+
+local function Count(f, n)
+    local gate = f.live.gate
+    local c = cur.c
+    if gate ~= "spec" and gate ~= "role" then
+        c[f.key] = (c[f.key] or 0) + n
+        return
+    end
+    local spec = ActiveSpec()
+    if not spec then
+        pend[f.key] = (pend[f.key] or 0) + n
+    elseif GateHolds(f, spec) then
+        c[f.key] = (c[f.key] or 0) + n
+    end
 end
 
 local function FileRow(key)
@@ -98,7 +136,28 @@ local function Played()
     playedAt = now
     cur.secs = playedVal
     SessionSpec()
+    local gained = playedVal - (cur.sa or 0)
+    if gained > 0 then
+        local sp = cur.sp
+        if not sp then
+            sp = {}
+            cur.sp = sp
+        end
+        local spec = ns.specName or cur.spec or "?"
+        sp[spec] = (sp[spec] or 0) + gained
+        cur.sa = playedVal
+    end
     return playedVal
+end
+
+--- The talent scan read the player's spec: the time played so far settles under the spec it replaces.
+function Feats.Spec(name)
+    if cur and name and name ~= ns.specName then
+        playedAt = -1
+        Played()
+    end
+    ns.specName = name
+    SessionSpec()
 end
 
 local function Sum(source, keys)
@@ -111,7 +170,13 @@ local function ClockSeconds(f)
     local ch = ns.char
     local total = 0
     for _, e in pairs(ch.live) do
-        if GateHolds(f, e.spec) then total = total + (e.secs or 0) end
+        if type(e.sp) == "table" then
+            for spec, secs in pairs(e.sp) do
+                if GateHolds(f, spec ~= "?" and spec or nil) then total = total + secs end
+            end
+        elseif GateHolds(f, e.spec) then
+            total = total + (e.secs or 0)
+        end
     end
     for spec, secs in pairs(ch.liveBase.secs) do
         if GateHolds(f, spec ~= "?" and spec or nil) then total = total + secs end
@@ -287,10 +352,7 @@ local function Moved(key, n)
     for i = 1, #list do
         local f = list[i]
         local live = f.live
-        if (live.gate == "spec" or live.gate == "role") and live.kind == "counter" and Holds(f) then
-            local c = cur.c
-            c[f.key] = (c[f.key] or 0) + n
-        end
+        if (live.gate == "spec" or live.gate == "role") and live.kind == "counter" then Count(f, n) end
         touched[f] = true
         dirty[f] = true
     end
@@ -335,11 +397,10 @@ function Feats.Cast(id)
         end
     end
     if not hit then return end
-    local c = cur.c
     for i = 1, #hit do
         local f = hit[i]
         touched[f] = true
-        if Holds(f) then c[f.key] = (c[f.key] or 0) + 1 end
+        Count(f, 1)
         dirty[f] = true
     end
     Schedule()
@@ -400,8 +461,12 @@ local function Fold(ch)
         local t = table.remove(keys, 1)
         local e = ch.live[t]
         ch.live[t] = nil
-        local spec = e.spec or "?"
-        base.secs[spec] = (base.secs[spec] or 0) + (e.secs or 0)
+        if type(e.sp) == "table" then
+            for spec, secs in pairs(e.sp) do base.secs[spec] = (base.secs[spec] or 0) + secs end
+        else
+            local spec = e.spec or "?"
+            base.secs[spec] = (base.secs[spec] or 0) + (e.secs or 0)
+        end
         for key, n in pairs(e.c) do base.c[key] = (base.c[key] or 0) + n end
         for _, at in ipairs(onceAt) do
             if (e.secs or 0) >= at then base.once[tostring(at)] = (base.once[tostring(at)] or 0) + 1 end
@@ -436,7 +501,9 @@ function Feats.Start(t)
     cur = live[t]
     stamp = stamp + 1
     cur.c = cur.c or {}
+    cur.sp = cur.sp or {}
     playedAt, pending, clockAt = -1, false, GetTime()
+    for key in pairs(pend) do pend[key] = nil end
     for key in pairs(dirty) do dirty[key] = nil end
     for key in pairs(touched) do touched[key] = nil end
     for key in pairs(changed) do changed[key] = nil end
@@ -450,26 +517,38 @@ function Feats.Start(t)
     end
 end
 
+local function GatedSeconds(f, played)
+    local gate = f.live.gate
+    if gate ~= "spec" and gate ~= "role" then return played end
+    local total = 0
+    for spec, secs in pairs(cur.sp) do
+        if GateHolds(f, spec ~= "?" and spec or nil) then total = total + secs end
+    end
+    return total
+end
+
 local function Delta(f, played)
     local live = f.live
     local kind, per = live.kind, live.per or 1
     if kind == "counter" then
-        if live.gate == "spec" or live.gate == "role" then return (cur.c[f.key] or 0) / per end
-        return Sum(ns.sess, live.keys) / per
+        if live.gate == "spec" or live.gate == "role" then return (cur.c[f.key] or 0) / per, GatedSeconds(f, played) end
+        return Sum(ns.sess, live.keys) / per, played
     elseif kind == "cast" then
-        return cur.c[f.key] or 0
-    elseif kind == "clock" and not live.once_at and GateHolds(f, SessionSpec()) then
-        return played / per
+        return cur.c[f.key] or 0, GatedSeconds(f, played)
+    elseif kind == "clock" and not live.once_at then
+        local secs = GatedSeconds(f, played)
+        return secs / per, secs
     end
 end
 
---- Units a feat has gained each second this session, once five minutes are played; nil before that.
+--- Units a feat has gained each second its gate held this session, once five minutes are played; nil before that.
 function Feats.Pace(f)
     if not cur then return nil end
     local played = Played()
     if played < PACE_MIN_PLAYED then return nil end
-    local delta = f.live and Delta(f, played)
-    if delta and delta > 0 then return delta / played end
+    local delta, secs = nil, nil
+    if f.live then delta, secs = Delta(f, played) end
+    if delta and delta > 0 and secs > 0 then return delta / secs end
 end
 
 --- The session's feats as a recap holds them: tiers reached, and the three closest to the next tier.
@@ -483,7 +562,7 @@ function Feats.Changes()
     table.sort(out.earned, function(a, b) return a.at < b.at end)
     local near = {}
     for f in pairs(touched) do
-        local delta = Delta(f, played)
+        local delta, gated = Delta(f, played)
         if delta and delta > 0 and (played >= PACE_MIN_PLAYED or f.live.kind ~= "clock") then
             local value = Feats.Value(f.key)
             local tier = TierOf(f, value)
@@ -491,7 +570,7 @@ function Feats.Changes()
             if nextAt then
                 local left = nextAt - value
                 local secs
-                if played >= PACE_MIN_PLAYED then secs = left / (delta / played) end
+                if played >= PACE_MIN_PLAYED and gated > 0 then secs = left / (delta / gated) end
                 near[#near + 1] = { key = f.key, tier = tier, value = value, next = nextAt, left = left,
                     rank = secs or (1e9 + left / nextAt * 1e6) }
             end
