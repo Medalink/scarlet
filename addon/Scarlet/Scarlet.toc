@@ -15,6 +15,7 @@
 ## X-Wago-ID: 4N2b0xNL
 
 Core.lua
+FeatCatalog.lua
 Capture.lua
 Track.lua
 Metrics.lua
