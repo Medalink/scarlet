@@ -463,8 +463,8 @@ function SCEN.window(W, ns)
         end
         return false
     end
-    for i, label in ipairs({ "Website", "Loot HUD", "Addons", "Fonts" }) do
-        s.call(22.4 + i * 0.5, "window: Settings tab", function() return Tab(label) end)
+    for i, label in ipairs({ "Settings", "Website", "Loot HUD", "Addons", "Fonts" }) do
+        s.call(22.2 + i * 0.5, "window: Settings tab", function() return Tab(label) end)
     end
     s.sort()
     return s, 25

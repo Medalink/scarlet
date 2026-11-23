@@ -1072,6 +1072,7 @@ end
 
 function ns.Toggle()
     if not window then Build() end
+    if not window:IsShown() and current ~= "recap" then Show("recap") end
     window:SetShown(not window:IsShown())
 end
 
