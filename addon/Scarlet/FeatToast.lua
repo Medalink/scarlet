@@ -154,7 +154,6 @@ local function TextAlpha(a)
 end
 
 local function Burst(item)
-    local ui = ns.UI
     local c = ns.Tiers[item.tier].color
     local glow = plate.glow
     glow:SetVertexColor(c[1], c[2], c[3], 1)
@@ -164,8 +163,6 @@ local function Burst(item)
 end
 
 local function Paint(item)
-    local ui = ns.UI
-    local T = ui.T
     local color = ns.Tiers[item.tier].color
     plate.featKey, plate.featAccount = item.key or false, item.account or false
     TextAlpha(1)
