@@ -177,11 +177,12 @@ end
 --- quests, kills, miles, zones and played; a surface leaves out what it does not know.
 function Recap.Title(t)
     local z = t.zone
-    local where = z and (" in " .. z) or ""
+    local known = z ~= nil and z ~= ""
+    local where = " in " .. (known and z or "Azeroth")
     if t.l0 and t.l1 and t.l1 ~= t.l0 then
         return format("Level %d to %d%s", t.l0, t.l1, where), "level"
     end
-    if t.dungeon and z then
+    if t.dungeon and known then
         local runs = t.runs or 0
         return runs > 1 and format("%d runs of %s", runs, z) or ("A run of " .. z), "dungeon"
     end

@@ -71,16 +71,30 @@ function UI.Tile(parent, w, h)
     f:SetSize(w, h)
     Hair(f, "RIGHT")
     Hair(f, "BOTTOM")
+    local tall = h >= 84
     f.label = Text(f, 12, T.muted)
-    f.label:SetPoint("TOPLEFT", 14, -12)
+    f.label:SetPoint("TOPLEFT", 14, tall and -10 or -12)
     f.value = Text(f, 30, T.fg, "LEFT", "display")
-    f.value:SetPoint("TOPLEFT", 14, -30)
+    f.value:SetPoint("TOPLEFT", 14, tall and -24 or -30)
     f.note = Text(f, 11.5, T.muted)
-    f.note:SetPoint("BOTTOMLEFT", 14, 10)
-    function f:Set(label, value, note)
+    f.note:SetPoint("BOTTOMLEFT", 14, tall and 24 or 10)
+    if tall then
+        f.chip = Text(f, 11.5, T.accent)
+        f.chip:SetPoint("BOTTOMLEFT", 14, 8)
+        f.bar = UI.Stack(f, w - 28, 5)
+        f.bar:SetPoint("BOTTOMLEFT", 14, 10)
+        f.bar:Hide()
+    end
+    --- Set takes the label, the number, the note line and, on a tall tile, a chip line (a best) or a
+    --- stack of {value, color} segments drawn in the chip's place.
+    function f:Set(label, value, note, chip, stack)
         self.label:SetText(label or "")
         self.value:SetText(value or "")
         self.note:SetText(note or "")
+        if not tall then return end
+        self.chip:SetText(chip or "")
+        if stack then self.bar:Set(stack, true) end
+        self.bar:SetShown(stack ~= nil)
     end
     return f
 end

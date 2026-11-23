@@ -273,7 +273,7 @@ local function Duration(secs)
 end
 
 local function Distance(yards)
-    if yards < 1760 then return Num(yards) .. " yd" end
+    if yards < 880 then return Num(yards) .. " yd" end
     return format("%.1f mi", yards / 1760)
 end
 

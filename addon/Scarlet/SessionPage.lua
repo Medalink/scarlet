@@ -3,8 +3,9 @@ local _, ns = ...
 local floor, max, min, format = math.floor, math.max, math.min, string.format
 
 local TAB_ROW, TITLE_H = 34, 36
-local ROUTE_W, ROUTE_H = 236, 154
-local GRID_X, TILE_W, TILE_H = 252, 201, 77
+local ROUTE_W, ROUTE_H = 236, 176
+local GRID_X, TILE_W, TILE_H = 252, 201, 88
+local BEST = "Best of the last 30 sessions"
 local STRIP_H, PAGE_W = 68, 655
 local COL_W, COL_X = 199, { 0, 228, 456 }
 local EARLIER_ROW = 26
@@ -130,17 +131,26 @@ function ns.SessionPage(parent, ui)
         for _, k in ipairs(recap.bests or {}) do best[k] = true end
         local xp = Total(recap.xp or {})
         local xph = Rate(xp, played)
-        tiles[1]:Set("Experience", Num(xp), xph and (Num(xph) .. " an hour" .. (best.xp_h and " · best of 30" or "")) or "")
+        tiles[1]:Set("Experience", Num(xp), xph and (Num(xph) .. " an hour") or "",
+            (best.xp or best.xp_h) and BEST or nil)
         local kph = Rate(c.kills or 0, played)
         local blows = c.blows or 0
         tiles[2]:Set("Kills", Num(c.kills or 0), kph and format("%s an hour%s", Num(kph),
-            blows > 0 and format(" · %s killing blow%s", Num(blows), blows == 1 and "" or "s") or "") or "")
+            blows > 0 and format(" · %s killing blow%s", Num(blows), blows == 1 and "" or "s") or "") or "",
+            best.kills and BEST or nil)
         local g = recap.gold or { earned = c.earned or 0, spent = c.spent or 0 }
         local net = g.earned - g.spent
         tiles[3]:Set("Gold", (net < 0 and "-" or "+") .. Money(math.abs(net)),
-            format("Earned %s · spent %s", Money(g.earned), Money(g.spent)))
-        local yards = (c.foot or 0) + (c.walk or 0) + (c.mount or 0) + (c.swim or 0) + (c.fly or 0)
-        tiles[4]:Set("Distance", ui.Distance(yards), format("%s jumps", Num(c.jumps or 0)))
+            format("Earned %s · spent %s", Money(g.earned), Money(g.spent)), best.earned and BEST or nil)
+        local swum, onFoot = c.swim or 0, (c.foot or 0) + (c.walk or 0)
+        local mounted = (c.mount or 0) + (c.fly or 0)
+        local yards = swum + onFoot + mounted
+        local modes = {}
+        if swum > 0 then modes[#modes + 1] = { value = swum, color = T.s2 } end
+        if onFoot > 0 then modes[#modes + 1] = { value = onFoot, color = T.accent } end
+        if mounted > 0 then modes[#modes + 1] = { value = mounted, color = T.s3 } end
+        tiles[4]:Set("Distance", ui.Distance(yards), best.distance and BEST or format("%s jumps", Num(c.jumps or 0)),
+            nil, #modes > 0 and modes or nil)
         strip:Set(recap)
         route:Set(recap.route and recap.route.sheet)
         DrawFeats(recap)
