@@ -441,17 +441,17 @@ function SCEN.window(W, ns)
         return buttons
     end
     s.call(1, "window: first open (Build)", function() ns.Toggle() end)
-    for k = 1, 12 do
+    for k = 1, 16 do
         s.call(1 + k * 1.2, "window: show a page", function()
             local b = Nav()[k]
             if not b then return false end
             b.scripts.OnClick(b)
         end)
     end
-    s.call(16, "window: hide", function() ns.Toggle() end)
-    s.call(17, "window: show again", function() ns.Toggle() end)
+    s.call(21, "window: hide", function() ns.Toggle() end)
+    s.call(22, "window: show again", function() ns.Toggle() end)
     s.sort()
-    return s, 20
+    return s, 25
 end
 
 function SCEN.ui(W, ns)
@@ -459,8 +459,26 @@ function SCEN.ui(W, ns)
     local s = NewStream()
     s.call(1, "ui: design sheet, first open", function() ns.UI.ToggleSheet() end)
     s.call(2, "ui: design sheet, hide", function() ns.UI.ToggleSheet() end)
+    local function Press(label)
+        for _, f in ipairs(Env.frames) do
+            if f.kind == "Button" and f.scripts.OnClick then
+                for _, c in ipairs(Env.frames) do
+                    if c.parent == f and c.text == label then
+                        f.scripts.OnClick(f)
+                        return
+                    end
+                end
+            end
+        end
+        return false
+    end
+    s.call(3, "ui: open the window", function() ns.Toggle() end)
+    s.call(4, "ui: Session page", function() return Press("Session") end)
+    for k, tab in ipairs({ "Last session", "Earlier", "Log", "This session" }) do
+        s.call(4 + k, "ui: Session tab", function() return Press(tab) end)
+    end
     s.sort()
-    return s, 5
+    return s, 12
 end
 
 -- The map: the budgeted read of the stored chunks, one 4 ms pump per frame until it is done.

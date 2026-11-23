@@ -177,7 +177,7 @@ function UI.Stack(parent, w, h)
         for i = 1, #rows do sum = sum + max(0, rows[i].value or 0) end
         segs.Reset()
         keys.Reset()
-        local x, kx = 0, 0
+        local x, kx, keyY = 0, 0, h + 10
         local gap = 2
         local usable = w - gap * max(0, #rows - 1)
         for i = 1, #rows do
@@ -193,12 +193,18 @@ function UI.Stack(parent, w, h)
             if not noKey then
                 local k = keys.Get()
                 k:ClearAllPoints()
-                k:SetPoint("TOPLEFT", f, "TOPLEFT", kx, -(h + 10))
                 Tint(k.swatch, r.color or T.rest)
                 k.text:SetText(format("%s |cfff0f1f3%s|r", r.label or "", r.text or UI.Num(r.value or 0)))
-                kx = kx + 14 + (k.text:GetStringWidth() or 60) + 14
+                local kw = 14 + (k.text:GetStringWidth() or 60)
+                if kx > 0 and kx + kw > w then
+                    kx = 0
+                    keyY = keyY + 16
+                end
+                k:SetPoint("TOPLEFT", f, "TOPLEFT", kx, -keyY)
+                kx = kx + kw + 14
             end
         end
+        f:SetHeight(noKey and h or keyY + 14)
         segs.Finish()
         keys.Finish()
     end
@@ -468,11 +474,11 @@ local function FeatFamily(key)
     return ns.Feats and ns.Feats.Family and ns.Feats.Family(key) or "combat"
 end
 
---- The session strip of a recap (CONTRACTS.md, SessionRecap): zones, buckets, levels and moments. Under 70 px high it is compact.
-function UI.Strip(parent, w, h)
+--- The session strip of a recap (CONTRACTS.md, SessionRecap): zones, buckets, levels and moments. Compact drops the clock; by default it is compact under 70 px high.
+function UI.Strip(parent, w, h, compact)
     local f = CreateFrame("Frame", nil, parent)
     f:SetSize(w, h)
-    local compact = h < 70
+    if compact == nil then compact = h < 70 end
     local zh, ph = compact and 14 or 20, compact and 24 or 46
     local py = zh + 6
     local cy, ey = py + ph + 3, py + ph + 10

@@ -530,6 +530,8 @@ local function LivePage(parent)
     return page
 end
 
+ns.UI.LivePage = LivePage
+
 local function Toggle(parent, y, label, get, set)
     local row = CreateFrame("Button", nil, parent)
     row:SetHeight(44)
@@ -737,6 +739,7 @@ end
 -- Window -------------------------------------------------------------------------
 
 local NAV = {
+    { key = "recap", label = "Session" },
     { key = "overview", label = "Character" },
     { key = "characters", label = "Characters" },
     { key = "session", label = "This session" },
@@ -756,6 +759,7 @@ local STATIC_PAGES = { settings = true, fonts = true, loothud = true }
 
 -- A page is built the first time it is shown, so opening the window pays for one page, not ten.
 local BUILDERS = {
+    recap = function(body) return ns.SessionPage(body, ns.UI) end,
     overview = function(body) return ns.OverviewPage(body, ns.UI) end,
     characters = function(body) return ns.CharactersPage(body, ns.UI) end,
     stats = function(body)
@@ -788,7 +792,7 @@ local function Show(key)
     for k, page in pairs(pages) do page:SetShown(k == key) end
     for _, b in ipairs(navButtons) do b:SetActive(b.key == key) end
     -- The Character page opens on the character's name; the others open on their title.
-    local home = key == "overview"
+    local home = key == "overview" or key == "recap"
     window.pageTitle:SetShown(not home)
     local title = navButtons[key].label
     if ns.char and (FROM_INSTALL[key] or (key == "stats" and not ns.History(ns.charKey))) then

@@ -51,3 +51,4 @@ Map.lua
 Gather.lua
 UI.lua
 Kit.lua
+SessionPage.lua

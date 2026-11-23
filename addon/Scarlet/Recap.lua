@@ -394,7 +394,10 @@ function Recap.Last()
     local saved = ns.char and type(ns.char.last) == "table" and ns.char.last or nil
     local app = FromApp()
     local newest = app and app[1]
-    if type(newest) == "table" and (not saved or (newest.start or 0) >= (saved.start or 0)) then return newest end
+    if type(newest) == "table" and type(newest.start) == "number" and type(newest.played) == "number"
+        and (not saved or newest.start >= (saved.start or 0)) then
+        return newest
+    end
     return saved
 end
 
