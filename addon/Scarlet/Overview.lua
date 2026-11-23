@@ -6,8 +6,7 @@ local _, ns = ...
 local floor, format, max, min, abs = math.floor, string.format, math.max, math.min, math.abs
 local Plain = ns.Plain
 
--- Page layout, in pixels: the level times under the level bar, then four panels in two rows.
-local PANEL_H, PANEL_GAP, PANEL_TOP, ROW_H, ROWS = 132, 10, 160, 22, 4
+local PANEL_H, PANEL_GAP, ROW_H, ROWS = 132, 10, 22, 4
 local DAYS, SPARK_H = 7, 26
 local MATES, DEATHS = 3, 3
 
@@ -410,9 +409,6 @@ local function Collect(key, lvl, weekStart, ch)
     end
     -- The addon's own totals for who you grouped with also hold what the digest has not seen yet;
     -- they cover the same time, so the larger of the two is used, not the sum.
-    -- Rows fell off the end of the addon's list before the digest held them: older history is short.
-    b.short = d ~= nil and type(o) == "table" and type(o.sess) == "table" and #o.sess >= ns.Ov.ROWS
-        and type(o.sess[1]) == "table" and N(o.sess[1].t) > through + 3 or false
     local own = ch and ch.mates
     if type(own) == "table" then
         for name, m in pairs(own) do
@@ -688,10 +684,10 @@ function ns.OverviewPage(parent, ui)
         end
     end
 
-    local function Card(host, col, row, title, top)
+    local function Card(host, col, row, title)
         local c = CreateFrame("Frame", nil, host)
         c:SetHeight(PANEL_H)
-        local y = -(top or PANEL_TOP) - row * (PANEL_H + PANEL_GAP)
+        local y = -row * (PANEL_H + PANEL_GAP)
         if col == 0 then
             c:SetPoint("TOPLEFT", 0, y)
             c:SetPoint("TOPRIGHT", host, "TOP", -PANEL_GAP / 2, y)
@@ -776,7 +772,7 @@ function ns.OverviewPage(parent, ui)
             self:SetVerticalScroll(math.min(top, max(0, self:GetVerticalScroll() - delta * ROW_H * 3)))
         end)
         maxPage:SetScript("OnSizeChanged", function(_, w) child:SetWidth(w) end)
-        local function C(col, row, title) return Card(child, col, row, title, 0) end
+        local function C(col, row, title) return Card(child, col, row, title) end
         maxCards = { atMax = C(0, 0, "At max level"), gold = C(1, 0, "Gold"), runs = C(0, 1, "Dungeons and raids"),
             deaths = C(1, 1, "Deaths"), rep = C(0, 2, "Reputation and professions"), legacy = C(1, 2, "Legacy and PvP"),
             levelling = C(0, 3, "Levelling"), mates = C(1, 3, "Played with") }

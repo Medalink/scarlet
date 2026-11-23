@@ -73,7 +73,7 @@ Prices come from Auctionator, then TradeSkillMaster, then the auction prices Sca
 A session survives `/reload` and logging out, and a new one starts after 30 minutes without a gather. The HUD fades
 8 seconds after the last gather. Left clicks pass through it to the world; a right-click hides it.
 
-The Loot HUD page in Scarlet's window has a preview and four tabs: General (on or off, hide after 0 to 60 seconds,
+The Loot HUD tab in Scarlet's Settings page has a preview and four tabs: General (on or off, hide after 0 to 60 seconds,
 where 0 never hides, and Reset session), Text (size, outline, shadow), Layout (straight, or an arc that bends each side
 around your character, and Reset layout) and Professions. While the page is open the HUD is on screen with outlines:
 drag a part to move it, Shift-drag to scale all three. `/scarlet gather` does the same from chat, `/scarlet gather

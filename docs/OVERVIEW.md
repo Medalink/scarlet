@@ -209,9 +209,9 @@ Once the character has been at the cap for an hour of played time, the page chan
 In game the Stats cards count from the install (`ScarletDB.chars[key]`). When the digest has
 `before` for the character, Kills, Deaths, Dungeons, Bosses, Quests, Items looted, Experience, Gold
 earned, Gold spent and Time recorded add it, so they hold the whole history the app and the website
-show; every other card on that page says "since install", and the Time, Combat and more and People
-pages carry it in their title. Without `before` nothing is added, and the Stats page says "since install" in
-its title, since every card on it is counted from the install. The session page never adds it.
+show; every other tile on that page says "since install". Without `before` nothing is added, and the Stats
+page says "since install" in its title, since every tile on it is counted from the install. The Session
+page never adds it.
 
 ## Characters page
 

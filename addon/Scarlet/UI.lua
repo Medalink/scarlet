@@ -33,9 +33,7 @@ local T = {
 local WHITE = "Interface\\Buttons\\WHITE8X8"
 local W, H = 880, 560
 local HEADER_H, SIDEBAR_W, NAV_H, PAD = 40, 176, 30, 24
-local CONTENT_W = W - SIDEBAR_W - 1 - 2 * PAD
 local TITLE_H = 46 -- page title and the gap under it; the Character page has none
-local CELL_COLS, CELL_H = 4, 84
 local STRIDE_YARDS = 2.5      -- running stride
 local WALK_STRIDE_YARDS = 1.4 -- walking stride
 local REFRESH_SECONDS = 0.5
@@ -396,108 +394,10 @@ end
 local FULL_HISTORY = { Kills = true, Deaths = true, Dungeons = true, Bosses = true, Quests = true,
     ["Items looted"] = true, Experience = true, ["Gold earned"] = true, ["Gold spent"] = true,
     ["Time recorded"] = true }
--- Pages whose cards all count from the install.
-local FROM_INSTALL = { time = true, more = true, people = true }
 
 ns.UI.Snapshot = Snapshot
 ns.UI.FullHistory = FULL_HISTORY
 ns.UI.Cards = { CARDS, TIME_CARDS, MORE_CARDS, PEOPLE_CARDS }
-
--- Open cells split by hairlines, like the site's "This week" row: a small label over a
--- big condensed number. The first row has a stronger rule above it.
-local CELL_W = floor(CONTENT_W / CELL_COLS)
-
-local function StatsPage(parent, source, defs)
-    local page = CreateFrame("Frame", nil, parent)
-    page:SetAllPoints()
-    local cells = {}
-    for i, def in ipairs(defs or CARDS) do
-        local col, row = (i - 1) % CELL_COLS, floor((i - 1) / CELL_COLS)
-        local pad = col == 0 and 0 or 16
-        local cell = CreateFrame("Frame", nil, page)
-        cell:SetSize(CELL_W, CELL_H)
-        cell:SetPoint("TOPLEFT", col * CELL_W, -row * CELL_H)
-        Hair(cell, "BOTTOM")
-        if row == 0 then Hair(cell, "TOP", T.line2) end
-        if col > 0 then Hair(cell, "LEFT") end
-        cell.label = Text(cell, 13, T.muted)
-        cell.label:SetPoint("TOPLEFT", pad, -14)
-        cell.label:SetText(def[1])
-        cell.value = Text(cell, 34, T.fg, "LEFT", "display")
-        cell.value:SetPoint("TOPLEFT", pad, -34)
-        cell.value:SetPoint("RIGHT", -6, 0)
-        cell.note = Text(cell, 11, T.muted, "RIGHT")
-        cell.note:SetPoint("TOPRIGHT", -6, -16)
-        cell.note:SetText("since install")
-        cell.note:Hide()
-        cell.def = def
-        cells[i] = cell
-    end
-    function page:Refresh()
-        local s = source()
-        for i = 1, #cells do
-            local c = cells[i]
-            c.value:SetText(c.def[2](s))
-            -- With history from before the install, the cards it cannot fill say where they start.
-            c.note:SetShown(s.history ~= nil and page.partial == true and not FULL_HISTORY[c.def[1]])
-        end
-    end
-    return page
-end
-
-local MATE_ROWS, MATE_ROW_H = 8, 24
-local mateList = {}
-local function PeoplePage(parent, source)
-    local page = StatsPage(parent, source, PEOPLE_CARDS)
-    local top = -2 * CELL_H - 22
-    local heading = Text(page, 24, T.fg, "LEFT", "display")
-    heading:SetPoint("TOPLEFT", 0, top)
-    heading:SetText("Grouped with most")
-    local rows = {}
-    for i = 1, MATE_ROWS do
-        local row = CreateFrame("Frame", nil, page)
-        row:SetHeight(MATE_ROW_H)
-        row:SetPoint("TOPLEFT", 0, top - 36 - (i - 1) * MATE_ROW_H)
-        row:SetPoint("TOPRIGHT", 0, top - 36 - (i - 1) * MATE_ROW_H)
-        Hair(row, "BOTTOM")
-        local name = Text(row, 14, T.fg)
-        name:SetPoint("LEFT")
-        name:SetWidth(320)
-        local value = Text(row, 13, T.text, "RIGHT")
-        value:SetPoint("RIGHT")
-        value:SetWidth(240)
-        rows[i] = { name = name, value = value, row = row }
-    end
-    local empty = Text(page, 14, T.muted)
-    empty:SetPoint("TOPLEFT", 0, top - 42)
-    empty:SetText("No groups yet.")
-    local refreshCards = page.Refresh
-    function page:Refresh()
-        refreshCards(self)
-        wipe(mateList)
-        local mates = ns.char and ns.char.mates
-        if mates then
-            for key in pairs(mates) do
-                if not ns.IsOwnChar(key) then mateList[#mateList + 1] = key end
-            end
-            table.sort(mateList, function(a, b) return mates[a].secs > mates[b].secs end)
-        end
-        empty:SetShown(#mateList == 0)
-        for i = 1, MATE_ROWS do
-            local key = mateList[i]
-            rows[i].row:SetShown(key ~= nil)
-            rows[i].name:SetText(ns.DisplayName(key))
-            if key then
-                local m = mates[key]
-                rows[i].value:SetText(format("%s together, %d group%s", Duration(m.secs), m.groups,
-                    m.groups == 1 and "" or "s"))
-            else
-                rows[i].value:SetText("")
-            end
-        end
-    end
-    return page
-end
 
 -- Log lines as the companion reads them: the event word in scarlet, the fields after it.
 local function LivePage(parent)
@@ -845,33 +745,13 @@ local NAV = {
     { key = "settings", label = "Settings" },
 }
 
--- Pages that change only when you click them, not on the refresh ticker.
-local STATIC_PAGES = { fonts = true, loothud = true }
-
--- A page is built the first time it is shown, so opening the window pays for one page, not ten.
 local BUILDERS = {
     recap = function(body) return ns.SessionPage(body, ns.UI) end,
     overview = function(body) return ns.OverviewPage(body, ns.UI) end,
     characters = function(body) return ns.CharactersPage(body, ns.UI) end,
     stats = function(body) return ns.StatsPage(body, ns.UI) end,
-    session = function(body)
-        return StatsPage(body, function() return Snapshot(ns.sess, true) end)
-    end,
-    time = function(body)
-        return StatsPage(body, function() return Snapshot(ns.char or ns.sess, true) end, TIME_CARDS)
-    end,
-    more = function(body)
-        return StatsPage(body, function() return Snapshot(ns.char or ns.sess, true) end, MORE_CARDS)
-    end,
-    people = function(body)
-        return PeoplePage(body, function() return Snapshot(ns.char or ns.sess, true) end)
-    end,
     feats = function(body) return ns.FeatsPage(body, ns.UI) end,
-    live = LivePage,
-    addons = AddonsPage,
-    loothud = function(body) return ns.Gather.Page(body, ns.UI) end,
     settings = SettingsTabs,
-    fonts = FontsPage,
 }
 
 local function Show(key)
@@ -883,7 +763,7 @@ local function Show(key)
     local home = key == "overview" or key == "recap" or key == "feats"
     window.pageTitle:SetShown(not home)
     local title = navButtons[key].label
-    if ns.char and (FROM_INSTALL[key] or (key == "stats" and not ns.History(ns.charKey))) then
+    if ns.char and key == "stats" and not ns.History(ns.charKey) then
         title = title .. ", since install"
     end
     window.pageTitle:SetText(title)
@@ -1056,7 +936,7 @@ local function Build()
             refreshTicker = C_Timer.NewTicker(REFRESH_SECONDS, ns.Perf.Fn("UI:Refresh", function()
                 if current == "settings" then
                     if LIVE_TABS[settingsTab] then settingsSubs[settingsTab]:Refresh() end
-                elseif not STATIC_PAGES[current] then
+                else
                     pages[current]:Refresh()
                 end
                 ns.RefreshStatus()
