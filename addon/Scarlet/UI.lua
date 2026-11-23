@@ -206,6 +206,16 @@ local function Fill(parent, color, alpha, layer, sub)
     return t
 end
 
+local CRESTS = MEDIA .. "Crests.tga"
+
+local function Dot(parent, color, alpha, layer, sub)
+    local t = parent:CreateTexture(nil, layer or "BACKGROUND", nil, sub)
+    t:SetTexture(CRESTS)
+    t:SetTexCoord((2 + 23 / 96) / 4, (2 + 73 / 96) / 4, 25 / 96 / 4, 75 / 96 / 4)
+    t:SetVertexColor(color[1], color[2], color[3], alpha or color[4] or 1)
+    return t
+end
+
 -- A one-pixel line along one edge of f ("TOP", "BOTTOM", "LEFT" or "RIGHT").
 local function Hair(f, edge, color, layer)
     local t = Fill(f, color or T.line, nil, layer or "ARTWORK")
@@ -278,7 +288,7 @@ local function Distance(yards)
 end
 
 -- What Overview.lua draws with.
-ns.UI = { T = T, Fill = Fill, Border = Border, Hair = Hair, Text = Text, Num = Num, Money = Money,
+ns.UI = { T = T, Fill = Fill, Dot = Dot, Border = Border, Hair = Hair, Text = Text, Num = Num, Money = Money,
     Duration = Duration, Distance = Distance, SetFont = SetFontSafe, Face = FacePath }
 
 local CARDS = {
@@ -456,7 +466,7 @@ local function Toggle(parent, y, label, get, set)
     track:SetPoint("RIGHT", -2, 0)
     local trackFill = Fill(track, T.grey)
     trackFill:SetAllPoints()
-    local knob = Fill(track, T.fg, 1, "ARTWORK")
+    local knob = Dot(track, T.fg, 1, "ARTWORK")
     knob:SetSize(10, 10)
     function row:Refresh()
         local on = get()
@@ -889,7 +899,7 @@ local function Build()
     close:SetPoint("RIGHT", -10, 0)
     window.status = Text(header, 13, T.text, "RIGHT")
     window.status:SetPoint("RIGHT", close, "LEFT", -8, 0)
-    window.dot = Fill(header, T.accent, 1, "ARTWORK")
+    window.dot = Dot(header, T.accent, 1, "ARTWORK")
     window.dot:SetSize(6, 6)
     window.dot:SetPoint("RIGHT", window.status, "LEFT", -7, 0)
 

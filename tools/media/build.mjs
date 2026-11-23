@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// build.mjs <sc.js> [--out DIR] [--preview DIR]: renders addon/Scarlet/Media/Plates.tga, Tick.tga, Glow.tga and
-// Glyphs.tga (white on alpha, 32-bit, uncompressed, bottom-left origin) from the shapes in the design's sc.js, which
-// the app and the site draw with too. Node only, no packages. Run it again after a shape changes.
+// build.mjs <sc.js> <crests.js> [--out DIR] [--preview DIR]: renders addon/Scarlet/Media/Crests.tga, Tick.tga, Glow.tga
+// and Glyphs.tga (white on alpha, 32-bit, uncompressed, bottom-left origin) from GLYPHS in the design's sc.js and PIECES
+// in its crests.js, which the app and the site draw with too. Node only, no packages. Run it again after a shape changes.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,20 +15,28 @@ const flag = (name) => {
 };
 const outDir = resolve(flag("--out") ?? join(here, "../../addon/Scarlet/Media"));
 const previewDir = flag("--preview");
-const scPath = args[0];
-if (!scPath) {
-  console.error("usage: node tools/media/build.mjs <design/final/src/shared/sc.js> [--out DIR] [--preview DIR]");
+const [scPath, crestsPath] = args;
+if (!scPath || !crestsPath) {
+  console.error("usage: node tools/media/build.mjs <design/final/src/shared/sc.js> <design/crests/crests.js> [--out DIR] [--preview DIR]");
   process.exit(2);
 }
 
-const FAMILIES = ["journey", "combat", "quests", "dungeons", "world", "trade", "class", "role"];
 const GLYPH_ORDER = [
   "characters", "level", "hours", "kills", "deaths", "quests", "dungeons", "gold",
   "zones", "distance", "skills", "fish", "gather", "jumps", "swim", "emote",
   "crown", "shield", "clock", "pin", "creature", "item", "talents", "spell",
   "pet", "heal", "fire", "wing", "link", "arrow", "lock", "check",
 ];
-const PLATE_CELL = 128;
+const CREST_CELL = 128;
+const CREST_COLUMNS = 4;
+const CREST_UNITS = 96;
+const BACK_STROKE = 3.6;
+const CREST_CELLS = [
+  "shield-character", "shield-class", "shield-account", "ring-account",
+  "crown", "great-crown", "gem", "banner",
+  "wings", "spurs", "laurels", "rays",
+  "rays-back", "crown-back", "great-crown-back", "banner-back",
+];
 const GLYPH_CELL = 64;
 const GLYPH_STROKE = 1.8;
 const SUBSCANS = 8;
@@ -42,7 +50,10 @@ const between = (from, to) => {
   return source.slice(a, b);
 };
 const GLYPHS = new Function(`${between("const GLYPHS = {", "const METAL")}; return GLYPHS;`)();
-const PLATES = new Function(`${between("const poly =", "const PLATE_SHIFT")}; return PLATES;`)();
+const crestModule = { exports: {} };
+new Function("module", readFileSync(crestsPath, "utf8"))(crestModule);
+const PIECES = crestModule.exports.PIECES;
+if (!PIECES) throw new Error(`${crestsPath}: no PIECES`);
 
 const num = (n) => Number.parseFloat(n);
 
@@ -334,12 +345,22 @@ function blit(img, cov, cw, ch, ox, oy) {
   for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) img.a[(oy + y) * img.w + ox + x] = cov[y * cw + x];
 }
 
-function plates() {
-  const img = image(PLATE_CELL * FAMILIES.length, PLATE_CELL);
-  FAMILIES.forEach((family, i) => {
-    const fill = flattenPath(PLATES[family]).map((sp) => sp.pts);
-    const scale = PLATE_CELL / 64;
-    blit(img, rasterize(transform(fill, scale, 0, 0), PLATE_CELL, PLATE_CELL), PLATE_CELL, PLATE_CELL, i * PLATE_CELL, 0);
+function crests() {
+  const img = image(CREST_CELL * CREST_COLUMNS, CREST_CELL * (CREST_CELLS.length / CREST_COLUMNS));
+  const scale = CREST_CELL / CREST_UNITS;
+  const cover = (polys) => rasterize(transform(polys, scale, 0, 0), CREST_CELL, CREST_CELL);
+  CREST_CELLS.forEach((name, i) => {
+    const back = name.endsWith("-back");
+    const key = back ? name.slice(0, -5) : name;
+    const piece = PIECES[key];
+    if (!piece || (back && !piece.back)) throw new Error(`crests.js has no ${back ? "back of " : "piece "}${key}`);
+    const subpaths = flattenPath(piece.d);
+    let cov = cover(subpaths.map((sp) => sp.pts));
+    if (back) {
+      const edge = cover(strokePolys(subpaths, BACK_STROKE));
+      cov = cov.map((v, k) => Math.max(v, edge[k]));
+    }
+    blit(img, cov, CREST_CELL, CREST_CELL, (i % CREST_COLUMNS) * CREST_CELL, Math.floor(i / CREST_COLUMNS) * CREST_CELL);
   });
   return img;
 }
@@ -445,7 +466,7 @@ function png(img, scale) {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", head), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }
 
-const files = { Plates: plates(), Tick: tick(), Glow: glow(), Glyphs: glyphs() };
+const files = { Crests: crests(), Tick: tick(), Glow: glow(), Glyphs: glyphs() };
 mkdirSync(outDir, { recursive: true });
 if (previewDir) mkdirSync(previewDir, { recursive: true });
 for (const [name, img] of Object.entries(files)) {
