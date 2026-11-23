@@ -463,6 +463,7 @@ function Ov.Start(t, lv, money, xp, xpMax)
     readAt, readTotal, credited = nil, nil, false
     mark, level, zone, instType, zoneN = GetTime(), lv, nil, nil, 0
     wipe(seen)
+    ns.Recap.Start(t)
 end
 
 -- The session ends (logout or reload).
@@ -478,6 +479,7 @@ function Ov.End(xp, xpMax)
     else
         ov.pe = nil
     end
+    ns.Recap.Seal(cur)
     Push(cur)
     ov.cur, cur = nil, nil
     -- Logging out inside a dungeon leaves it; coming back within RUN_GAP is the same run.
@@ -533,6 +535,7 @@ function Ov.Level(lv)
     end
     level = lv
     cur.l1 = lv
+    ns.Recap.Level(lv)
 end
 
 -- Z: name is the zone's name, kind its instanceType, inst its instanceMapID (any may be nil).
@@ -543,6 +546,11 @@ function Ov.Zone(name, kind, inst)
     if name and not seen[name] then
         seen[name] = true
         cur.z = cur.z + 1
+    end
+    if name then ns.Recap.Zone(name, kind) end
+    if name and (kind == "party" or kind == "raid") then
+        if type(cur.zi) ~= "table" then cur.zi = {} end
+        cur.zi[name] = true
     end
     local run = ov.run
     if kind == "party" or kind == "raid" then
@@ -571,6 +579,7 @@ function Ov.XP(kind, amount)
         key = "xe"
     end
     cur.last = time()
+    ns.Recap.XP(amount)
     local l, z = Slots()
     Bump(cur, key, amount)
     if l then Bump(l, key, amount) end
@@ -587,7 +596,10 @@ local function Count(key, zoneKey)
 end
 
 function Ov.Kill() Count("k", "k") end    -- K, any by
-function Ov.Death() Count("dd", "dd") end -- D
+function Ov.Death()
+    Count("dd", "dd")
+    ns.Recap.Moment("death", zone)
+end
 function Ov.Quest() Count("q") end        -- Q 2
 
 -- M: net is the change minus the part transferred between your own characters; balance what you carry now.

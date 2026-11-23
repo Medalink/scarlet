@@ -16,6 +16,7 @@
 
 Core.lua
 FeatCatalog.lua
+Recap.lua
 Capture.lua
 Track.lua
 Metrics.lua

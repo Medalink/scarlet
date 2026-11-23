@@ -66,10 +66,15 @@ Short keys, so the SavedVariables stay small. All numbers; missing means 0.
 | `z` | distinct zones |
 | `lv` | `{ [level] = { p, xk, xd, xq, xe, xo, k, dd, q, g, s, r } }`, the session's share of each level (`g` and `s` copper earned and spent, `r` runs started, counted as the row's own) |
 | `zn` | `{ [zone name] = { p, k, dd, x } }`, the session's share of each zone (`x` all XP) |
+| `zi` | `{ [zone name] = true }` for the zones of `zn` that are dungeons or raids; the session title reads it |
 
 The addon keeps the last 120 rows in `ov.sess` (oldest first) and the open session in
 `ov.cur`, the same shape, with `last`: the epoch seconds of its latest change, so a row a crash
 leaves open keeps its time up to then.
+
+`ScarletDB.chars[key].last` is the session recap of the session that closed last (`Recap.lua`, `SessionRecap` in
+the suite's CONTRACTS.md): the title, counters, XP per five minutes, zone stretches, levels, moments, and the route
+as up to 256 points fitted to a sheet of 1000. It is written when the session is sealed, at logout or reload.
 
 ## Lifetime and observed numbers
 

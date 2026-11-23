@@ -400,6 +400,7 @@ local function Explore(text)
             Emit("EX", area, xp)
             ns.XPSource("e", "")
             Add("discoveries")
+            ns.Recap.Moment("discovery", area)
             return
         end
     end
@@ -409,6 +410,7 @@ local function Explore(text)
             lastExplore = text
             Emit("EX", area, 0)
             Add("discoveries")
+            ns.Recap.Moment("discovery", area)
         end
     end
 end

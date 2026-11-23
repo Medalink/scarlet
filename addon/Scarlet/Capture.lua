@@ -5,7 +5,7 @@ local ADDON, ns = ...
 
 local floor, abs, sqrt, tonumber, type, strsplit = math.floor, math.abs, math.sqrt, tonumber, type, strsplit
 local GetTime = GetTime
-local Emit, Add, Plain, Ov = ns.Emit, ns.Add, ns.Plain, ns.Ov
+local Emit, Add, Plain, Ov, Recap = ns.Emit, ns.Add, ns.Plain, ns.Ov, ns.Recap
 local issecretvalue = issecretvalue or function(_) return false end
 
 local SAMPLE_SECONDS = 1
@@ -123,6 +123,7 @@ local function Sample()
         d = (Plain(speed) and speed or 0) * dt
     end
     move.x, move.y, move.inst = x, y, inst
+    if x then Recap.Pos(x, y, inst) end
     move.yards = move.yards + d
     if ns.opt.path then
         local m, px, py = MapPoint()
@@ -228,6 +229,8 @@ function H.PLAYER_CONTROL_GAINED()
     local m, x, y = MapPoint()
     local secs = GetTime() - taxi.t0
     Emit("T", 0, m, x, y, Round1(secs))
+    local wx, wy, winst = WorldPos()
+    if wx then Recap.Pos(wx, wy, winst, true) end
     Add("taxiTime", secs)
     TimerOn("stillTime")
 end
@@ -1099,6 +1102,7 @@ function H.PLAYER_REGEN_ENABLED()
     C_Timer.After(5, ForgetKills)
     if combatStart then
         local secs = GetTime() - combatStart
+        Recap.Combat(combatStart, combatStart + secs)
         combatStart = nil
         Emit("F", 0, Round1(secs))
         TimerOff("combat")
@@ -1116,6 +1120,7 @@ local function BossKill(id, name)
     bossAt, bossId = now, id
     Emit("B", id, name)
     Add("bosses")
+    Recap.Moment("boss", Str(name))
     ns.AutoShot("bk")
 end
 
