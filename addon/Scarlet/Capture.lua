@@ -1121,7 +1121,7 @@ end
 function H.ENCOUNTER_END(id, name, _, _, success)
     Emit("E", 0, id, success, encStart and Round1(GetTime() - encStart) or "")
     encStart = nil
-    if success then BossKill(id, name) end
+    if success == 1 then BossKill(id, name) end
 end
 
 function H.BOSS_KILL(id, name)
