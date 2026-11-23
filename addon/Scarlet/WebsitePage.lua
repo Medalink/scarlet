@@ -79,7 +79,10 @@ local function AddressBox(parent, ui, w)
     local value = ""
     edit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     edit:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
-    edit:SetScript("OnMouseUp", function(self) self:HighlightText() end)
+    edit:SetScript("OnMouseUp", function(self)
+        self:SetFocus()
+        self:HighlightText()
+    end)
     edit:SetScript("OnTextChanged", function(self, userInput)
         if userInput and self:GetText() ~= value then
             self:SetText(value)
@@ -90,11 +93,6 @@ local function AddressBox(parent, ui, w)
         value = text
         edit:SetText(text)
         edit:SetCursorPosition(0)
-    end
-    function box:Select()
-        edit:SetFocus()
-        edit:HighlightText()
-        C_Timer.After(0, function() edit:HighlightText() end)
     end
     function box:Release()
         edit:ClearFocus()
@@ -143,18 +141,12 @@ function ns.WebsitePage(parent, ui)
         sentence:SetText(line)
         hasAddress = address ~= nil
         box:SetShown(hasAddress)
-        if address then
-            box:Set(address)
-            if page:IsVisible() then box:Select() end
-        end
+        if address then box:Set(address) end
         note:SetText(tail or "")
         note:ClearAllPoints()
         note:SetPoint("TOPLEFT", address and box or sentence, "BOTTOMLEFT", 0, -12)
     end
 
-    page:SetScript("OnShow", function()
-        if hasAddress then box:Select() end
-    end)
     page:SetScript("OnHide", function() box:Release() end)
     return page
 end
