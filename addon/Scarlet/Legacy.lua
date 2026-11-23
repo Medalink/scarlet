@@ -202,6 +202,41 @@ local function ScanTree(treeID)
     end
 end
 
+local TEXT_MAX = 300
+local textedTree = {}
+
+local function Texts(treeID, cfg)
+    if textedTree[treeID] or type(TRAITS.GetTraitDescription) ~= "function" then return end
+    textedTree[treeID] = true
+    local rows = {}
+    local nodes = treeNodes[treeID]
+    for i = 1, #nodes do
+        local info = Call(TRAITS.GetNodeInfo, cfg, nodes[i])
+        local entries = type(info) == "table" and info.entryIDs
+        local maxRanks = type(info) == "table" and Num(info.maxRanks)
+        if type(entries) == "table" and maxRanks and maxRanks > 0 then
+            for e = 1, min(#entries, 4) do
+                local entryID = Num(entries[e])
+                local entry = entryID and Call(TRAITS.GetEntryInfo, cfg, entryID)
+                local definitionID = type(entry) == "table" and Num(entry.definitionID) or nil
+                local def = definitionID and Call(TRAITS.GetDefinitionInfo, definitionID)
+                local spell = type(def) == "table" and Num(def.spellID) or ""
+                for r = 1, min(maxRanks, 10) do
+                    local text = Str(Call(TRAITS.GetTraitDescription, entryID, r))
+                    if text then
+                        rows[#rows + 1] = { treeID, nodes[i], entryID, spell, r, maxRanks, text:sub(1, TEXT_MAX) }
+                    end
+                end
+            end
+        end
+    end
+    for i = 1, #rows do
+        local spell = rows[i][4]
+        if spell ~= "" then SpellName(spell) end
+        Emit("LE", unpack(rows[i], 1, 7))
+    end
+end
+
 local function Scan()
     queued = false
     if InCombatLockdown() then
@@ -211,6 +246,7 @@ local function Scan()
     due = false
     for i = 1, #TREES do
         ScanTree(TREES[i])
+        if based[TREES[i]] then Texts(TREES[i], cfgOf[TREES[i]]) end
     end
     Balance()
     -- Configs can list after the first read; try again a few times until every tree
