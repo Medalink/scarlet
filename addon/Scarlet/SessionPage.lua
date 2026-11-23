@@ -235,11 +235,12 @@ function ns.SessionPage(parent, ui)
         row.kills = Text(row, 13, T.text, "RIGHT")
         row.kills:SetPoint("LEFT", 576, 0)
         row.kills:SetWidth(80)
-        row:SetScript("OnEnter", function() hover:Show() end)
+        row:SetScript("OnEnter", function(self)
+            if self.recap then hover:Show() end
+        end)
         row:SetScript("OnLeave", function() hover:Hide() end)
         row:SetScript("OnClick", function(self)
-            local recap = self.start and ns.Recap.FromApp(self.start)
-            if recap then page:Open("last", recap) end
+            if self.recap then page:Open("last", self.recap) end
         end)
         return row
     end
@@ -254,7 +255,9 @@ function ns.SessionPage(parent, ui)
                 rows[i] = row
             end
             row:Show()
-            row.start = r.t
+            row.recap = ns.Recap.For(r.t)
+            row:SetEnabled(row.recap ~= nil)
+            row:SetAlpha(row.recap and 1 or 0.45)
             row.date:SetText(date("%b %d  %H:%M", r.t))
             row.title:SetText((ns.Recap.RowTitle(r)))
             row.played:SetText(Duration(r.p or 0))

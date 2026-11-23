@@ -415,6 +415,14 @@ function Recap.FromApp(start)
     end
 end
 
+--- The recap of the closed session that began at start: the app's, or the copy this addon saved of the last one.
+function Recap.For(start)
+    local app = Recap.FromApp(start)
+    if app then return app end
+    local saved = ns.char and ns.char.last
+    if type(saved) == "table" and saved.start == start then return saved end
+end
+
 --- The closed session rows, newest first.
 function Recap.Earlier(out)
     for i = #out, 1, -1 do out[i] = nil end
