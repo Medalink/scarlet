@@ -54,6 +54,7 @@ UI.lua
 Kit.lua
 SessionPage.lua
 FeatsPage.lua
+StatsPage.lua
 Alerts.lua
 Summary.lua
 FeatToast.lua

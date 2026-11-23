@@ -396,6 +396,10 @@ local FULL_HISTORY = { Kills = true, Deaths = true, Dungeons = true, Bosses = tr
 -- Pages whose cards all count from the install.
 local FROM_INSTALL = { time = true, more = true, people = true }
 
+ns.UI.Snapshot = Snapshot
+ns.UI.FullHistory = FULL_HISTORY
+ns.UI.Cards = { CARDS, TIME_CARDS, MORE_CARDS, PEOPLE_CARDS }
+
 -- Open cells split by hairlines, like the site's "This week" row: a small label over a
 -- big condensed number. The first row has a stronger rule above it.
 local CELL_W = floor(CONTENT_W / CELL_COLS)
@@ -815,11 +819,7 @@ local BUILDERS = {
     recap = function(body) return ns.SessionPage(body, ns.UI) end,
     overview = function(body) return ns.OverviewPage(body, ns.UI) end,
     characters = function(body) return ns.CharactersPage(body, ns.UI) end,
-    stats = function(body)
-        local page = StatsPage(body, function() return Snapshot(ns.char or ns.sess, true, ns.char ~= nil) end)
-        page.partial = true
-        return page
-    end,
+    stats = function(body) return ns.StatsPage(body, ns.UI) end,
     session = function(body)
         return StatsPage(body, function() return Snapshot(ns.sess, true) end)
     end,

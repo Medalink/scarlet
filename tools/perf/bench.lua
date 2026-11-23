@@ -490,6 +490,7 @@ function SCEN.ui(W, ns)
     end
     s.call(10, "ui: Feats page", function() return Press("Feats") end)
     s.call(10.5, "ui: Feats page, a pick", function() return Pick() end)
+    s.call(11.5, "ui: Stats page", function() return Press("Stats") end)
     s.sort()
     return s, 14
 end
