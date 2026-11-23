@@ -547,6 +547,25 @@ function Feats.Moves(f)
     return f.live ~= nil and visible[f.key] == true and Holds(f)
 end
 
+--- True for a feat the page lists: one the addon counts live, or any with the app's file of counts.
+function Feats.Shown(f)
+    if f.live ~= nil then return true end
+    local file = Feats.File()
+    return file ~= nil and file.source == "web"
+end
+
+--- How many of the feats shown are held at Copper or better, and how many are shown.
+function Feats.Held()
+    local held, total = 0, 0
+    for _, f in ipairs(ns.FEATS) do
+        if visible[f.key] and Feats.Shown(f) then
+            total = total + 1
+            if Feats.Tier(f.key) > 0 then held = held + 1 end
+        end
+    end
+    return held, total
+end
+
 local collections
 --- The feats this character can hold, grouped by collection in catalog order: { name, feats }.
 function Feats.Collections()

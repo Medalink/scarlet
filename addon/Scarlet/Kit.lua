@@ -117,7 +117,8 @@ end
 
 local BAR_ROW = 30
 
-function UI.Bars(parent, w, rows)
+function UI.Bars(parent, w, rows, rowHeight)
+    local BAR_ROW = rowHeight or BAR_ROW
     local f = CreateFrame("Frame", nil, parent)
     f:SetSize(w, BAR_ROW * rows)
     local list = {}
@@ -373,6 +374,39 @@ function UI.FeatRow(parent, w)
         self.name:SetTextColor(c[1], c[2], c[3])
     end
     return f
+end
+
+--- A seal that opens its feat on the Feats page. Set takes the feat definition, its tier, progress and whether the addon
+--- moves it while the player plays (the scarlet mark), and the colour behind the plate.
+function UI.FeatSeal(parent, size)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(size, size)
+    b.seal = UI.Seal(b, size)
+    b.seal:SetAllPoints()
+    b.dot = Fill(b, T.accent, 1, "OVERLAY")
+    b.dot:SetSize(5, 5)
+    b.dot:SetRotation(pi / 4)
+    b.dot:SetPoint("CENTER", b, "TOPRIGHT", -2, -2)
+    b:SetScript("OnClick", function(self)
+        if self.featKey and ns.OpenFeat then ns.OpenFeat(self.featKey) end
+    end)
+    b:SetScript("OnEnter", function(self)
+        if not self.featKey then return end
+        local info = ns.Feats.Info(self.featKey)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine(info.def.name)
+        GameTooltip:AddLine(ns.Feats.Count(info.def, info.value), T.muted[1], T.muted[2], T.muted[3])
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    function b:Set(def, info, moves, bg)
+        self.featKey = def.key
+        local spells = ns.char and ns.char.featSpell
+        self.seal:Set({ family = def.family, glyph = def.glyph, tier = info.tier, progress = info.progress,
+            spell = spells and spells[def.key], bg = bg })
+        self.dot:SetShown(moves)
+    end
+    return b
 end
 
 --- A compare strip. Set takes a label, a spread of p10, p25, p50, p75, p90 and you, and the value text.

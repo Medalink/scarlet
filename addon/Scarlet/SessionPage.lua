@@ -28,10 +28,19 @@ local function Rate(n, played)
     return floor(n / (played / 3600) + 0.5)
 end
 
+local current
+
+--- Opens the Session page on one of its tabs: this, last, earlier or log.
+function ns.OpenSession(tab)
+    ns.UI.Open("recap")
+    if current then current:Open(tab) end
+end
+
 function ns.SessionPage(parent, ui)
     local T, Text, Hair, Num, Duration, Money = ui.T, ui.Text, ui.Hair, ui.Num, ui.Duration, ui.Money
     local page = CreateFrame("Frame", nil, parent)
     page:SetAllPoints()
+    current = page
     local tab = "this"
     local drawn
 

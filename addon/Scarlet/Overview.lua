@@ -8,7 +8,7 @@ local Plain = ns.Plain
 
 -- Page layout, in pixels: the level times under the level bar, then four panels in two rows.
 local PANEL_H, PANEL_GAP, PANEL_TOP, ROW_H, ROWS = 132, 10, 160, 22, 4
-local ETA_TOP, ETA_ROW_H = 86, 17
+local DAYS, SPARK_H = 7, 26
 local MATES, DEATHS = 3, 3
 
 -- Level estimates, see "Level estimates" in docs/OVERVIEW.md.
@@ -115,6 +115,25 @@ local function AddWeek(b, row)
     b.wr = b.wr + N(row.r)
 end
 
+local function DayStart()
+    local d = date("*t")
+    d.hour, d.min, d.sec, d.isdst = 0, 0, 0, nil
+    return time(d) - (DAYS - 1) * 86400
+end
+
+local function DayOf(t, from)
+    return max(1, min(DAYS, floor((t - from) / 86400) + 1))
+end
+
+local function AddDay(b, row, t, from)
+    local i = DayOf(t, from)
+    local d = b.days
+    d.p[i] = d.p[i] + N(row.p)
+    d.q[i] = d.q[i] + N(row.q)
+    d.g[i] = d.g[i] + N(row.g) - N(row.s)
+    d.r[i] = d.r[i] + N(row.r)
+end
+
 -- The level cap: the client's (ns.Cap, Core.lua), else the one the digest recorded.
 local function CapOf(d)
     if ns.Cap.level then return ns.Cap.level end
@@ -130,6 +149,9 @@ local function AddLevel(b, s)
     b.lxq = b.lxq + N(s.xq)
     b.lk = b.lk + N(s.k)
     b.ldd = b.ldd + N(s.dd)
+    b.lxe = b.lxe + N(s.xe)
+    b.lxo = b.lxo + N(s.xo)
+    b.lq = b.lq + N(s.q)
 end
 
 -- The share of the cap level: time, gold, runs, kills, deaths, quests.
@@ -304,10 +326,14 @@ local function Collect(key, lvl, weekStart, ch)
     local cap = CapOf(d)
     local capped = cap ~= nil and (lvl or (d and N(d.level)) or 0) >= cap
     local b = { key = key, level = lvl, weekStart = weekStart, wp = 0, wq = 0, wg = 0, ws = 0, wr = 0,
-        lp = 0, lxk = 0, lxq = 0, lk = 0, ldd = 0, zd = {}, mn = {}, mv = {}, dt = {}, levelP = {}, levelX = {},
+        lp = 0, lxk = 0, lxq = 0, lxe = 0, lxo = 0, lq = 0, lk = 0, ldd = 0, zd = {}, mn = {}, mv = {}, dt = {}, levelP = {}, levelX = {},
         capped = capped, extra = d and type(d.cap) == "table" and d.cap or {},
         cap = { level = cap, p = 0, g = 0, s = 0, r = 0, k = 0, dd = 0, q = 0 },
         below = { p = 0, xk = 0, xq = 0, xo = 0 } }
+    local dayFrom = DayStart()
+    local seen = min(weekStart, dayFrom)
+    b.days = { p = {}, q = {}, g = {}, r = {} }
+    for i = 1, DAYS do b.days.p[i], b.days.q[i], b.days.g[i], b.days.r[i] = 0, 0, 0, 0 end
     local through = -1
     local mates = {}
     if d then
@@ -316,8 +342,9 @@ local function Collect(key, lvl, weekStart, ch)
             for _, row in ipairs(d.sessions) do
                 if type(row) == "table" then
                     local t = N(row.t)
-                    if t >= weekStart and t <= through then
-                        AddWeek(b, row)
+                    if t >= seen and t <= through then
+                        if t >= weekStart then AddWeek(b, row) end
+                        if t >= dayFrom then AddDay(b, row, t, dayFrom) end
                         b.dt[#b.dt + 1] = t
                     end
                 end
@@ -350,16 +377,20 @@ local function Collect(key, lvl, weekStart, ch)
         for _, row in ipairs(o.sess) do
             local t = type(row) == "table" and N(row.t) or 0
             -- A week row the digest does not hold (it ends at the last export, or lost a session).
-            if t <= through + 3 and t >= weekStart then
+            if t <= through + 3 and t >= seen then
                 local held = false
                 for i = 1, #b.dt do
                     if abs(b.dt[i] - t) <= 3 then held = true; break end
                 end
-                if not held then AddWeek(b, row) end
+                if not held then
+                    if t >= weekStart then AddWeek(b, row) end
+                    if t >= dayFrom then AddDay(b, row, t, dayFrom) end
+                end
             end
             -- Two keys within 3 seconds are one session; the digest already has it.
             if t > through + 3 then
                 if N(row.t) >= weekStart then AddWeek(b, row) end
+                if N(row.t) >= dayFrom then AddDay(b, row, N(row.t), dayFrom) end
                 if lvl and type(row.lv) == "table" then AddLevel(b, row.lv[lvl]) end
                 if capped then
                     AddBelow(b, row.lv, cap)
@@ -467,40 +498,152 @@ function ns.OverviewPage(parent, ui)
     local where = Text(page, 14, T.fg, "RIGHT")
     where:SetPoint("BOTTOMRIGHT", page, "TOPRIGHT", 0, -34)
 
-    -- The levelling layout; the max level group below replaces it once the character has an hour at the cap.
     local lvlPage = CreateFrame("Frame", nil, page)
     lvlPage:SetAllPoints()
 
+    local COL_W, COL_X = 318, 338
+    local subtitle = Text(lvlPage, 13, T.text)
+    subtitle:SetPoint("TOPLEFT", 0, -42)
+    local headA = Text(lvlPage, 13, T.text, "RIGHT")
+    headA:SetPoint("TOPRIGHT", 0, -12)
+    local headB = Text(lvlPage, 11.5, T.muted, "RIGHT")
+    headB:SetPoint("TOPRIGHT", 0, -30)
+
     local bar = CreateFrame("Frame", nil, lvlPage)
     bar:SetHeight(6)
-    bar:SetPoint("TOPLEFT", 0, -50)
-    bar:SetPoint("TOPRIGHT", 0, -50)
+    bar:SetPoint("TOPLEFT", 0, -62)
+    bar:SetPoint("TOPRIGHT", 0, -62)
     Fill(bar, T.grey):SetAllPoints()
     local barFill = Fill(bar, T.accent, 1, "ARTWORK")
     barFill:SetPoint("TOPLEFT")
     barFill:SetPoint("BOTTOMLEFT")
     barFill:SetWidth(1)
-    local progress = Text(lvlPage, 13, T.text)
-    progress:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, -8)
+    local barRested = Fill(bar, T.rest, 1, "ARTWORK")
+    barRested:SetPoint("TOPLEFT", barFill, "TOPRIGHT")
+    barRested:SetPoint("BOTTOMLEFT", barFill, "BOTTOMRIGHT")
+    barRested:SetWidth(1)
 
-    -- Time to the next level, the next multiple of 10 and level 60, and what they are based on.
+    local strip = CreateFrame("Frame", nil, lvlPage)
+    strip:SetHeight(26)
+    strip:SetPoint("TOPLEFT", 0, -76)
+    strip:SetPoint("TOPRIGHT", 0, -76)
+    strip:EnableMouse(true)
+    Border(strip, T.line)
     local etaLevel, etaTime, etaDate = {}, {}, {}
+    local CELL = 656 / 3
     for i = 1, 3 do
-        local y = -ETA_TOP - (i - 1) * ETA_ROW_H
-        etaLevel[i] = Text(lvlPage, 13, T.text)
-        etaLevel[i]:SetPoint("TOPLEFT", 0, y)
-        etaLevel[i]:SetWidth(80)
-        etaTime[i] = Text(lvlPage, 13, T.fg)
-        etaTime[i]:SetPoint("TOPLEFT", 84, y)
-        etaTime[i]:SetWidth(90)
-        etaDate[i] = Text(lvlPage, 13, T.text)
-        etaDate[i]:SetPoint("TOPLEFT", 180, y)
-        etaDate[i]:SetWidth(220)
+        local x = (i - 1) * CELL
+        if i > 1 then
+            local divide = Fill(strip, T.line, 1, "ARTWORK")
+            divide:SetPoint("TOPLEFT", x, 0)
+            divide:SetPoint("BOTTOMLEFT", x, 0)
+            divide:SetWidth(1)
+        end
+        etaLevel[i] = Text(strip, 13, T.fg, "LEFT", "strong")
+        etaLevel[i]:SetPoint("TOPLEFT", x + 10, -5)
+        etaLevel[i]:SetWidth(56)
+        etaTime[i] = Text(strip, 13, T.text)
+        etaTime[i]:SetPoint("TOPLEFT", x + 66, -5)
+        etaTime[i]:SetWidth(62)
+        etaDate[i] = Text(strip, 13, T.muted)
+        etaDate[i]:SetPoint("TOPLEFT", x + 130, -5)
+        etaDate[i]:SetWidth(CELL - 136)
     end
-    local etaBasis = Text(lvlPage, 13, T.muted)
-    etaBasis:SetPoint("TOPLEFT", 0, -ETA_TOP - 3 * ETA_ROW_H)
-    etaBasis:SetPoint("TOPRIGHT", 0, -ETA_TOP - 3 * ETA_ROW_H)
+    local basisText = ""
+    strip:SetScript("OnEnter", function(self)
+        if basisText == "" then return end
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:AddLine(basisText, T.muted[1], T.muted[2], T.muted[3], true)
+        GameTooltip:Show()
+    end)
+    strip:SetScript("OnLeave", function() GameTooltip:Hide() end)
     local targets = {}
+
+    local tiles, sparks = {}, {}
+    local tileBox = CreateFrame("Frame", nil, lvlPage)
+    tileBox:SetHeight(62)
+    tileBox:SetPoint("TOPLEFT", 0, -110)
+    tileBox:SetPoint("TOPRIGHT", 0, -110)
+    Border(tileBox, T.line)
+    for i = 1, 4 do
+        local t = ui.Tile(tileBox, 164, 62)
+        t:SetPoint("TOPLEFT", (i - 1) * 164, 0)
+        tiles[i] = t
+        sparks[i] = {}
+        for d = 1, DAYS do
+            local c = Fill(t, T.fg, 0.22, "ARTWORK")
+            c:SetSize(5, 1)
+            c:SetPoint("BOTTOMRIGHT", t, "BOTTOMRIGHT", -12 - (DAYS - d) * 8, 10)
+            sparks[i][d] = c
+        end
+    end
+    local function Spark(i, values)
+        local top = 0
+        for d = 1, DAYS do top = max(top, values[d]) end
+        for d = 1, DAYS do
+            local v, c = values[d], sparks[i][d]
+            c:SetHeight(v > 0 and top > 0 and max(2, v / top * SPARK_H) or 1)
+            local col = d == DAYS and T.accent or T.fg
+            c:SetVertexColor(col[1], col[2], col[3], (v > 0 and (d == DAYS and 1 or 0.3)) or 0.1)
+        end
+    end
+
+    local closeTitle = Text(lvlPage, 19, T.fg, "LEFT", "display")
+    closeTitle:SetPoint("TOPLEFT", 0, -180)
+    closeTitle:SetText("Closest feats")
+    local closeHeld = Text(lvlPage, 12, T.muted, "RIGHT")
+    closeHeld:SetPoint("TOPRIGHT", lvlPage, "TOPLEFT", COL_W, -186)
+    local closeRows = {}
+    for i = 1, 3 do
+        local r = ui.FeatRow(lvlPage, COL_W)
+        r:SetHeight(40)
+        r:SetPoint("TOPLEFT", 0, -204 - (i - 1) * 40)
+        r:SetScript("OnClick", function(self)
+            if self.feat and self.feat.key and ns.OpenFeat then ns.OpenFeat(self.feat.key) end
+        end)
+        closeRows[i] = r
+    end
+
+    local soFar = Text(lvlPage, 19, T.fg, "LEFT", "display")
+    soFar:SetPoint("TOPLEFT", COL_X, -180)
+    local xpStack = ui.Stack(lvlPage, COL_W, 8)
+    xpStack:SetPoint("TOPLEFT", COL_X, -210)
+    local counts = Text(lvlPage, 13, T.text)
+    counts:SetPoint("TOPLEFT", xpStack, "BOTTOMLEFT", 0, -8)
+    local lastBtn = CreateFrame("Button", nil, lvlPage)
+    lastBtn:SetSize(COL_W, 20)
+    lastBtn:SetPoint("TOPLEFT", counts, "BOTTOMLEFT", 0, -8)
+    local lastText = Text(lastBtn, 13, T.text)
+    lastText:SetPoint("LEFT")
+    lastText:SetPoint("RIGHT")
+    lastBtn:SetScript("OnClick", function()
+        if ns.OpenSession then ns.OpenSession("last") end
+    end)
+    lastBtn:SetScript("OnEnter", function() lastText:SetTextColor(T.fg[1], T.fg[2], T.fg[3]) end)
+    lastBtn:SetScript("OnLeave", function() lastText:SetTextColor(T.text[1], T.text[2], T.text[3]) end)
+
+    local classTitle = Text(lvlPage, 19, T.fg, "LEFT", "display")
+    classTitle:SetPoint("TOPLEFT", 0, -326)
+    local classHeld = Text(lvlPage, 12, T.muted, "RIGHT")
+    classHeld:SetPoint("TOPRIGHT", 0, -332)
+    local classGroups, classBuilt = {}, false
+
+    local matesTitle = Text(lvlPage, 19, T.fg, "LEFT", "display")
+    matesTitle:SetPoint("TOPLEFT", 0, -398)
+    matesTitle:SetText("Played with")
+    local matesBars = ui.Bars(lvlPage, COL_W, 2, 26)
+    matesBars:SetPoint("TOPLEFT", 0, -420)
+    local matesEmpty = Text(lvlPage, 13, T.muted)
+    matesEmpty:SetPoint("TOPLEFT", 0, -424)
+    matesEmpty:SetText("No groups recorded")
+    local deathTitle = Text(lvlPage, 19, T.fg, "LEFT", "display")
+    deathTitle:SetPoint("TOPLEFT", COL_X, -398)
+    deathTitle:SetText("Deaths by zone")
+    local deathBars = ui.Bars(lvlPage, COL_W, 2, 26)
+    deathBars:SetPoint("TOPLEFT", COL_X, -420)
+    local deathEmpty = Text(lvlPage, 13, T.muted)
+    deathEmpty:SetPoint("TOPLEFT", COL_X, -424)
+    deathEmpty:SetText("No deaths recorded")
 
     -- Fills the rows for a character at level lvl; no rows (and no basis line) at level 60 or when
     -- the client hides the experience bar.
@@ -529,7 +672,7 @@ function ns.OverviewPage(parent, ui)
                     end
                     etaLevel[i]:SetText("Level " .. targets[i])
                     etaTime[i]:SetText(Span(secs))
-                    etaDate[i]:SetText(when and ("about " .. when) or "")
+                    etaDate[i]:SetText(when or "")
                 end
                 basis = format("Based on %d complete levels played: %s XP an hour", pace.levels, Num(Rate(lvl) * 3600))
                 if not pace.flat then
@@ -537,7 +680,7 @@ function ns.OverviewPage(parent, ui)
                 end
             end
         end
-        etaBasis:SetText(basis)
+        basisText = basis
         for i = n + 1, 3 do
             etaLevel[i]:SetText("")
             etaTime[i]:SetText("")
@@ -587,24 +730,28 @@ function ns.OverviewPage(parent, ui)
         return c
     end
 
-    local week = Card(lvlPage, 0, 0, "This week")
-    local lvlCard = Card(lvlPage, 1, 0, "")
-    local mates = Card(lvlPage, 0, 1, "Played with")
-    local deaths = Card(lvlPage, 1, 1, "Deaths")
-
-    -- "History through the last export, a dot, this session live"
-    local footerY = -PANEL_TOP - 2 * (PANEL_H + PANEL_GAP) - 2
-    local footer = Text(lvlPage, 13, T.muted)
-    footer:SetPoint("TOPLEFT", 0, footerY)
-    local liveDot = Fill(lvlPage, T.accent, 1, "ARTWORK")
-    liveDot:SetSize(6, 6)
-    liveDot:SetPoint("LEFT", footer, "RIGHT", 8, 0)
-    local liveText = Text(lvlPage, 13, T.fg)
-    liveText:SetPoint("LEFT", liveDot, "RIGHT", 6, 0)
-    liveText:SetText("this session live")
-
+    local drawnFeats
     local base
     local deathMap, deathNames, deathVals = {}, {}, {}
+    local dayP, dayQ, dayG, dayR = {}, {}, {}, {}
+    local xpRows = { { label = "Kills", color = T.accent }, { label = "Exploring", color = T.s2 },
+        { label = "Quests", color = T.s3 }, { label = "Other", color = T.rest } }
+    local mateItems, deathItems = {}, {}
+    local matePool, deathPool = { {}, {}, {} }, { {}, {}, {} }
+
+    local function Rows(out, pool, names, vals, n, label, text)
+        for i = #out, 1, -1 do out[i] = nil end
+        for i = 1, n do
+            if names[i] then
+                local row = pool[i]
+                row.label = label and label(names[i]) or names[i]
+                row.value = vals[i]
+                row.text = text and text(vals[i]) or nil
+                out[#out + 1] = row
+            end
+        end
+        return #out
+    end
 
     -- Max level group ---------------------------------------------------------------------
     -- Built the first time a character has an hour at the cap, so a levelling character never pays for it.
@@ -742,6 +889,177 @@ function ns.OverviewPage(parent, ui)
         m.mates:Rows(shown, "No groups recorded")
     end
 
+    local function DrawHeader(key, lvl, clientLevel, zone, live, levelTime)
+        local levelling = ns.Cap.Levelling()
+        local xp, xpMax
+        if levelling then xp, xpMax = CNum(UnitXP("player")), CNum(UnitXPMax("player")) end
+
+        local id = {}
+        if lvl then id[1] = "Level " .. lvl end
+        id[#id + 1] = CStr((UnitRace("player")))
+        id[#id + 1] = CStr((UnitClass("player")))
+        local head = { table.concat(id, " ") }
+        if ns.specName then head[#head + 1] = ns.specName end
+        if zone then head[#head + 1] = zone end
+        local history = ns.History(key)
+        local recorded = N(ns.char and ns.char.tracked) + (history and history.tracked or 0)
+            + (ns.sessionG and GetTime() - ns.sessionG or 0)
+        if recorded >= 60 then head[#head + 1] = Duration(recorded) .. " recorded" end
+        subtitle:SetText(table.concat(head, " \194\183 "))
+
+        if xp and xpMax and xpMax > 0 then
+            local ratio = min(1, max(0, xp / xpMax))
+            local w = bar:GetWidth() or 0
+            barFill:SetWidth(max(1, ratio * w))
+            local rested = type(GetXPExhaustion) == "function" and CNum(GetXPExhaustion()) or nil
+            local extra = rested and rested > 0 and min(1 - ratio, rested / xpMax) or 0
+            barRested:SetWidth(max(0.01, extra * w))
+            barRested:SetShown(extra > 0)
+            local text = format("%d%% to level %d", floor(ratio * 100), (lvl or 0) + 1)
+            if levelTime > 0 then text = text .. " \194\183 " .. Duration(levelTime) .. " on this level" end
+            headA:SetText(text)
+            headB:SetText(rested and rested > 0 and (Num(rested) .. " rested XP left") or "")
+        else
+            barFill:SetWidth(1)
+            barRested:Hide()
+            headA:SetText(levelTime > 0 and ("This level " .. Duration(levelTime)) or "")
+            headB:SetText("")
+        end
+        if levelling then
+            ShowEta(base, live, clientLevel, xp, xpMax)
+        else
+            ShowEta(base, live, nil, nil, nil)
+        end
+        strip:SetShown(levelling and xp ~= nil and xpMax ~= nil)
+    end
+
+    local function DrawWeek(live)
+        local wp, wq, wg, ws, wr = base.wp, base.wq, base.wg, base.ws, base.wr
+        local days = base.days
+        for i = 1, DAYS do
+            dayP[i], dayQ[i], dayG[i], dayR[i] = days.p[i], days.q[i], max(0, days.g[i]), days.r[i]
+        end
+        if live then
+            dayP[DAYS], dayQ[DAYS] = dayP[DAYS] + N(live.p), dayQ[DAYS] + N(live.q)
+            dayG[DAYS], dayR[DAYS] = max(0, dayG[DAYS] + N(live.g) - N(live.s)), dayR[DAYS] + N(live.r)
+            if N(live.t) >= base.weekStart then
+                wp, wq, wg, ws, wr = wp + N(live.p), wq + N(live.q), wg + N(live.g), ws + N(live.s), wr + N(live.r)
+            end
+        end
+        local net = wg - ws
+        tiles[1]:Set("Played this week", Duration(wp))
+        tiles[2]:Set("Quests this week", Num(wq))
+        tiles[3]:Set("Gold this week", net < 0 and ("-" .. Money(-net)) or ("+" .. Money(net)))
+        tiles[4]:Set("Dungeons this week", Num(wr))
+        Spark(1, dayP)
+        Spark(2, dayQ)
+        Spark(3, dayG)
+        Spark(4, dayR)
+    end
+
+    local function DrawFeats()
+        local Feats = ns.Feats
+        local stamp = Feats and Feats.Stamp()
+        if Feats and stamp ~= drawnFeats then
+            drawnFeats = stamp
+            local held, total = Feats.Held()
+            closeHeld:SetText(total > 0 and format("%d of %d held", held, total) or "")
+            local near = Feats.Closest(3, Feats.Shown)
+            local names = ns.FEAT_TIER_NAMES
+            local spells = ns.char and ns.char.featSpell
+            for i = 1, 3 do
+                local info = near[i]
+                closeRows[i]:SetShown(info ~= nil)
+                if info then
+                    local f = info.def
+                    closeRows[i]:Set({ key = f.key, name = f.name, line = format("%s to %s", Num(info.left), names[info.tier + 1]),
+                        progress = info.progress, tier = info.tier, family = f.family, glyph = f.glyph,
+                        spell = spells and spells[f.key], bg = T.win })
+                end
+            end
+            closeTitle:SetShown(true)
+
+            if not classBuilt then
+                local groups = Feats.Collections()
+                for _, group in ipairs(groups) do
+                    local first = group.feats[1]
+                    if first and (first.scope == "class" or first.scope == "tree") then
+                        local g = { label = Text(lvlPage, 11, T.muted), seals = {}, feats = group.feats }
+                        for i = 1, #group.feats do
+                            g.seals[i] = ui.FeatSeal(lvlPage, 28)
+                        end
+                        g.label:SetText(group.name)
+                        classGroups[#classGroups + 1] = g
+                    end
+                end
+                classBuilt = #groups > 0
+            end
+            local x, heldClass, totalClass = 0, 0, 0
+            for _, g in ipairs(classGroups) do
+                local at = 0
+                for i, f in ipairs(g.feats) do
+                    local seal = g.seals[i]
+                    if Feats.Shown(f) then
+                        local info = Feats.Info(f.key)
+                        seal:ClearAllPoints()
+                        seal:SetPoint("TOPLEFT", lvlPage, "TOPLEFT", x + at * 32, -366)
+                        seal:Set(f, info, Feats.Moves(f), T.win)
+                        seal:Show()
+                        at = at + 1
+                        totalClass = totalClass + 1
+                        if info.tier > 0 then heldClass = heldClass + 1 end
+                    else
+                        seal:Hide()
+                    end
+                end
+                g.label:ClearAllPoints()
+                g.label:SetPoint("TOPLEFT", lvlPage, "TOPLEFT", x, -352)
+                g.label:SetShown(at > 0)
+                x = x + at * 32 + 24
+            end
+            local className = CStr((UnitClass("player")))
+            classTitle:SetText(className and (className .. " feats") or "Class feats")
+            classTitle:SetShown(totalClass > 0)
+            classHeld:SetText(totalClass > 0 and format("%d of %d held", heldClass, totalClass) or "")
+        end
+    end
+
+    local function DrawLevel(lvl, lv, wholeLevel, live)
+        local xk, xe, xq, xo = base.lxk, base.lxe, base.lxq, base.lxo
+        local kills, dead, quests = base.lk, base.ldd, base.lq
+        if lv then
+            xk, xe, xq, xo = xk + N(lv.xk) + N(lv.xd), xe + N(lv.xe), xq + N(lv.xq), xo + N(lv.xo)
+            kills, dead, quests = kills + N(lv.k), dead + N(lv.dd), quests + N(lv.q)
+        end
+        soFar:SetText(lvl and format(wholeLevel and "Level %d so far" or "Level %d, recorded part", lvl) or "This level so far")
+        xpRows[1].value, xpRows[2].value, xpRows[3].value, xpRows[4].value = xk, xe, xq, xo
+        xpStack:Set(xpRows)
+        counts:SetText(format("%s %s \194\183 %s %s \194\183 %s %s", Num(kills), kills == 1 and "kill" or "kills",
+            Num(dead), dead == 1 and "death" or "deaths", Num(quests), quests == 1 and "quest" or "quests"))
+        local last = ns.Recap and ns.Recap.Last()
+        if last and type(last.played) == "number" then
+            local title = type(last.title) == "table" and last.title.text
+            lastText:SetText("Last session  " .. Duration(last.played) .. (title and (" \194\183 " .. title) or ""))
+        else
+            lastText:SetText("")
+        end
+        lastBtn:SetShown(lastText:GetText() ~= "")
+
+        matesEmpty:SetShown(Rows(mateItems, matePool, base.mn, base.mv, MATES, ns.DisplayName, Duration) == 0)
+        matesBars:Set(mateItems)
+
+        wipe(deathMap)
+        for zname, n in pairs(base.zd) do deathMap[zname] = n end
+        if live then
+            for zname, z in pairs(live.zn) do
+                if type(z) == "table" and N(z.dd) > 0 then deathMap[zname] = (deathMap[zname] or 0) + z.dd end
+            end
+        end
+        Top(deathMap, DEATHS, deathNames, deathVals)
+        deathEmpty:SetShown(Rows(deathItems, deathPool, deathNames, deathVals, DEATHS) == 0)
+        deathBars:Set(deathItems)
+    end
+
     function page:Refresh()
         local key = ns.charKey
         if not key then return end
@@ -751,8 +1069,6 @@ function ns.OverviewPage(parent, ui)
             base = Collect(key, lvl, weekStart)
         end
         local live = ns.Ov.Live()
-        footer:SetText(base.short and "History through the last export, older sessions missing \194\183"
-            or "History through the last export \194\183")
 
         -- Header
         local _, classFile = UnitClass("player")
@@ -776,6 +1092,7 @@ function ns.OverviewPage(parent, ui)
         -- An hour at the cap: the page leads with max level data and the levelling moves down.
         local focus = base.capped and CapSeconds(base, live) >= FOCUS_SECONDS
         lvlPage:SetShown(not focus)
+        where:SetShown(focus)
         if maxPage then maxPage:SetShown(focus) end
         if focus then
             RefreshMax(base, live)
@@ -783,92 +1100,15 @@ function ns.OverviewPage(parent, ui)
             return
         end
 
-        -- Levelling work (bar, pace, estimates) runs only while the character levels (ns.Cap).
-        local levelling = ns.Cap.Levelling()
-        local xp, xpMax
-        if levelling then xp, xpMax = CNum(UnitXP("player")), CNum(UnitXPMax("player")) end
-        if xp and xpMax and xpMax > 0 then
-            local ratio = math.min(1, max(0, xp / xpMax))
-            barFill:SetWidth(max(1, ratio * (bar:GetWidth() or 0)))
-            local text = format("%d%% to %d", floor(ratio * 100), (lvl or 0) + 1)
-            if levelTime > 0 then
-                text = text .. " \194\183 " .. (wholeLevel and ("this level " .. Duration(levelTime) .. " so far")
-                    or (Duration(levelTime) .. " of this level recorded"))
-            end
-            progress:SetText(text)
-        else
-            barFill:SetWidth(1)
-            progress:SetText(levelTime > 0 and ((base.capped and "At max level " or "This level ") .. Duration(levelTime)
-                .. (wholeLevel and " so far" or " recorded")) or "")
-        end
-        if levelling then
-            ShowEta(base, live, clientLevel, xp, xpMax)
-        else
-            ShowEta(base, live, nil, nil, nil)
-        end
-
-        -- This week
-        local wp, wq, wg, ws, wr = base.wp, base.wq, base.wg, base.ws, base.wr
-        if live and N(live.t) >= base.weekStart then
-            wp, wq, wg, ws, wr = wp + N(live.p), wq + N(live.q), wg + N(live.g), ws + N(live.s), wr + N(live.r)
-        end
-        local net = wg - ws
-        week:Set(1, "Played", Duration(wp))
-        week:Set(2, "Quests", Num(wq))
-        week:Set(3, "Gold", net < 0 and ("-" .. Money(-net)) or ("+" .. Money(net)))
-        week:Set(4, "Dungeons", Num(wr))
-        week:Rows(4)
-
-        -- The level so far
-        local xk, xq, kills, dead = base.lxk, base.lxq, base.lk, base.ldd
-        if lv then
-            xk, xq = xk + N(lv.xk) + N(lv.xd), xq + N(lv.xq)
-            kills, dead = kills + N(lv.k), dead + N(lv.dd)
-        end
-        lvlCard.title:SetText(lvl and format(wholeLevel and "Level %d so far" or "Level %d, recorded part", lvl)
-            or "This level so far")
-        if base.capped then
-            lvlCard:Set(1, "Kills", Num(kills))
-            lvlCard:Set(2, "Deaths", Num(dead))
-            lvlCard:Rows(2)
-        else
-            lvlCard:Set(1, "XP from kills", Num(xk))
-            lvlCard:Set(2, "XP from quests", Num(xq))
-            lvlCard:Set(3, "Kills", Num(kills))
-            lvlCard:Set(4, "Deaths", Num(dead))
-            lvlCard:Rows(4)
-        end
-
-        -- Played with
-        local shown = 0
-        for i = 1, MATES do
-            if base.mn[i] then
-                shown = i
-                mates:Set(i, base.mn[i], Duration(base.mv[i]))
-            end
-        end
-        mates:Rows(shown, "No groups recorded")
-
-        -- Deaths: top zones
-        wipe(deathMap)
-        for zname, n in pairs(base.zd) do deathMap[zname] = n end
-        if live then
-            for zname, z in pairs(live.zn) do
-                if type(z) == "table" and N(z.dd) > 0 then deathMap[zname] = (deathMap[zname] or 0) + z.dd end
-            end
-        end
-        Top(deathMap, DEATHS, deathNames, deathVals)
-        shown = 0
-        for i = 1, DEATHS do
-            if deathNames[i] then
-                shown = i
-                deaths:Set(i, deathNames[i], Num(deathVals[i]))
-            end
-        end
-        deaths:Rows(shown, "No deaths recorded")
+        DrawHeader(key, lvl, clientLevel, zone, live, levelTime)
+        DrawWeek(live)
+        DrawFeats()
+        DrawLevel(lvl, lv, wholeLevel, live)
     end
 
-    -- A new look at the data when the page opens.
-    page:SetScript("OnShow", function() base = nil end)
+    page:SetScript("OnShow", function()
+        base, drawnFeats = nil, nil
+    end)
     return page
 end
+
