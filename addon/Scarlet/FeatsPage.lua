@@ -154,7 +154,7 @@ function ns.FeatsPage(parent, ui)
             GameTooltip:AddLine(f.name)
             GameTooltip:AddLine(CountText(f, info), T.muted[1], T.muted[2], T.muted[3])
             if account and f.account == "max" and info.holder then
-                GameTooltip:AddLine("Held by " .. info.holder, T.muted[1], T.muted[2], T.muted[3])
+                GameTooltip:AddLine("Held by " .. ns.DisplayName(info.holder), T.muted[1], T.muted[2], T.muted[3])
             end
             GameTooltip:Show()
         end)
@@ -303,7 +303,7 @@ function ns.FeatsPage(parent, ui)
         card.chip:Set(info.tier)
         local fresh = not account and ns.char and ns.char.featNew and ns.char.featNew[key]
         card.count:SetText(CountText(f, info) .. (fresh and fresh <= info.tier and " · new tier" or ""))
-        card.holder:SetText(account and f.account == "max" and info.holder and ("Held by " .. info.holder) or "")
+        card.holder:SetText(account and f.account == "max" and info.holder and ("Held by " .. ns.DisplayName(info.holder)) or "")
         local moves = Feats.Moves(f)
         local text = info.next and format("%s to %s", Num(info.left), tierName(info.tier + 1)) or "Highest tier held"
         card.left:SetText(text .. (moves and " ·" or ""))
@@ -401,7 +401,10 @@ function ns.FeatsPage(parent, ui)
     function page:Refresh()
         local stamp = Feats.Stamp()
         if built and drawn == stamp then return end
-        if not built then Layout() end
+        if not built then
+            if not Feats.Indexed() then return end
+            Layout()
+        end
         drawn = stamp
         Redraw()
         Thumb()

@@ -340,7 +340,7 @@ local function AccountOf(f, mine)
     local o = Others()[f.key]
     if f.account == "sum" then return (o and o.sum or 0) + mine, nil end
     if o and o.max > mine then return o.max, o.holder end
-    return mine, ns.charKey
+    return mine, mine > 0 and ns.charKey or nil
 end
 
 local function AccountInfoOf(f, value, holder)
@@ -359,6 +359,11 @@ function Feats.AccountInfo(key, mine)
     if not f or not f.account_thresholds then return end
     local value, holder = AccountOf(f, mine or Feats.Value(key))
     return AccountInfoOf(f, value, holder)
+end
+
+--- True once the catalog is indexed for this character's class, which Feats.Start does.
+function Feats.Indexed()
+    return indexed
 end
 
 --- The feats that have an account crest, in catalog order.

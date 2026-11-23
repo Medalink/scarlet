@@ -397,9 +397,40 @@ local function AwaySummary()
     Toast.Queue(item)
 end
 
---- Called at login, after the login message: feats the app counted while the player was away show as one plate.
+local function AccountAway()
+    if not Enabled() then return end
+    local db = ns.db
+    if not (db and type(db.accountSeen) == "table" and ns.Feats.HasAccount()) then return end
+    local fresh = {}
+    for _, f in ipairs(ns.Feats.AccountFeats()) do
+        local info = ns.Feats.AccountInfo(f.key)
+        local seen = db.accountSeen[f.key] or 0
+        if info and info.tier > seen then fresh[#fresh + 1] = { f = f, info = info, from = seen } end
+    end
+    if #fresh == 0 then return end
+    local top = fresh[1]
+    for _, e in ipairs(fresh) do
+        if e.info.tier > top.info.tier then top = e end
+        MarkAccount(e.f.key, e.info.tier)
+    end
+    local item = DescribeAccount(top.f, top.info, top.from)
+    if #fresh > 1 then
+        item.name = format("%d account feats", #fresh)
+        item.label = "Counted on your other characters"
+        item.chip = nil
+        item.detail = nil
+        item.progress = 0
+    end
+    Toast.Queue(item)
+end
+
+--- Called at login, after the login message: feats the app counted while the player was away show as one plate, and
+--- account tiers that other characters reached since this install last showed them as another.
 function Toast.Login()
-    C_Timer.After(AWAY_DELAY, AwaySummary)
+    C_Timer.After(AWAY_DELAY, function()
+        AwaySummary()
+        AccountAway()
+    end)
 end
 
 --- /scarlet feats test: two full plates and the folded line.
