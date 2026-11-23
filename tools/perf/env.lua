@@ -212,6 +212,7 @@ local function Define(version)
         GetAddOnEnableState = function() return 0 end,
     }
     _G.hooksecurefunc = noop
+    _G.CreateColor = function(r, g, b, a) return { r = r, g = g, b = b, a = a } end
     -- SavedVariables start empty (false, so the addon makes a new table, as on a first run).
     _G.ScarletDB, _G.ScarletAddonsDB = false, false
     _G.C_EventUtils = { IsEventValid = function() return true end }

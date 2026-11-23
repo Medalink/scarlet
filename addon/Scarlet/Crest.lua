@@ -26,12 +26,14 @@ for c = 1, 16 do
     UV[c] = { COL[c] / 4, (COL[c] + 1) / 4, ROW[c] / 4, (ROW[c] + 1) / 4 }
 end
 
-local S_SIDE, S_SIDE_FILL, S_RAYS_BACK, S_RAYS, S_RAYS_FILL, S_GAP, S_RING, S_RIM, S_INSET, S_FIELD, S_FILL, S_GLYPH,
-    S_BANNER_BACK, S_BANNER, S_BANNER_FILL, S_CROWN_BACK, S_CROWN, S_CROWN_FILL, S_GEM, S_FLASH =
-    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
-local SLOTS = 20
+local S_SIDE, S_SIDE_FILL, S_RAYS_BACK, S_RAYS, S_RAYS_FILL, S_GAP, S_RING, S_RIM, S_INSET, S_INNER, S_FIELD, S_FILL,
+    S_GLYPH, S_BANNER_BACK, S_BANNER, S_BANNER_FILL, S_BAND, S_CROWN_BACK, S_CROWN, S_CROWN_FILL, S_SETTING, S_GEM,
+    S_FLASH = 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23
+local SLOTS = 23
 
-local INK, WHITE = LOOK.ink, LOOK.white
+local INK, WHITE, CLEAR = LOOK.ink, LOOK.white, LOOK.clear
+local BAND, GEM_BOX, GEM_AT, GEM_SETTING = LOOK.band, LOOK.gemBox, LOOK.gemAt, LOOK.gemSetting
+local CREST_Y = 50
 local ATTACH = { "shield", "crown", "banner", "side", "rays" }
 local ATTACH_AT, ATTACH_SECONDS, FLASH_AT, FLASH_SECONDS, GHOST_SECONDS = 0, 0.32, 0.28, 0.42, 0.3
 
@@ -107,8 +109,28 @@ local function Make(f, i)
     if i == S_FLASH then t:SetBlendMode("ADD") end
     t.on, t.ag, t.moved, t.fin, t.k, t.cell, t.src, t.icon, t.gsize, t.gy, t.gen, t.ry = false, false, false, false, false,
         false, false, false, 0, 0, 0, 0
+    t.grad, t.lo, t.hi, t.box, t.bk, t.bc = false, false, false, false, 0, 0
     f.tx[i] = t
     return t
+end
+
+local function Flat(t, c, a)
+    if t.grad then
+        t.grad, t.lo, t.hi = false, false, false
+        t:SetGradient("VERTICAL", CLEAR, CLEAR)
+    end
+    t:SetVertexColor(c[1], c[2], c[3], a)
+end
+
+local function Grade(t, lo, hi)
+    if not t.grad then
+        t.grad = true
+        t:SetVertexColor(1, 1, 1, 1)
+    end
+    if t.lo ~= lo or t.hi ~= hi then
+        t.lo, t.hi = lo, hi
+        t:SetGradient("VERTICAL", lo, hi)
+    end
 end
 
 local function Use(f, t)
@@ -130,12 +152,45 @@ end
 local function Put(f, i, cell, k, c, a)
     local t = f.tx[i] or Make(f, i)
     if t.cell ~= cell then
-        t.cell = cell
+        t.cell, t.box = cell, false
         local uv = UV[cell]
         t:SetTexCoord(uv[1], uv[2], uv[3], uv[4])
     end
-    if t.k ~= k then Place(f, t, k) end
-    t:SetVertexColor(c[1], c[2], c[3], a)
+    if t.k ~= k then
+        Place(f, t, k)
+        t.box = false
+    end
+    Flat(t, c, a)
+    Use(f, t)
+    return t
+end
+
+local function Cut(f, i, cell, box, k, ay)
+    local t = f.tx[i] or Make(f, i)
+    if t.box ~= box or t.bk ~= k or t.bc ~= cell then
+        t.box, t.bk, t.bc = box, k, cell
+        local l, top, r, b = box[1], box[2], box[3], box[4]
+        local col, row, u = COL[cell], ROW[cell], f.u
+        t:SetTexCoord((col + l / 96) / 4, (col + r / 96) / 4, (row + top / 96) / 4, (row + b / 96) / 4)
+        t:SetSize((r - l) * k * u, (b - top) * k * u)
+        local y = ay + k * ((top + b) / 2 - ay)
+        t.ry = -f.off - (y - 48) * u
+        t:SetPoint("CENTER", f, "CENTER", (k * ((l + r) / 2 - 48)) * u, t.ry)
+        t.cell, t.k = false, false
+    end
+    return t
+end
+
+local function Made(f, i, cell, material)
+    local t = Cut(f, i, cell, BOX[cell], 1, CREST_Y)
+    Grade(t, material.lo, material.hi)
+    Use(f, t)
+    return t
+end
+
+local function Enamel(f, i, cell, k, pair)
+    local t = Cut(f, i, cell, BOX[cell], k, CREST_Y)
+    Grade(t, pair.lo, pair.hi)
     Use(f, t)
     return t
 end
@@ -158,8 +213,8 @@ local function Clip(f, i, cell, c, a)
     t:SetTexCoord((col + l / 96) / 4, (col + r / 96) / 4, (row + top / 96) / 4, (row + b / 96) / 4)
     t:SetSize((r - l) * u, (b - top) * u)
     t:SetPoint("CENTER", f, "CENTER", ((l + r) / 2 - 48) * u, -f.off - ((top + b) / 2 - 48) * u)
-    t:SetVertexColor(c[1], c[2], c[3], a)
-    t.cell, t.k = false, false
+    Flat(t, c, a)
+    t.cell, t.k, t.box = false, false, false
     Use(f, t)
     return t
 end
@@ -220,44 +275,47 @@ local function Draw(f, pending)
     local want = (tier < 5 and not tiny and not outline and not state) and ATTACH[tier + 1] or nil
     local shield, ring = SHIELD[scope], scope == "account"
     local settled = not (pending and tier == 4)
+    local from = settled and look or TIERS[tier - 1]
+    local mats = pending and tier == 5 and TIERS[4] or look
     f.gen, f.gn = f.gen + 1, 0
 
     if tier >= 4 and not compact and settled then
-        Put(f, S_SIDE, SIDE[scope], 1, look.side, 1)
+        Made(f, S_SIDE, SIDE[scope], look.side)
     elseif want == "side" and not compact then
         Ghost(f, S_SIDE, S_SIDE_FILL, SIDE[scope], coming.color, coming)
     end
     if tier == 5 and not compact and not pending then
         Put(f, S_RAYS_BACK, RAYS_BACK, 1, INK, 1)
-        Put(f, S_RAYS, RAYS, 1, look.rays, 1)
+        Made(f, S_RAYS, RAYS, look.rays)
     elseif want == "rays" and not compact then
         f.ghost[f.gn + 1] = Backed(f, S_RAYS_BACK, RAYS_BACK)
         f.gn = f.gn + 1
-        Ghost(f, S_RAYS, S_RAYS_FILL, RAYS, coming.rays, coming)
+        Ghost(f, S_RAYS, S_RAYS_FILL, RAYS, coming.rays.flat, coming)
     end
 
     if tier == 0 then
         local k = compact and 0.88 or 0.92
-        if ring then Put(f, S_RING, RING, 1, look.rim, LOOK.unearnedRim) end
-        Put(f, S_RIM, shield, 1, look.rim, LOOK.unearnedRim)
+        if ring then Put(f, S_RING, RING, 1, look.color, LOOK.unearnedRim) end
+        Put(f, S_RIM, shield, 1, look.color, LOOK.unearnedRim)
         Put(f, S_INSET, shield, k, INK, 1)
         if not tiny then
             Put(f, S_FIELD, shield, k, coming.color, f.p >= LOOK.nearAt and coming.near or 0)
             Clip(f, S_FILL, shield, coming.color, LOOK.unearnedFill)
         end
     else
+        local tinted = not tiny and from.field < 1
         if not compact then Put(f, S_GAP, shield, ring and 1.3 or 1.09, INK, 1) end
-        if ring then Put(f, S_RING, RING, 1, look.rim, 1) end
-        Put(f, S_RIM, shield, 1, look.rim, 1)
-        Put(f, S_INSET, shield, compact and 0.86 or 0.9, INK, 1)
+        if ring then Made(f, S_RING, RING, mats.frame) end
+        Made(f, S_RIM, shield, mats.frame)
+        Put(f, S_INSET, shield, compact and 0.86 or 0.9, tinted and look.color or INK, 1)
+        if tinted then Put(f, S_INNER, shield, compact and 0.78 or 0.85, INK, 1) end
         if not outline then
-            local from = settled and look or TIERS[tier - 1]
             if tiny then
-                Put(f, S_FIELD, shield, 0.8, look.color, from.plain)
+                Enamel(f, S_FIELD, shield, 0.8, look.enamel[from.plain])
             elseif from.field >= 1 then
-                Put(f, S_FIELD, shield, compact and 0.8 or 0.84, look.color, 1)
+                Enamel(f, S_FIELD, shield, compact and 0.8 or 0.84, look.enamel[1])
             else
-                Put(f, S_FIELD, shield, compact and 0.86 or 0.9, look.color, from.field)
+                Enamel(f, S_FIELD, shield, compact and 0.78 or 0.85, look.enamel[from.field])
             end
         end
     end
@@ -266,14 +324,17 @@ local function Draw(f, pending)
         local c, a = TIERS[0].glyph, LOOK.glyphAlpha
         if tier > 0 then
             a = 1
-            c = outline and look.rim or (settled and look or TIERS[tier - 1]).glyph
+            c = outline and look.color or from.glyph
         end
         PutGlyph(f, c, a, compact, tier)
     end
 
     if tier >= 3 and not (pending and tier == 3) then
         Backed(f, S_BANNER_BACK, BANNER_BACK)
-        Put(f, S_BANNER, BANNER, 1, look.color, 1)
+        Made(f, S_BANNER, BANNER, look.banner)
+        local band = Cut(f, S_BAND, BANNER, BAND, 1, CREST_Y)
+        Flat(band, look.color, 1)
+        Use(f, band)
     elseif want == "banner" then
         f.ghost[f.gn + 1] = Backed(f, S_BANNER_BACK, BANNER_BACK)
         f.gn = f.gn + 1
@@ -283,8 +344,11 @@ local function Draw(f, pending)
     if tier >= 2 and not (pending and tier == 2) then
         local great = tier == 5 and not pending
         Backed(f, S_CROWN_BACK, great and GREAT_BACK or CROWN_BACK)
-        Put(f, S_CROWN, great and GREAT or CROWN, 1, look.color, 1)
-        if great then Put(f, S_GEM, GEM, 1, look.gem, 1) end
+        Made(f, S_CROWN, great and GREAT or CROWN, mats.crown)
+        local setting = Cut(f, S_SETTING, GEM, GEM_BOX, GEM_SETTING, GEM_AT)
+        Flat(setting, INK, 1)
+        Use(f, setting)
+        Put(f, S_GEM, GEM, 1, look.gem, 1)
     elseif want == "crown" then
         f.ghost[f.gn + 1] = Backed(f, S_CROWN_BACK, CROWN_BACK)
         f.gn = f.gn + 1
@@ -330,7 +394,13 @@ end
 
 local function Grow(f, slot, sx, sy, secs)
     local t = f.tx[slot]
-    if t then Run(f, t, 0, 1, sx, sy, 0, secs, ATTACH_AT, "OUT") end
+    if not t then return end
+    local dy = (sy - 1) * (t.ry + f.off)
+    if dy ~= 0 then
+        t.moved = true
+        t:SetPoint("CENTER", f, "CENTER", 0, t.ry + dy)
+    end
+    Run(f, t, 0, 1, sx, sy, -dy, secs, ATTACH_AT, "OUT")
 end
 
 local Crest = {}
@@ -366,10 +436,13 @@ function Crest.Attach(f)
     elseif piece == "crown" then
         Slide(f, S_CROWN_BACK, 14 * u)
         Slide(f, S_CROWN, 14 * u)
+        Slide(f, S_SETTING, 14 * u)
+        Slide(f, S_GEM, 14 * u)
         Flash(f, CROWN)
     elseif piece == "banner" then
         Slide(f, S_BANNER_BACK, -12 * u)
         Slide(f, S_BANNER, -12 * u)
+        Slide(f, S_BAND, -12 * u)
         Flash(f, BANNER)
     elseif piece == "side" then
         Grow(f, S_SIDE, 0.35, 1, ATTACH_SECONDS)

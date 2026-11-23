@@ -535,7 +535,13 @@ function SCEN.feats(W, ns)
         for _, f in ipairs(Env.frames) do
             if f.kind == "Button" and f.scripts.OnClick then
                 for _, c in ipairs(Env.frames) do
-                    if c.parent == f and c.text == "Feats" then f.scripts.OnClick(f) return end
+                    if c.parent == f and c.text == "Feats" then
+                        f.scripts.OnClick(f)
+                        local n = 0
+                        for _, t in ipairs(Env.frames) do if t.kind == "Texture" then n = n + 1 end end
+                        print(("feats: %d textures when the page build returns"):format(n))
+                        return
+                    end
                 end
             end
         end
