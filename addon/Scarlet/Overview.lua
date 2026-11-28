@@ -307,16 +307,6 @@ local function Span(secs)
     return format("%dm", m)
 end
 
--- "Fri 28 Nov", with the year when it is not this year.
-local function DateText(ts, now)
-    local t = date("*t", ts)
-    if not t then return end
-    local text = format("%s %d %s", date("%a", ts), t.day, date("%b", ts))
-    local this = date("*t", now)
-    if this and this.year ~= t.year then text = text .. " " .. t.year end
-    return text
-end
-
 -- Everything that does not change while the window is open: the digest's sessions up to
 -- `through`, the addon's closed rows after it. The open session is added on each refresh.
 local function Collect(key, lvl, weekStart, ch)
@@ -462,7 +452,7 @@ function ns.CapEstimate(key, lvl, xp, xpMax, live)
     local oldest = b.first or (b.rows[#b.rows] and b.rows[#b.rows].t) or (live and N(live.t)) or now
     local rate = DayPlayed(b.rows, live, held, now) / min(DAY_WINDOW, max(1, (now - oldest) / 86400))
     local when
-    if rate > 0 and secs / rate <= MAX_DAYS then when = DateText(floor(now + secs / rate * 86400), now) end
+    if rate > 0 and secs / rate <= MAX_DAYS then when = ns.Day(floor(now + secs / rate * 86400), true) end
     return lvl, secs, when, cap
 end
 
@@ -664,7 +654,7 @@ function ns.OverviewPage(parent, ui)
                     local secs = SecondsTo(lvl, xp, xpMax, targets[i])
                     local when
                     if rate > 0 and secs / rate <= MAX_DAYS then
-                        when = DateText(floor(now + secs / rate * 86400), now)
+                        when = ns.Day(floor(now + secs / rate * 86400), true)
                     end
                     etaLevel[i]:SetText("Level " .. targets[i])
                     etaTime[i]:SetText(Span(secs))
@@ -714,9 +704,23 @@ function ns.OverviewPage(parent, ui)
         c.empty:SetPoint("TOPLEFT", 14, -36)
         c.empty:Hide()
         -- Row i shows label and value; rows after the last one given are cleared.
-        function c:Set(i, label, value)
+        c.hot, c.tipAt = {}, {}
+        function c:Set(i, label, value, tipAt)
             self.left[i]:SetText(label or "")
             self.right[i]:SetText(value or "")
+            self.tipAt[i] = tipAt
+            if tipAt and not self.hot[i] then
+                local hot = CreateFrame("Frame", nil, self)
+                hot:SetPoint("TOPLEFT", 14, -36 - (i - 1) * ROW_H)
+                hot:SetPoint("TOPRIGHT", -14, -36 - (i - 1) * ROW_H)
+                hot:SetHeight(ROW_H)
+                hot:EnableMouse(true)
+                hot:SetScript("OnEnter", function(frame)
+                    if self.tipAt[i] then ns.ShowExact(frame, self.tipAt[i], false, "ANCHOR_BOTTOM") end
+                end)
+                hot:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                self.hot[i] = hot
+            end
         end
         function c:Rows(count, emptyText)
             for i = count + 1, ROWS do self:Set(i) end
@@ -807,7 +811,8 @@ function ns.OverviewPage(parent, ui)
         local reached = N(x.reached)
         if reached == 0 and type(capDing) == "table" then reached = N(capDing.t) end
         m.atMax:Set(1, reached > 0 and "Time at max level" or "Recorded at max level", Duration(secs))
-        m.atMax:Set(2, "Reached", reached > 0 and date("%d %b %Y", reached) or "Before recording")
+        m.atMax:Set(2, "Reached", reached > 0 and ns.Day(reached) or "Before recording",
+            reached > 0 and reached or nil)
         m.atMax:Set(3, "Item level", N(x.ilvl) > 0 and Num(x.ilvl) or "")
         m.atMax:Set(4, "Items looted", Num(N(x.loot)))
         m.atMax:Rows(4)
