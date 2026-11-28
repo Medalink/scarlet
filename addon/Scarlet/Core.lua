@@ -482,16 +482,19 @@ function Ov.Join(start, closedT)
     return true
 end
 
---- Whether a load that began at t belongs to a session a reload split: one closed, or the one still open.
+local SAME_KEY_SECS = 3
+
+--- Whether a load that began at t belongs to a session a reload split: one closed, or the one still open. t may be
+--- the app's key for the load, which is within SAME_KEY_SECS of the row's.
 function Ov.InJoined(t)
     if type(t) ~= "number" then return false end
-    if sessionOrigin and t >= sessionOrigin then return true end
+    if sessionOrigin and t >= sessionOrigin - SAME_KEY_SECS then return true end
     local sess = ov and ov.sess
     if type(sess) ~= "table" then return false end
     for i = 1, #sess do
         local row = sess[i]
         if type(row) == "table" and type(row.o) == "number" and type(row.t) == "number"
-            and t >= row.o and t <= row.t then
+            and t >= row.o - SAME_KEY_SECS and t <= row.t + SAME_KEY_SECS then
             return true
         end
     end
