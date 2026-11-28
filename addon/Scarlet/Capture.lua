@@ -1604,17 +1604,23 @@ end
 
 local function ResumeSession(isReloadingUi)
     local saved = TakeResume()
-    if isReloadingUi ~= true or not saved then return end
-    if not (Recap.Fits(saved.recap) and ns.SessFits(saved.sess) and Ov.Join(saved.o, saved.row)) then return end
+    if isReloadingUi ~= true or not saved then return false end
+    if not (Recap.Fits(saved.recap) and ns.SessFits(saved.sess) and Ov.Join(saved.o, saved.row)) then return false end
     Recap.Resume(saved.recap)
     ns.RestoreSess(saved.sess)
     if ns.char and (saved.last == nil or type(saved.last) == "table") then ns.char.last = saved.last end
     if ns.Feats then ns.Feats.Resume(saved.feats) end
     if ns.Summary then ns.Summary.Resume(saved.summary) end
+    local nudge = ns.UI and ns.UI.Nudge
+    if nudge then nudge.Resume(saved.nudge) end
+    return true
 end
 
 function H.PLAYER_ENTERING_WORLD(_, isReloadingUi)
-    if not entered then ResumeSession(isReloadingUi) end
+    if not entered then
+        local resumed = ResumeSession(isReloadingUi)
+        if ns.OnEnter then ns.OnEnter(resumed) end
+    end
     Zone()
     EnsureLogging()
     if not entered then
@@ -1659,7 +1665,8 @@ function H.PLAYER_LOGOUT()
     if ns.db then
         ns.db.resume = rowT and { c = ns.charKey, at = time(), g = GetTime(), row = rowT, o = sessionStart,
             last = lastBefore, recap = Recap.Suspend(), feats = ns.Feats and ns.Feats.Suspend() or nil,
-            summary = ns.Summary and ns.Summary.Suspend() or nil, sess = ns.sess } or nil
+            summary = ns.Summary and ns.Summary.Suspend() or nil,
+            nudge = ns.UI and ns.UI.Nudge and ns.UI.Nudge.Suspend() or nil, sess = ns.sess } or nil
     end
 end
 

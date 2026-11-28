@@ -1138,14 +1138,19 @@ function ns.OnLogin()
     BuildIcon()
     RefreshIcon()
     if ns.Gather and ns.Gather.Init then ns.Gather.Init(ns.UI) end
-    local last = ns.opt.chat and ns.Summary and ns.Summary.LoginLine()
     if ns.FeatToast then ns.FeatToast.Login() end
-    local news = ns.db.seenVersion ~= ns.VERSION
-    ns.db.seenVersion = ns.VERSION
-    if news or last then Toast(last) end
     if ns.opt.chat then
         ns.Print((ns.opt.paused and "is paused" or "is recording") .. ". |cffff6b8e/scarlet|r opens the window.")
     end
+end
+
+--- The first entering of the world, once a reload has been told apart: the "Last session" line and toast are left
+--- out when the session carried on, the news toast shows on every load.
+function ns.OnEnter(resumed)
+    local last = not resumed and ns.opt.chat and ns.Summary and ns.Summary.LoginLine()
+    local news = ns.db.seenVersion ~= ns.VERSION
+    ns.db.seenVersion = ns.VERSION
+    if news or last then Toast(last or nil) end
 end
 
 -- Profile report ----------------------------------------------------------------------

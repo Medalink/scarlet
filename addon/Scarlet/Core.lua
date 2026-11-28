@@ -448,6 +448,9 @@ local function JoinLoads(rows, start)
     local whole = {}
     for i = 1, #rows do SumInto(whole, rows[i]) end
     local first, last = rows[1], rows[#rows]
+    local zones = 0
+    for _ in pairs(whole.zn or {}) do zones = zones + 1 end
+    whole.z = zones
     whole.t, whole.o, whole.l0, whole.l1, whole.m, whole.last = start, start, first.l0, last.l1, last.m, last.last
     return whole
 end
@@ -477,6 +480,38 @@ function Ov.Join(start, closedT)
     if last.t ~= closedT or start > closedT or (last.o ~= nil and last.o ~= start) then return false end
     last.o, cur.o, sessionOrigin = start, start, start
     return true
+end
+
+--- Whether a load that began at t belongs to a session a reload split: one closed, or the one still open.
+function Ov.InJoined(t)
+    if type(t) ~= "number" then return false end
+    if sessionOrigin and t >= sessionOrigin then return true end
+    local sess = ov and ov.sess
+    if type(sess) ~= "table" then return false end
+    for i = 1, #sess do
+        local row = sess[i]
+        if type(row) == "table" and type(row.o) == "number" and type(row.t) == "number"
+            and t >= row.o and t <= row.t then
+            return true
+        end
+    end
+    return false
+end
+
+--- Fills out with the row keys of the loads a reload closed before the open one in this session, and returns how many.
+function Ov.PriorLoads(out)
+    local n = 0
+    local sess = sessionOrigin and ov and ov.sess
+    if sess then
+        for i = #sess, 1, -1 do
+            local row = sess[i]
+            if type(row) ~= "table" or row.o ~= sessionOrigin then break end
+            n = n + 1
+            out[n] = row.t
+        end
+    end
+    for i = #out, n + 1, -1 do out[i] = nil end
+    return n
 end
 
 --- Seconds played in the whole session: the open row and the loads a reload closed before it. Allocates nothing.

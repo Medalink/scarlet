@@ -2,7 +2,7 @@ local _, ns = ...
 
 if not ns.Feats then return end
 
-local format, ceil = string.format, math.ceil
+local format, ceil, floor = string.format, math.ceil, math.floor
 
 local Nudge = {}
 ns.UI.Nudge = Nudge
@@ -12,7 +12,21 @@ local CLOSE_SECONDS, CLOSE_COUNT = 180, 5
 local SPACING, BUDGET, QUIET_LOGIN, QUIET_TOAST = 900, 3, 60, 60
 
 local plate
-local lastAt, shown = nil, 0
+local lastAt, shown, loginG = nil, 0, nil
+
+--- The nudge budget, spacing and login quiet window of the session, which SavedVariables keep across a reload.
+function Nudge.Suspend()
+    return { lastAt = lastAt, shown = shown, loginG = loginG or ns.sessionG }
+end
+
+function Nudge.Resume(saved)
+    if type(saved) ~= "table" then return end
+    local now = GetTime()
+    local function Past(v) return type(v) == "number" and v == v and v <= now end
+    if Past(saved.lastAt) then lastAt = saved.lastAt end
+    if type(saved.shown) == "number" and saved.shown >= 0 and saved.shown <= BUDGET then shown = floor(saved.shown) end
+    if Past(saved.loginG) then loginG = saved.loginG end
+end
 
 local function Build()
     local ui = ns.UI
@@ -51,7 +65,8 @@ local function Reason(f, tier, now)
     if lastAt and now - lastAt < SPACING then return "the last nudge was under 15 minutes ago" end
     if shown >= BUDGET then return "3 nudges already this session" end
     if ns.Alerts.Quiet() then return "combat, an encounter or a cinematic" end
-    if ns.sessionG and GetTime() - ns.sessionG < QUIET_LOGIN then return "the first minute after login" end
+    local from = loginG or ns.sessionG
+    if from and GetTime() - from < QUIET_LOGIN then return "the first minute after login" end
     if ns.UI.WindowOpen() then return "the Scarlet window is open" end
     if ns.FeatToast and now - ns.FeatToast.LastAt() < QUIET_TOAST then return "a feat toast just showed" end
     if plate and plate:IsShown() then return "a nudge is on screen" end

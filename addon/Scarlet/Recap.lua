@@ -464,22 +464,28 @@ local function FromApp()
     return type(list) == "table" and list or nil
 end
 
---- The last closed session: the copy the addon saved, or the app's when that one is newer or the same.
+--- The last closed session: the copy the addon saved, or the app's when that one is newer or the same. The app builds
+--- one recap per load, so the ones inside a session a reload joined are left to the addon's own.
 function Recap.Last()
     local saved = ns.char and type(ns.char.last) == "table" and ns.char.last or nil
     local app = FromApp()
-    local newest = app and app[1]
-    if type(newest) == "table" and type(newest.start) == "number" and type(newest.played) == "number"
-        and (not saved or newest.start >= (saved.start or 0)) then
-        return newest
+    if app then
+        for i = 1, #app do
+            local r = app[i]
+            if type(r) == "table" and type(r.start) == "number" and type(r.played) == "number"
+                and not ns.Ov.InJoined(r.start) then
+                if not saved or r.start >= (saved.start or 0) then return r end
+                break
+            end
+        end
     end
     return saved
 end
 
---- The app's recap for the session that began at start, or nil.
+--- The app's recap for the session that began at start, or nil. None for a load of a session a reload joined.
 function Recap.FromApp(start)
     local list = FromApp()
-    if not list then return nil end
+    if not list or ns.Ov.InJoined(start) then return nil end
     for i = 1, #list do
         if list[i].start == start then return list[i] end
     end
