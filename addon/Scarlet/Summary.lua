@@ -118,7 +118,7 @@ function Summary.ChipText(recap)
 end
 
 local function ShowChip()
-    local row = ns.Ov and ns.Ov.Live()
+    local row = ns.Ov and ns.Ov.Whole()
     if not row or chipFor == row.t then return end
     if (row.p or 0) < CHIP_MIN_PLAYED or ((row.k or 0) < CHIP_MIN_KILLS and (row.q or 0) < CHIP_MIN_QUESTS) then return end
     local recap = ns.Recap.View()
@@ -177,7 +177,7 @@ function Summary.CardTotals(recap)
 end
 
 local function ShowCard()
-    local row = ns.Ov and ns.Ov.Live()
+    local row = ns.Ov and ns.Ov.Whole()
     if not row or cardFor == row.t or (row.p or 0) < CARD_MIN_PLAYED then return end
     local recap = ns.Recap.View()
     if not recap then return end

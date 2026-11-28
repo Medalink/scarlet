@@ -619,6 +619,30 @@ function Feats.Start(t)
     end
 end
 
+--- The tiers the session started from and the ones it reached, which SavedVariables keep across a reload.
+function Feats.Suspend()
+    return { tier0 = tier0, changed = changed }
+end
+
+--- After a reload, the session's tiers carry on past Feats.Start: the ones it began with, the ones it reached.
+function Feats.Resume(saved)
+    if type(saved) ~= "table" then return end
+    if type(saved.tier0) == "table" then
+        for key, tier in pairs(saved.tier0) do
+            if byKey[key] and type(tier) == "number" then tier0[key] = tier end
+        end
+    end
+    if type(saved.changed) == "table" then
+        for key, c in pairs(saved.changed) do
+            if byKey[key] and type(c) == "table" and type(c.from) == "number" and type(c.tier) == "number"
+                and type(c.at) == "number" and type(c.value) == "number" then
+                changed[key] = { key = key, from = c.from, tier = c.tier, at = c.at, value = c.value }
+                known[key] = max(known[key] or 0, c.tier)
+            end
+        end
+    end
+end
+
 local function GatedSeconds(f, played)
     local gate = f.live.gate
     if gate ~= "spec" and gate ~= "role" then return played end

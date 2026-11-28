@@ -36,6 +36,64 @@ function Recap.Start(wall)
     Touch()
 end
 
+--- The open session's chart and route, which SavedVariables keep across a reload for Recap.Resume.
+function Recap.Suspend()
+    return S
+end
+
+local function Numbers(list, n)
+    if type(list) ~= "table" then return false end
+    for i = 1, n do
+        if type(list[i]) ~= "number" then return false end
+    end
+    return true
+end
+
+local function Entries(list, max, check)
+    if type(list) ~= "table" or #list > max then return false end
+    for i = 1, #list do
+        if type(list[i]) ~= "table" or not check(list[i]) then return false end
+    end
+    return true
+end
+
+local function ZoneStretch(z)
+    return type(z.name) == "string" and type(z.at) == "number" and (z.secs == nil or type(z.secs) == "number")
+end
+
+local function LevelMark(l)
+    return type(l.level) == "number" and type(l.at) == "number"
+end
+
+local function MomentMark(m)
+    return type(m.at) == "number" and type(m.kind) == "string" and type(m.text) == "string"
+end
+
+--- Whether st is a session Recap.Start made and a reload saved, begun before now.
+function Recap.Fits(st)
+    if type(st) ~= "table" then return false end
+    local n, buckets = st.n, st.buckets
+    if type(st.wall) ~= "number" or type(st.g0) ~= "number" or st.g0 > GetTime() then return false end
+    if type(st.secs) ~= "number" or st.secs <= 0 or type(st.step2) ~= "number" then return false end
+    if type(n) ~= "number" or n < 0 or n > RING_MAX or n ~= floor(n) then return false end
+    if type(buckets) ~= "number" or buckets < 0 or buckets > BUCKETS_MAX or buckets ~= floor(buckets) then return false end
+    if not (Numbers(st.xp, buckets) and Numbers(st.combat, buckets) and Numbers(st.rx, n) and Numbers(st.ry, n)
+        and Numbers(st.rt, n)) or type(st.ri) ~= "table" or type(st.ra) ~= "table" then
+        return false
+    end
+    return Entries(st.zones, ZONES_MAX, ZoneStretch) and Entries(st.levels, BUCKETS_MAX, LevelMark)
+        and Entries(st.moments, MOMENTS_MAX, MomentMark)
+end
+
+--- The session a reload interrupted carries on in place of the one Recap.Start just made. False, with that one
+--- kept, when st does not fit.
+function Recap.Resume(st)
+    if not Recap.Fits(st) then return false end
+    S, view = st, nil
+    Touch()
+    return true
+end
+
 local function Fold(st)
     local xp, combat = st.xp, st.combat
     for i = 1, BUCKETS_MAX / 2 do
@@ -234,13 +292,14 @@ local BEST_OF = {
 
 local earlier = {}
 
+local closed = {}
+
 local function EarlierRows(before)
-    local rows = ns.char and ns.char.ov and ns.char.ov.sess
     for i = #earlier, 1, -1 do earlier[i] = nil end
-    if type(rows) ~= "table" then return earlier end
-    for i = #rows, 1, -1 do
-        local r = rows[i]
-        if type(r) == "table" and type(r.t) == "number" and r.t < before and (r.p or 0) >= LONG_ENOUGH then
+    ns.Ov.Sessions(closed)
+    for i = 1, #closed do
+        local r = closed[i]
+        if r.t < before and (r.p or 0) >= LONG_ENOUGH then
             earlier[#earlier + 1] = r
             if #earlier >= SESSIONS_COMPARED then break end
         end
@@ -390,7 +449,7 @@ function Recap.View()
     local st = S
     if not st or not ns.Ov then return nil end
     if view and view.stamp == stamp and view.at == floor(GetTime()) then return view.recap end
-    local row = ns.Ov.Live()
+    local row = ns.Ov.Whole()
     if not row then return nil end
     local now = GetTime() - st.g0
     local recap = Compose(row, Counters(ns.sess), st, now, true)
@@ -436,11 +495,5 @@ end
 
 --- The closed session rows, newest first.
 function Recap.Earlier(out)
-    for i = #out, 1, -1 do out[i] = nil end
-    local rows = ns.char and ns.char.ov and ns.char.ov.sess
-    if type(rows) ~= "table" then return out end
-    for i = #rows, 1, -1 do
-        if type(rows[i]) == "table" and type(rows[i].t) == "number" then out[#out + 1] = rows[i] end
-    end
-    return out
+    return ns.Ov.Sessions(out)
 end

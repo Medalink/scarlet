@@ -365,6 +365,7 @@ local zoneN                            -- zones with a split in the open row
 local seen = {}                        -- distinct zone names in the open row
 local readAt, readTotal, credited       -- the latest /played read of the open session (epoch s, total), whether its start was credited
 local holed
+local sessionOrigin
 local GAP_SECS, XP_GAP_DIV, DING_READ = 120, 50, 1800
 
 local function Bump(t, k, n) t[k] = (t[k] or 0) + n end
@@ -429,9 +430,56 @@ end
 
 local function Active() return cur ~= nil and not ns.opt.paused end
 
--- The session starts: t is the S line's time. A row left open by a session that never closed
--- (an error in the logout handler) is closed first, with what it has.
-function Ov.Start(t, lv, money, xp, xpMax)
+local function SumInto(dst, src)
+    for k, v in pairs(src) do
+        local kind = type(v)
+        if kind == "number" then
+            dst[k] = (dst[k] or 0) + v
+        elseif kind == "table" then
+            if type(dst[k]) ~= "table" then dst[k] = {} end
+            SumInto(dst[k], v)
+        elseif v == true then
+            dst[k] = true
+        end
+    end
+end
+
+local function JoinLoads(rows, start)
+    local whole = {}
+    for i = 1, #rows do SumInto(whole, rows[i]) end
+    local first, last = rows[1], rows[#rows]
+    whole.t, whole.o, whole.l0, whole.l1, whole.m, whole.last = start, start, first.l0, last.l1, last.m, last.last
+    return whole
+end
+
+local function ClosedLoadsOf(start)
+    local rows, sess = {}, ov and ov.sess
+    if type(sess) == "table" then
+        local i = #sess
+        while i >= 1 and type(sess[i]) == "table" and sess[i].o == start do i = i - 1 end
+        for j = i + 1, #sess do rows[#rows + 1] = sess[j] end
+    end
+    return rows
+end
+
+--- True when the last closed row is a load of the session that began at start, which a reload interrupted.
+function Ov.Joinable(start)
+    local ch = ns.char
+    local sess = ch and type(ch.ov) == "table" and ch.ov.sess
+    local last = type(sess) == "table" and sess[#sess]
+    return type(start) == "number" and type(last) == "table" and last.o == start and type(last.t) == "number"
+end
+
+--- The session's start: its first load's time after reloads, else the open row's.
+function Ov.Origin()
+    return sessionOrigin
+end
+
+--- The session starts: t is the S line's time. A row left open by a session that never closed
+--- (an error in the logout handler) is closed first, with what it has. after is the start of the
+--- session a reload interrupted, which this load continues (Ov.Joinable); the loads keep their own
+--- rows, and Ov.Whole and Ov.Sessions put them together.
+function Ov.Start(t, lv, money, xp, xpMax, after)
     local ch = ns.char
     if not ch then return end
     if type(ch.ov) ~= "table" then ch.ov = {} end
@@ -462,7 +510,8 @@ function Ov.Start(t, lv, money, xp, xpMax)
         end
         if ahead then MarkHole(prev.l1, lv) end
     end
-    cur = { t = t, p = 0, l0 = lv, l1 = lv, m = money, z = 0, lv = {}, zn = {} }
+    sessionOrigin = type(after) == "number" and after or nil
+    cur = { t = t, p = 0, l0 = lv, l1 = lv, m = money, z = 0, lv = {}, zn = {}, o = sessionOrigin }
     holed = ahead
     ov.cur = cur
     readAt, readTotal, credited = nil, nil, false
@@ -472,8 +521,9 @@ function Ov.Start(t, lv, money, xp, xpMax)
     if ns.Feats then ns.Feats.Start(t) end
 end
 
--- The session ends (logout or reload).
-function Ov.End(xp, xpMax)
+--- The load ends. At a logout the session ends with it: its recap is sealed. At a reload (reloading) the row is
+--- closed and tagged with the session's start, and nothing is sealed, so the next load can continue it.
+function Ov.End(xp, xpMax, reloading)
     if not cur then return end
     Tick()
     cur.l1 = level or cur.l1
@@ -485,17 +535,82 @@ function Ov.End(xp, xpMax)
     else
         ov.pe = nil
     end
-    ns.Recap.Seal(cur)
+    if reloading then
+        sessionOrigin = sessionOrigin or cur.t
+        cur.o = sessionOrigin
+    else
+        ns.Recap.Seal(Ov.Whole())
+    end
     Push(cur)
     ov.cur, cur = nil, nil
     -- Logging out inside a dungeon leaves it; coming back within RUN_GAP is the same run.
     if type(ov.run) == "table" and ov.run.left == nil then ov.run.left = time() end
 end
 
--- The open row after adding the time up to now, for the window. nil before login.
+--- The open row after adding the time up to now, for the window. nil before login. After a reload this is
+--- the load's own row, which is what the digest the app writes holds a session by.
 function Ov.Live()
     if cur then Tick() end
     return cur
+end
+
+--- The session as one row: the open row with the loads a reload closed before it. The open row itself when
+--- there were none. A new table each time.
+function Ov.Whole()
+    local live = Ov.Live()
+    if not live or not sessionOrigin then return live end
+    local rows = ClosedLoadsOf(sessionOrigin)
+    if rows[#rows] == live then rows[#rows] = nil end
+    if #rows == 0 then return live end
+    rows[#rows + 1] = live
+    return JoinLoads(rows, sessionOrigin)
+end
+
+--- Fills out with the closed sessions, newest first, a session a reload split being one row. The open session is left out.
+function Ov.Sessions(out)
+    for i = #out, 1, -1 do out[i] = nil end
+    local ch = ns.char
+    local sess = ch and type(ch.ov) == "table" and ch.ov.sess
+    if type(sess) ~= "table" then return out end
+    local i = #sess
+    while i >= 1 do
+        local row = sess[i]
+        if type(row) ~= "table" or type(row.t) ~= "number" then
+            i = i - 1
+        elseif type(row.o) ~= "number" then
+            out[#out + 1] = row
+            i = i - 1
+        else
+            local group, start = {}, row.o
+            while i >= 1 and type(sess[i]) == "table" and sess[i].o == start do
+                table.insert(group, 1, sess[i])
+                i = i - 1
+            end
+            if start ~= sessionOrigin then out[#out + 1] = JoinLoads(group, start) end
+        end
+    end
+    return out
+end
+
+local function IsCount(v)
+    return type(v) == "number" and v == v and v >= 0
+end
+
+--- Whether saved holds the session's counters a reload kept: a table whose counters are all counts or absent.
+function ns.SessFits(saved)
+    if type(saved) ~= "table" then return false end
+    for _, k in ipairs(ns.STAT_KEYS) do
+        local v = saved[k]
+        if v ~= nil and not IsCount(v) then return false end
+    end
+    return true
+end
+
+--- Puts the counters of the session back after a reload (ns.SessFits).
+function ns.RestoreSess(saved)
+    for _, k in ipairs(ns.STAT_KEYS) do
+        if IsCount(saved[k]) then ns.sess[k] = saved[k] end
+    end
 end
 
 -- A /played read (TP): the client keeps counting through a reload, which the rows do not cover. The
