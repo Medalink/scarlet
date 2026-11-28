@@ -27,12 +27,6 @@ The WoW Forever addon that records what a character does. [README.md](README.md)
   Blizzard), the addons whose data Scarlet records or reads prices from (`docs/ADDONS.md`, "Imported history" in
   `docs/FORMAT.md`, the Loot HUD's price sources in the README), OpenMap, and the sites it publishes to (CurseForge, Wago,
   GitHub).
-- A backslash in a script passed inline through the Bash tool on medaviper can arrive changed: a doubled backslash
-  arrives as one, so an escape meant as text is read by the script's language as a control character (Python reads
-  `\0` as a NUL). On 2026-11-22 this put a NUL into `scripts/deploy/ring-entry.sh` in scarlet-web, which shipped and made
-  git show the file as binary while `sh -n` still passed. Write any script or patch that holds a backslash with the file
-  Write tool, then run it. Scan an edited script for control bytes, and read a diff with `git diff --text` when git says
-  Bin.
 - The beta UI rebuild is on the branch `feat/beta-ui-parity-rebuild` and stays off main until the owner says in so many
   words to ship the rebuild (held since 2026-11-23). Push that branch only: no `ship`, no merge into main, no deploy of
   it. Approval of how one part looks is not approval to ship. The ship that lands the rebuild deletes this bullet.
