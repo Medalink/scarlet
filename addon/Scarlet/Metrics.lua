@@ -153,8 +153,24 @@ local function SkillScan()
     if not ok or not Num(n) then return end
     local base = not skills
     skills = skills or {}
+    local header
+    local function FlushHeader()
+        if header then
+            local cats = {}
+            for c in pairs(header.cats) do cats[#cats + 1] = c end
+            table.sort(cats)
+            Emit("SV", header.name, header.open and 0 or 1, table.concat(cats, ","))
+            header = nil
+        end
+    end
     for i = 1, n do
         local okI, a = pcall(SI.GetSkillLineInfo, i)
+        if base and okI and type(a) == "table" and Plain(a.isHeader) and a.isHeader then
+            FlushHeader()
+            header = { name = Str(a.name) or "", open = Plain(a.isCollapsed) and a.isCollapsed == false, cats = {} }
+        elseif base and header and okI and type(a) == "table" and Num(a.skillID) and Num(a.skillLineCategoryID) then
+            header.cats[a.skillLineCategoryID] = true
+        end
         if okI and type(a) == "table" and Num(a.skillID) and not (Plain(a.isHeader) and a.isHeader) then
             local id = a.skillID
             local rank, max, mod = Num(a.rank) or "", Num(a.maxRank) or "", Num(a.modifier) or ""
@@ -169,6 +185,7 @@ local function SkillScan()
             end
         end
     end
+    FlushHeader()
 end
 
 function H.SKILL_LINES_CHANGED()
