@@ -25,8 +25,9 @@ put back. At a login the saved state is dropped. The window adds the rows with o
 (key `o`); the rows and the digest stay per load. The companion builds one recap per load, so "Last session"
 and an Earlier row skip its recaps for the loads of a joined session and show the addon's own recap of the
 whole session; a joined session before the last has none. A reload that joins shows no "Last session" line
-or toast. A client that sends no flag counts every load as a login. `o` and `resume` are the addon's: the
-companion does not write or read them.
+or toast. A client that sends no flag counts every load as a login. The companion reads a row's `o` and keeps
+it, so its session feats count the loads of a joined session as one session, as the addon does; it never
+writes `o`, and `resume` is the addon's alone.
 
 ## Counting rules
 

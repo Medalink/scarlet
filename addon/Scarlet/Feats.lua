@@ -194,11 +194,22 @@ local function IsPriorLoad(t, prior)
     return false
 end
 
-local function PriorLoadCountedAlone(ch, prior, at)
+local function Through()
+    local file = FileChar()
+    return (file and tonumber(file.through) or 0) + ns.Ov.SAME_KEY_SECS
+end
+
+local function SessionCounted(ch, prior, at)
+    local through, filed = Through(), 0
     for i = 1, prior do
-        if ch.live[priorKeys[i]] == nil and priorSecs[i] >= at then return true end
+        local t, secs = priorKeys[i], priorSecs[i]
+        if t <= through then
+            filed = filed + secs
+        elseif ch.live[t] == nil and secs >= at then
+            return true
+        end
     end
-    return false
+    return filed >= at
 end
 
 local function OnceCount(f)
@@ -208,7 +219,7 @@ local function OnceCount(f)
     for t, e in pairs(ch.live) do
         if e ~= cur and not IsPriorLoad(t, prior) and (e.secs or 0) >= at and GateHolds(f, e.spec) then n = n + 1 end
     end
-    if cur and GateHolds(f, cur.spec) and not PriorLoadCountedAlone(ch, prior, at)
+    if cur and GateHolds(f, cur.spec) and not SessionCounted(ch, prior, at)
         and max(cur.secs or 0, ns.Ov.WholeSeconds()) >= at then
         n = n + 1
     end
@@ -596,8 +607,8 @@ function Feats.Start(t)
     ch.liveBase = base
     base.secs, base.c, base.once = base.secs or {}, base.c or {}, base.once or {}
     local file = FileChar()
-    local through = file and tonumber(file.through) or 0
-    if through > 0 then
+    if file and (tonumber(file.through) or 0) > 0 then
+        local through = Through()
         for key in pairs(live) do
             if key <= through then live[key] = nil end
         end
