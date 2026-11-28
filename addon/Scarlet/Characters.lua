@@ -276,12 +276,7 @@ function ns.CharactersPage(parent, ui)
 
     local function Ago(t, now, live)
         if live then return "Now" end
-        if t <= 0 then return "" end
-        local s = now - t
-        if s < 3600 then return format("%dm ago", max(1, floor(s / 60))) end
-        if s < 86400 then return format("%dh ago", floor(s / 3600)) end
-        if s < 30 * 86400 then return format("%dd ago", floor(s / 86400)) end
-        return date("%d %b %Y", t)
+        return ns.Ago(t, now)
     end
 
     local function Tint(fs, class, fallback)
@@ -346,6 +341,11 @@ function ns.CharactersPage(parent, ui)
             cols[j] = fs
         end
         line = { frame = f, cols = cols, wash = wash }
+        f:EnableMouse(true)
+        f:SetScript("OnEnter", function(self)
+            if line.tipAt then ns.ShowExact(self, line.tipAt, line.tipUtc, "ANCHOR_BOTTOM") end
+        end)
+        f:SetScript("OnLeave", function() GameTooltip:Hide() end)
         sec.rows[i] = line
         return line
     end
@@ -402,6 +402,7 @@ function ns.CharactersPage(parent, ui)
         line.frame:Show()
         Below(line.frame, ROW_H)
         line.wash:Hide()
+        line.tipAt, line.tipUtc = nil, nil
         for j = 1, #sec.spec do line.cols[j]:SetText("") end
         if label then
             line.cols[1]:SetText(label)
@@ -462,8 +463,8 @@ function ns.CharactersPage(parent, ui)
         local live = ns.Ov.Live()
         local weekStart = ns.WeekStart()
         local level, money = CNum(UnitLevel("player")) or 0, CNum(GetMoney()) or 0
-        local sig = format("%d:%d:%d:%d:%s:%d", floor(N(live and live.p) / 15), money, level, #rows, query,
-            query ~= "" and floor(GetTime() / 5) or 0)
+        local sig = format("%d:%d:%d:%d:%s:%d:%d", floor(N(live and live.p) / 15), money, level, #rows, query,
+            query ~= "" and floor(GetTime() / 5) or 0, floor(time() / 30))
         if not force and sig == stamp then return end
         stamp = sig
         local now = time()
@@ -557,6 +558,7 @@ function ns.CharactersPage(parent, ui)
             c[at + 3]:SetText(Ago(r.last, now, r.live))
             c[at + 4]:SetText(s.money and Money(s.money) or "")
             line.wash:SetShown(r.live)
+            if not r.live and r.last > 0 then line.tipAt = r.last end
         end
         for i = #listSec.rows, count + 1, -1 do listSec.rows[i].frame:Hide() end
         Close(listSec, count)
@@ -615,12 +617,14 @@ function ns.CharactersPage(parent, ui)
         if #pairsList > 0 then
             Open(togetherSec)
             for i, p in ipairs(pairsList) do
-                local c = Place(togetherSec, i).cols
+                local line = Place(togetherSec, i)
+                local c = line.cols
                 c[1]:SetText(ns.DisplayName(p.a))
                 c[2]:SetText(ns.DisplayName(p.b))
                 c[3]:SetText(p.o > 0 and Duration(p.o) or "")
                 c[4]:SetText(p.p > 0 and Duration(p.p) or "")
                 c[5]:SetText(Ago(p.last, now, false))
+                if p.last > 0 then line.tipAt = p.last end
             end
             Close(togetherSec, #pairsList)
         else
@@ -654,8 +658,10 @@ function ns.CharactersPage(parent, ui)
             for _, d in ipairs(days) do
                 if type(d) == "table" and shownDays < IMPORTED_DAYS_SHOWN then
                     shownDays = shownDays + 1
-                    local c = Place(impDaysSec, shownDays).cols
-                    c[1]:SetText(date("!%d %b", N(d.d)))
+                    local line = Place(impDaysSec, shownDays)
+                    local c = line.cols
+                    c[1]:SetText(ns.Day(N(d.d), false, true))
+                    if N(d.d) > 0 then line.tipAt, line.tipUtc = N(d.d), true end
                     c[2]:SetText(Num(N(d.sold)))
                     c[3]:SetText(Money(N(d.sold_copper)))
                     c[4]:SetText(Num(N(d.bought)))
@@ -696,8 +702,10 @@ function ns.CharactersPage(parent, ui)
                 local g = gold[i]
                 if type(g) == "table" and shownGold < IMPORTED_GOLD_SHOWN then
                     shownGold = shownGold + 1
-                    local c = Place(impGoldSec, shownGold).cols
-                    c[1]:SetText(date("!%d %b", N(g.t)))
+                    local line = Place(impGoldSec, shownGold)
+                    local c = line.cols
+                    c[1]:SetText(ns.Day(N(g.t), false, true))
+                    if N(g.t) > 0 then line.tipAt, line.tipUtc = N(g.t), true end
                     c[2]:SetText(Money(N(g.m)))
                 end
             end
