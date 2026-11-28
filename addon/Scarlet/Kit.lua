@@ -49,9 +49,7 @@ local function Rect(parent, layer, sub)
     return function() return Fill(parent, T.fg, 1, layer or "ARTWORK", sub) end
 end
 
-local function Clock(t)
-    return date("%H:%M", t)
-end
+local Clock = ns.Clock
 
 function UI.Tile(parent, w, h)
     local f = CreateFrame("Frame", nil, parent)
@@ -514,8 +512,8 @@ function UI.Strip(parent, w, h, compact)
             t1:SetJustifyH("RIGHT")
             local hour = 3600
             local first = recap.start + (hour - recap.start % hour) % hour
-            for t = first, recap.start + span - 480, hour do
-                if t - recap.start > 840 then Label(X(t - recap.start) - 14, h - 13, date("%H", t) .. ":00") end
+            for t = first, recap.start + span - 720, hour do
+                if t - recap.start > 1200 then Label(X(t - recap.start) - 14, h - 13, ns.Hour(t)) end
             end
         end
         rects.Finish()
