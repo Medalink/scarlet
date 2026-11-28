@@ -15,6 +15,19 @@ Rows are keyed by the session's start, `t`, in epoch seconds: the `S` line's tim
 companion side, `time()` when the addon writes `S`. Two keys within 3 seconds are the same
 session.
 
+**Reloads.** Every load, a login or a `/reload`, writes `S` and `ES` and one row, so these rows and the
+digest count per load. The in-game window shows a reload as the same session. At every logout the addon
+seals the recap and leaves the live state (the counters, the recap's chart and route, the feat tiers, the
+summary chip, the nudge budget and quiet window) in `ScarletDB.resume`. At a load's first `PLAYER_ENTERING_WORLD` the client says whether it
+is a reload (`isReloadingUi`): then, for the same character within 5 minutes, the load joins the session:
+the last closed row and its own row get `o`, the key of the session's first load, and the saved state is
+put back. At a login the saved state is dropped. The window adds the rows with one `o` into one session
+(key `o`); the rows and the digest stay per load. The companion builds one recap per load, so "Last session"
+and an Earlier row skip its recaps for the loads of a joined session and show the addon's own recap of the
+whole session; a joined session before the last has none. A reload that joins shows no "Last session" line
+or toast. A client that sends no flag counts every load as a login. `o` and `resume` are the addon's: the
+companion does not write or read them.
+
 ## Counting rules
 
 These hold on both sides, so the companion can check the addon's rows against its own.

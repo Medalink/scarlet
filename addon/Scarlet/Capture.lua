@@ -1550,6 +1550,18 @@ local function EnsureLogging()
     end
 end
 
+local RESUME_WITHIN = 300
+
+local function TakeResume()
+    local db = ns.db
+    local saved = db and db.resume
+    if db then db.resume = nil end
+    if type(saved) ~= "table" or saved.c ~= ns.charKey or type(saved.at) ~= "number" then return nil end
+    local gap = time() - saved.at
+    if gap < 0 or gap > RESUME_WITHIN or type(saved.g) ~= "number" or saved.g > GetTime() then return nil end
+    return saved
+end
+
 function H.ADDON_LOADED(name)
     if name ~= ADDON then return end
     frame:UnregisterEvent("ADDON_LOADED")
@@ -1590,7 +1602,25 @@ function H.PLAYER_LOGIN()
     if ns.OnLogin then ns.OnLogin() end
 end
 
-function H.PLAYER_ENTERING_WORLD()
+local function ResumeSession(isReloadingUi)
+    local saved = TakeResume()
+    if isReloadingUi ~= true or not saved then return false end
+    if not (Recap.Fits(saved.recap) and ns.SessFits(saved.sess) and Ov.Join(saved.o, saved.row)) then return false end
+    Recap.Resume(saved.recap)
+    ns.RestoreSess(saved.sess)
+    if ns.char and (saved.last == nil or type(saved.last) == "table") then ns.char.last = saved.last end
+    if ns.Feats then ns.Feats.Resume(saved.feats) end
+    if ns.Summary then ns.Summary.Resume(saved.summary) end
+    local nudge = ns.UI and ns.UI.Nudge
+    if nudge then nudge.Resume(saved.nudge) end
+    return true
+end
+
+function H.PLAYER_ENTERING_WORLD(_, isReloadingUi)
+    if not entered then
+        local resumed = ResumeSession(isReloadingUi)
+        if ns.OnEnter then ns.OnEnter(resumed) end
+    end
     Zone()
     EnsureLogging()
     if not entered then
@@ -1611,6 +1641,8 @@ function H.PLAYER_LOGOUT()
     while xpPending[1] do FlushXP(table.remove(xpPending, 1)) end
     local xpNow, xpMaxNow
     if ns.Cap.Levelling() then xpNow, xpMaxNow = Num(UnitXP("player")), Num(UnitXPMax("player")) end
+    local rowT, sessionStart = Ov.OpenKeys()
+    local lastBefore = ns.char and ns.char.last
     Ov.End(xpNow, xpMaxNow)
     EndSegment()
     StopTicker()
@@ -1630,6 +1662,12 @@ function H.PLAYER_LOGOUT()
     Emit("ES")
     if ns.sessionG then Add("tracked", GetTime() - ns.sessionG) end
     ns.Seal(true)
+    if ns.db then
+        ns.db.resume = rowT and { c = ns.charKey, at = time(), g = GetTime(), row = rowT, o = sessionStart,
+            last = lastBefore, recap = Recap.Suspend(), feats = ns.Feats and ns.Feats.Suspend() or nil,
+            summary = ns.Summary and ns.Summary.Suspend() or nil,
+            nudge = ns.UI and ns.UI.Nudge and ns.UI.Nudge.Suspend() or nil, sess = ns.sess } or nil
+    end
 end
 
 -- Registration ----------------------------------------------------------------------

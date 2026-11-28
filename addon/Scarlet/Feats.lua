@@ -619,37 +619,92 @@ function Feats.Start(t)
     end
 end
 
-local function GatedSeconds(f, played)
-    local gate = f.live.gate
-    if gate ~= "spec" and gate ~= "role" then return played end
+--- The tiers the session started from, the ones it reached and the feats it moved, which SavedVariables keep across a reload.
+function Feats.Suspend()
+    local moved = {}
+    for f in pairs(touched) do moved[#moved + 1] = f.key end
+    return { tier0 = tier0, changed = changed, touched = moved }
+end
+
+--- After a reload, the session's tiers and moved feats carry on past Feats.Start.
+function Feats.Resume(saved)
+    if type(saved) ~= "table" then return end
+    if type(saved.touched) == "table" then
+        for i = 1, #saved.touched do
+            local f = byKey[saved.touched[i]]
+            if f then touched[f] = true end
+        end
+    end
+    if type(saved.tier0) == "table" then
+        for key, tier in pairs(saved.tier0) do
+            if byKey[key] and type(tier) == "number" then tier0[key] = tier end
+        end
+    end
+    if type(saved.changed) == "table" then
+        for key, c in pairs(saved.changed) do
+            if byKey[key] and type(c) == "table" and type(c.from) == "number" and type(c.tier) == "number"
+                and type(c.at) == "number" and type(c.value) == "number" then
+                changed[key] = { key = key, from = c.from, tier = c.tier, at = c.at, value = c.value }
+                known[key] = max(known[key] or 0, c.tier)
+            end
+        end
+    end
+end
+
+local priorKeys = {}
+
+local function SpecSeconds(f, sp)
     local total = 0
-    for spec, secs in pairs(cur.sp) do
+    for spec, secs in pairs(sp) do
         if GateHolds(f, spec ~= "?" and spec or nil) then total = total + secs end
     end
     return total
 end
 
-local function Delta(f, played)
+local function GatedSeconds(f)
+    local gate = f.live.gate
+    if gate ~= "spec" and gate ~= "role" then return ns.Ov.WholeSeconds() end
+    local total = SpecSeconds(f, cur.sp)
+    local live = ns.char.live
+    for i = 1, ns.Ov.PriorLoads(priorKeys) do
+        local e = live[priorKeys[i]]
+        if type(e) == "table" and type(e.sp) == "table" then total = total + SpecSeconds(f, e.sp) end
+    end
+    return total
+end
+
+local function SessionTally(key)
+    local n = cur.c[key] or 0
+    local live = ns.char.live
+    for i = 1, ns.Ov.PriorLoads(priorKeys) do
+        local e = live[priorKeys[i]]
+        if type(e) == "table" and type(e.c) == "table" then n = n + (e.c[key] or 0) end
+    end
+    return n
+end
+
+local function Delta(f)
     local live = f.live
     local kind, per = live.kind, live.per or 1
     if kind == "counter" then
-        if live.gate == "spec" or live.gate == "role" then return (cur.c[f.key] or 0) / per, GatedSeconds(f, played) end
-        return Sum(ns.sess, live.keys) / per, played
+        if live.gate == "spec" or live.gate == "role" then return SessionTally(f.key) / per, GatedSeconds(f) end
+        return Sum(ns.sess, live.keys) / per, ns.Ov.WholeSeconds()
     elseif kind == "cast" then
-        return cur.c[f.key] or 0, GatedSeconds(f, played)
+        return SessionTally(f.key), GatedSeconds(f)
     elseif kind == "clock" and not live.once_at then
-        local secs = GatedSeconds(f, played)
+        local secs = GatedSeconds(f)
         return secs / per, secs
     end
 end
 
 --- Units a feat has gained each second its gate held this session, once five minutes are played; nil before that.
+--- A session a reload joined counts as one.
 function Feats.Pace(f)
     if not cur then return nil end
-    local played = Played()
-    if played < PACE_MIN_PLAYED then return nil end
+    Played()
+    if ns.Ov.WholeSeconds() < PACE_MIN_PLAYED then return nil end
     local delta, secs = nil, nil
-    if f.live then delta, secs = Delta(f, played) end
+    if f.live then delta, secs = Delta(f) end
     if delta and delta > 0 and secs > 0 then return delta / secs end
 end
 
@@ -657,14 +712,15 @@ end
 function Feats.Changes()
     local out = { earned = {}, near = {} }
     if not cur then return out end
-    local played = Played()
+    Played()
+    local played = ns.Ov.WholeSeconds()
     for key, c in pairs(changed) do
         out.earned[#out.earned + 1] = { key = key, from = c.from, tier = c.tier, at = c.at, value = c.value }
     end
     table.sort(out.earned, function(a, b) return a.at < b.at end)
     local near = {}
     for f in pairs(touched) do
-        local delta, gated = Delta(f, played)
+        local delta, gated = Delta(f)
         if delta and delta > 0 and (played >= PACE_MIN_PLAYED or f.live.kind ~= "clock") then
             local value = Feats.Value(f.key)
             local tier = TierOf(f, value)

@@ -30,6 +30,7 @@ ScarletDB = {
   ["bufT"] = 1763600123,        -- time base of buf; bufC and bufS hold its character and session
   ["gaps"] = { { from = 3, to = 9, at = 1763600999 } },  -- chunk numbers dropped for space
   ["chars"] = { ... },          -- lifetime counters for the in-game window; the companion ignores it
+  ["resume"] = { ... },         -- the live session the last logout left for a /reload to carry on, deleted when the next load reads it; the companion ignores it
   ["opt"] = { ... },            -- settings; the companion ignores it
   ["prices"] = { [2447] = 85 }, -- last auction unit price in copper per item ID (at most 2000), for the Loot HUD; the companion ignores it
 }
