@@ -185,11 +185,32 @@ local function ClockSeconds(f)
     return total
 end
 
+local priorKeys, priorSecs = {}, {}
+
+local function IsPriorLoad(t, prior)
+    for i = 1, prior do
+        if priorKeys[i] == t then return true end
+    end
+    return false
+end
+
+local function PriorLoadCountedAlone(ch, prior, at)
+    for i = 1, prior do
+        if ch.live[priorKeys[i]] == nil and priorSecs[i] >= at then return true end
+    end
+    return false
+end
+
 local function OnceCount(f)
     local ch, n = ns.char, 0
     local at = f.live.once_at
-    for _, e in pairs(ch.live) do
-        if (e.secs or 0) >= at and GateHolds(f, e.spec) then n = n + 1 end
+    local prior = cur and ns.Ov.PriorLoads(priorKeys, priorSecs) or 0
+    for t, e in pairs(ch.live) do
+        if e ~= cur and not IsPriorLoad(t, prior) and (e.secs or 0) >= at and GateHolds(f, e.spec) then n = n + 1 end
+    end
+    if cur and GateHolds(f, cur.spec) and not PriorLoadCountedAlone(ch, prior, at)
+        and max(cur.secs or 0, ns.Ov.WholeSeconds()) >= at then
+        n = n + 1
     end
     return n + (ch.liveBase.once[tostring(at)] or 0)
 end
@@ -650,8 +671,6 @@ function Feats.Resume(saved)
         end
     end
 end
-
-local priorKeys = {}
 
 local function SpecSeconds(f, sp)
     local total = 0

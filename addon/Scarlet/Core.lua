@@ -499,7 +499,8 @@ function Ov.InJoined(t)
 end
 
 --- Fills out with the row keys of the loads a reload closed before the open one in this session, and returns how many.
-function Ov.PriorLoads(out)
+--- secs, when given, gets each of those loads' own seconds played at the same index.
+function Ov.PriorLoads(out, secs)
     local n = 0
     local sess = sessionOrigin and ov and ov.sess
     if sess then
@@ -508,9 +509,13 @@ function Ov.PriorLoads(out)
             if type(row) ~= "table" or row.o ~= sessionOrigin then break end
             n = n + 1
             out[n] = row.t
+            if secs then secs[n] = tonumber(row.p) or 0 end
         end
     end
     for i = #out, n + 1, -1 do out[i] = nil end
+    if secs then
+        for i = #secs, n + 1, -1 do secs[i] = nil end
+    end
     return n
 end
 
