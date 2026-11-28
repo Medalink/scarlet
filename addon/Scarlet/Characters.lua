@@ -4,6 +4,10 @@ local floor, format, max, min = math.floor, string.format, math.max, math.min
 local lower, find = string.lower, string.find
 local Plain = ns.Plain
 
+local PAGE_W, TAB_ROW = 655, 40
+local CHAR_TABS = { { key = "characters", label = "Characters" }, { key = "estimates", label = "Estimates" },
+    { key = "imported", label = "Imported" } }
+local CHAR_TAB = { characters = true, estimates = true, imported = true }
 local ROW_H, HEAD_H, SECTION_GAP, STAT_H = 26, 20, 30, 62
 local TITLE_H = 36
 
@@ -54,7 +58,7 @@ local IMPORTED_ITEMS = {
     { x = 470, w = 100, just = "RIGHT" }, { x = 580, w = 75, just = "RIGHT" },
 }
 local IMPORTED_GOLD = { { x = 0, w = 180 }, { x = 190, w = 180, just = "RIGHT" } }
-local MIN_QUERY, MAX_HITS, BOX_H = 2, 40, 28
+local MIN_QUERY, MAX_HITS, BOX_H = 2, 100, 28
 local IMPORTED_DAYS_SHOWN, IMPORTED_ITEMS_SHOWN, IMPORTED_GOLD_SHOWN = 14, 12, 14
 
 local imported = {}
@@ -265,53 +269,31 @@ local function Find(query)
     return hits
 end
 
-function ns.CharactersPage(parent, ui)
-    local T, Fill, Hair, Text, Border = ui.T, ui.Fill, ui.Hair, ui.Text, ui.Border
-    local Num, Money, Duration = ui.Num, ui.Money, ui.Duration
+local function Tint(fs, class, fallback)
+    local c = class and _G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[class]
+    if c then fs:SetTextColor(c.r, c.g, c.b) else fs:SetTextColor(fallback[1], fallback[2], fallback[3]) end
+end
 
-    local function Signed(copper)
-        if copper < 0 then return "-" .. Money(-copper) end
-        return "+" .. Money(copper)
+local function ClassOf(key)
+    if key == ns.charKey then
+        local _, class = UnitClass("player")
+        if CStr(class) then return class end
     end
+    local d = _G.ScarletDigest
+    local c = type(d) == "table" and type(d.chars) == "table" and d.chars[key]
+    return type(c) == "table" and c.class or nil
+end
 
-    local function Ago(t, now, live)
-        if live then return "Now" end
-        return ns.Ago(t, now)
-    end
+local function Flow(ui, child)
+    local T, Fill, Hair, Text = ui.T, ui.Fill, ui.Hair, ui.Text
+    local flow = { y = 0 }
 
-    local function Tint(fs, class, fallback)
-        local c = class and _G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[class]
-        if c then fs:SetTextColor(c.r, c.g, c.b) else fs:SetTextColor(fallback[1], fallback[2], fallback[3]) end
-    end
-
-    local page = CreateFrame("ScrollFrame", nil, parent)
-    page:SetAllPoints()
-    local child = CreateFrame("Frame", nil, page)
-    child:SetSize(1, 1)
-    page:SetScrollChild(child)
-    page:EnableMouseWheel(true)
-    page:SetScript("OnMouseWheel", function(self, delta)
-        local top = max(0, child:GetHeight() - self:GetHeight())
-        self:SetVerticalScroll(math.min(top, max(0, self:GetVerticalScroll() - delta * ROW_H * 2)))
-    end)
-    page:SetScript("OnSizeChanged", function(_, w) child:SetWidth(w) end)
-
-    local cells = {}
-    for i, label in ipairs({ "Characters", "Played", "Gold" }) do
-        local cell = CreateFrame("Frame", nil, child)
-        cell:SetHeight(STAT_H)
-        cell.value = Text(cell, 32, T.fg, "LEFT", "display")
-        cell.value:SetPoint("TOPLEFT", 0, 0)
-        cell.label = Text(cell, 13, T.muted)
-        cell.label:SetPoint("TOPLEFT", 0, -38)
-        cell.label:SetText(label)
-        cells[i] = cell
-    end
-
-    local function Section(title, spec, labels)
+    function flow.Section(title, spec, labels)
         local sec = { spec = spec, rows = {} }
-        sec.title = Text(child, 24, T.fg, "LEFT", "display")
-        sec.title:SetText(title)
+        if title then
+            sec.title = Text(child, 24, T.fg, "LEFT", "display")
+            sec.title:SetText(title)
+        end
         sec.head = CreateFrame("Frame", nil, child)
         sec.head:SetHeight(HEAD_H)
         for i, label in ipairs(labels) do
@@ -350,57 +332,27 @@ function ns.CharactersPage(parent, ui)
         return line
     end
 
-    local charSec = Section("Character list", CHARS, { "Character", "Level", "Zone", "Played", "Last played", "Gold" })
-    local charAccountSec = Section("Character list", CHARS_ACCOUNT,
-        { "Character", "Game account", "Level", "Zone", "Played", "Last played", "Gold" })
-    local weekSec = Section("This week", WEEK, { "Character", "Played", "Quests", "Gold", "Dungeons" })
-    local etaSec = Section("Level estimates", ETA, { "Character", "Level", "Time", "Date" })
-    local togetherSec = Section("Played together", TOGETHER,
-        { "Character", "Character", "Online together", "Grouped", "Last" })
-    local findSec = Section("Item search", ITEMS, { "Item", "Character", "Bags", "Bank" })
-    local impSec = Section("Imported history", IMPORTED,
-        { "Character", "Source", "Sales", "Sold for", "Purchases", "Bought for" })
-    local impDaysSec = Section("Imported sales by day", IMPORTED_DAYS, { "Day", "Sold", "Sold for", "Bought", "Bought for" })
-    local impItemsSec = Section("Imported item prices", IMPORTED_ITEMS, { "Item", "Sold", "Lowest", "Highest", "Bought" })
-    local impGoldSec = Section("Imported gold by day", IMPORTED_GOLD, { "Day", "Gold at the end of the day" })
-
-    local query = ""
-    local box = CreateFrame("Frame", nil, child)
-    box:SetSize(320, BOX_H)
-    Fill(box, T.panel):SetAllPoints()
-    Border(box, T.line2)
-    local edit = CreateFrame("EditBox", nil, box)
-    edit:SetPoint("TOPLEFT", 8, 0)
-    edit:SetPoint("BOTTOMRIGHT", -8, 0)
-    edit:SetAutoFocus(false)
-    edit:SetMaxLetters(40)
-    ui.SetFont(edit, ui.Face("body"), 13)
-    edit:SetTextColor(T.fg[1], T.fg[2], T.fg[3])
-    edit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-    edit:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
-
-    local y
-    local function Below(frame, gap)
+    function flow.Below(frame, gap)
         frame:ClearAllPoints()
-        frame:SetPoint("TOPLEFT", 0, y)
-        frame:SetPoint("TOPRIGHT", 0, y)
-        y = y - gap
+        frame:SetPoint("TOPLEFT", 0, flow.y)
+        frame:SetPoint("TOPRIGHT", 0, flow.y)
+        flow.y = flow.y - gap
     end
 
-    local function Open(sec)
+    function flow.Open(sec)
         sec.title:ClearAllPoints()
-        sec.title:SetPoint("TOPLEFT", 0, y)
+        sec.title:SetPoint("TOPLEFT", 0, flow.y)
         sec.title:Show()
-        y = y - TITLE_H
+        flow.y = flow.y - TITLE_H
         sec.head:Show()
-        Below(sec.head, HEAD_H)
+        flow.Below(sec.head, HEAD_H)
         sec.empty:Hide()
     end
 
-    local function Place(sec, i, label)
+    function flow.Place(sec, i, label)
         local line = Line(sec, i)
         line.frame:Show()
-        Below(line.frame, ROW_H)
+        flow.Below(line.frame, ROW_H)
         line.wash:Hide()
         line.tipAt, line.tipUtc = nil, nil
         for j = 1, #sec.spec do line.cols[j]:SetText("") end
@@ -413,23 +365,84 @@ function ns.CharactersPage(parent, ui)
         return line
     end
 
-    local function Close(sec, n, emptyText)
+    function flow.Close(sec, n, emptyText)
         if n == 0 and emptyText then
             sec.empty:ClearAllPoints()
-            sec.empty:SetPoint("TOPLEFT", 0, y)
+            sec.empty:SetPoint("TOPLEFT", 0, flow.y)
             sec.empty:SetText(emptyText)
             sec.empty:Show()
-            y = y - ROW_H
+            flow.y = flow.y - ROW_H
         end
-        y = y - SECTION_GAP
+        flow.y = flow.y - SECTION_GAP
     end
 
-    local function Hide(sec)
-        sec.title:Hide()
+    function flow.Hide(sec)
+        if sec.title then sec.title:Hide() end
         sec.head:Hide()
         sec.empty:Hide()
         for _, line in ipairs(sec.rows) do line.frame:Hide() end
     end
+
+    return flow
+end
+
+function ns.CharactersPage(parent, ui)
+    local T, Text = ui.T, ui.Text
+    local Num, Money, Duration = ui.Num, ui.Money, ui.Duration
+
+    local function Signed(copper)
+        if copper < 0 then return "-" .. Money(-copper) end
+        return "+" .. Money(copper)
+    end
+
+    local function Ago(t, now, live)
+        if live then return "Now" end
+        return ns.Ago(t, now)
+    end
+
+    local page = CreateFrame("Frame", nil, parent)
+    page:SetAllPoints()
+    local tab = "characters"
+    local tabs = ui.Tabs(page, CHAR_TABS, function(key) page:Open(key) end)
+    tabs:SetPoint("TOPLEFT")
+    local scroll, child = ui.Scroll(page, ROW_H * 2)
+    scroll:SetPoint("TOPLEFT", 0, -TAB_ROW)
+    scroll:SetPoint("BOTTOMRIGHT")
+
+    local flow = Flow(ui, child)
+    local Section, Open, Place, Close, Hide = flow.Section, flow.Open, flow.Place, flow.Close, flow.Hide
+
+    local cells = {}
+    for i, label in ipairs({ "Characters", "Played", "Gold" }) do
+        local cell = CreateFrame("Frame", nil, child)
+        cell:SetHeight(STAT_H)
+        cell.value = Text(cell, 32, T.fg, "LEFT", "display")
+        cell.value:SetPoint("TOPLEFT", 0, 0)
+        cell.label = Text(cell, 13, T.muted)
+        cell.label:SetPoint("TOPLEFT", 0, -38)
+        cell.label:SetText(label)
+        cells[i] = cell
+    end
+
+    local charSec = Section("Character list", CHARS, { "Character", "Level", "Zone", "Played", "Last played", "Gold" })
+    local charAccountSec = Section("Character list", CHARS_ACCOUNT,
+        { "Character", "Game account", "Level", "Zone", "Played", "Last played", "Gold" })
+    local weekSec = Section("This week", WEEK, { "Character", "Played", "Quests", "Gold", "Dungeons" })
+    local etaSec = Section("Level estimates", ETA, { "Character", "Level", "Time", "Date" })
+    local togetherSec = Section("Played together", TOGETHER,
+        { "Character", "Character", "Online together", "Grouped", "Last" })
+    local impSec = Section("Imported history", IMPORTED,
+        { "Character", "Source", "Sales", "Sold for", "Purchases", "Bought for" })
+    local impDaysSec = Section("Imported sales by day", IMPORTED_DAYS, { "Day", "Sold", "Sold for", "Bought", "Bought for" })
+    local impItemsSec = Section("Imported item prices", IMPORTED_ITEMS, { "Item", "Sold", "Lowest", "Highest", "Bought" })
+    local impGoldSec = Section("Imported gold by day", IMPORTED_GOLD, { "Day", "Gold at the end of the day" })
+    local note = Text(child, 14, T.muted)
+
+    local sectionsOf = {
+        characters = { charSec, charAccountSec, weekSec },
+        estimates = { etaSec, togetherSec },
+        imported = { impSec, impDaysSec, impItemsSec, impGoldSec },
+    }
 
     local shown = {}
 
@@ -458,72 +471,24 @@ function ns.CharactersPage(parent, ui)
         return s
     end
 
-    local stamp
-    local function Draw(force)
-        local live = ns.Ov.Live()
-        local weekStart = ns.WeekStart()
-        local level, money = CNum(UnitLevel("player")) or 0, CNum(GetMoney()) or 0
-        local sig = format("%d:%d:%d:%d:%s:%d:%d", floor(N(live and live.p) / 15), money, level, #rows, query,
-            query ~= "" and floor(GetTime() / 5) or 0, floor(time() / 30))
-        if not force and sig == stamp then return end
-        stamp = sig
-        local now = time()
-        for _, r in ipairs(rows) do
-            if r.live and r.etaLevel ~= level then Estimate(r) end
-        end
-
+    local function DrawCharacters(list, now)
         local n, played, gold = #rows, 0, 0
-        local list = {}
-        for i, r in ipairs(rows) do
-            list[i] = Show(r, live, weekStart)
+        for i = 1, n do
             if list[i].known then played = played + list[i].played end
             gold = gold + N(list[i].money)
         end
         cells[1].value:SetText(Num(n))
         cells[2].value:SetText(Duration(played))
         cells[3].value:SetText(Money(gold))
-        local cw = floor(page:GetWidth() / 3)
+        local width = scroll:GetWidth()
+        local cw = floor((width and width > 1 and width or PAGE_W) / 3)
         for i, cell in ipairs(cells) do
             cell:ClearAllPoints()
             cell:SetPoint("TOPLEFT", (i - 1) * cw, 0)
             cell:SetWidth(cw)
+            cell:Show()
         end
-        y = -(STAT_H + SECTION_GAP)
-
-        findSec.title:ClearAllPoints()
-        findSec.title:SetPoint("TOPLEFT", 0, y)
-        findSec.title:Show()
-        y = y - TITLE_H
-        box:ClearAllPoints()
-        box:SetPoint("TOPLEFT", 0, y)
-        y = y - BOX_H - 14
-        local hits = #query >= MIN_QUERY and Find(query) or nil
-        local found = 0
-        findSec.empty:Hide()
-        if hits and #hits > 0 then
-            findSec.head:Show()
-            Below(findSec.head, HEAD_H)
-            local classOf = {}
-            for i, r in ipairs(rows) do classOf[r.key] = list[i].class end
-            for i = 1, min(#hits, MAX_HITS) do
-                local h = hits[i]
-                found = found + 1
-                local c = Place(findSec, found).cols
-                c[1]:SetText(h.name)
-                c[2]:SetText(ns.DisplayName(h.key))
-                Tint(c[2], classOf[h.key], T.fg)
-                c[3]:SetText(h.bags > 0 and Num(h.bags) or "")
-                c[4]:SetText(h.bank > 0 and Num(h.bank) or "")
-            end
-            if #hits > MAX_HITS then
-                found = found + 1
-                Place(findSec, found, format("Showing %d of %d", MAX_HITS, #hits))
-            end
-        else
-            findSec.head:Hide()
-        end
-        for i = #findSec.rows, found + 1, -1 do findSec.rows[i].frame:Hide() end
-        Close(findSec, found, hits and "No items match" or nil)
+        flow.y = -(STAT_H + SECTION_GAP)
 
         local withAccount = severalAccounts and not grouped
         local listSec, unusedSec = charSec, charAccountSec
@@ -592,7 +557,9 @@ function ns.CharactersPage(parent, ui)
         end
         for i = #weekSec.rows, week + 1, -1 do weekSec.rows[i].frame:Hide() end
         Close(weekSec, week, "No play recorded this week")
+    end
 
+    local function DrawEstimates(list, now)
         local etas = {}
         for i, r in ipairs(rows) do
             if r.eta then etas[#etas + 1] = { r = r, s = list[i] } end
@@ -609,6 +576,7 @@ function ns.CharactersPage(parent, ui)
                 c[3]:SetText(Span(eta.secs))
                 c[4]:SetText(eta.when and ("about " .. eta.when) or "")
             end
+            for i = #etaSec.rows, #etas + 1, -1 do etaSec.rows[i].frame:Hide() end
             Close(etaSec, #etas)
         else
             Hide(etaSec)
@@ -626,111 +594,248 @@ function ns.CharactersPage(parent, ui)
                 c[5]:SetText(Ago(p.last, now, false))
                 if p.last > 0 then line.tipAt = p.last end
             end
+            for i = #togetherSec.rows, #pairsList + 1, -1 do togetherSec.rows[i].frame:Hide() end
             Close(togetherSec, #pairsList)
         else
             Hide(togetherSec)
         end
-        if #imported > 0 then
-            local pick = imported[1]
-            for _, e in ipairs(imported) do
-                if e.key == ns.charKey then pick = e end
-            end
-            local v = pick.v
-            local source = table.concat(v.sources, " and ")
-            impSec.title:SetText("Imported from " .. source)
-            Open(impSec)
-            for i, e in ipairs(imported) do
-                local c = Place(impSec, i).cols
-                c[1]:SetText(ns.DisplayName(e.key))
-                c[2]:SetText(table.concat(e.v.sources, " and "))
-                c[3]:SetText(Num(N(e.v.sales)))
-                c[4]:SetText(Money(N(e.v.sales_copper)))
-                c[5]:SetText(Num(N(e.v.buys)))
-                c[6]:SetText(Money(N(e.v.buys_copper)))
-            end
-            for i = #impSec.rows, #imported + 1, -1 do impSec.rows[i].frame:Hide() end
-            Close(impSec, #imported)
+        return #etas > 0 or #pairsList > 0
+    end
 
-            local days = type(v.days) == "table" and v.days or {}
-            local shownDays = 0
-            impDaysSec.title:SetText(format("%s: sales by day", ns.DisplayName(pick.key)))
-            Open(impDaysSec)
-            for _, d in ipairs(days) do
-                if type(d) == "table" and shownDays < IMPORTED_DAYS_SHOWN then
-                    shownDays = shownDays + 1
-                    local line = Place(impDaysSec, shownDays)
-                    local c = line.cols
-                    c[1]:SetText(ns.Day(N(d.d), false, true))
-                    if N(d.d) > 0 then line.tipAt, line.tipUtc = N(d.d), true end
-                    c[2]:SetText(Num(N(d.sold)))
-                    c[3]:SetText(Money(N(d.sold_copper)))
-                    c[4]:SetText(Num(N(d.bought)))
-                    c[5]:SetText(Money(N(d.bought_copper)))
-                end
-            end
-            for i = #impDaysSec.rows, shownDays + 1, -1 do impDaysSec.rows[i].frame:Hide() end
-            Close(impDaysSec, shownDays)
-
-            local items = type(v.items) == "table" and v.items or {}
-            local shownItems = 0
-            impItemsSec.title:SetText(format("%s: item prices", ns.DisplayName(pick.key)))
-            Open(impItemsSec)
-            for _, it in ipairs(items) do
-                if type(it) == "table" and N(it.sold) > 0 and shownItems < IMPORTED_ITEMS_SHOWN then
-                    shownItems = shownItems + 1
-                    local id = N(it.id)
-                    local name = CStr(it.name)
-                    if not name and id > 0 and C_Item and C_Item.GetItemNameByID then
-                        name = CStr(C_Item.GetItemNameByID(id))
-                    end
-                    local c = Place(impItemsSec, shownItems).cols
-                    c[1]:SetText(name or ("Item " .. id))
-                    c[2]:SetText(Num(N(it.sold)))
-                    c[3]:SetText(Money(N(it.low)))
-                    c[4]:SetText(Money(N(it.high)))
-                    c[5]:SetText(N(it.bought) > 0 and Num(N(it.bought)) or "")
-                end
-            end
-            for i = #impItemsSec.rows, shownItems + 1, -1 do impItemsSec.rows[i].frame:Hide() end
-            Close(impItemsSec, shownItems)
-
-            local gold = type(v.gold) == "table" and v.gold or {}
-            local shownGold = 0
-            impGoldSec.title:SetText(format("%s: gold by day", ns.DisplayName(pick.key)))
-            Open(impGoldSec)
-            for i = #gold, 1, -1 do
-                local g = gold[i]
-                if type(g) == "table" and shownGold < IMPORTED_GOLD_SHOWN then
-                    shownGold = shownGold + 1
-                    local line = Place(impGoldSec, shownGold)
-                    local c = line.cols
-                    c[1]:SetText(ns.Day(N(g.t), false, true))
-                    if N(g.t) > 0 then line.tipAt, line.tipUtc = N(g.t), true end
-                    c[2]:SetText(Money(N(g.m)))
-                end
-            end
-            for i = #impGoldSec.rows, shownGold + 1, -1 do impGoldSec.rows[i].frame:Hide() end
-            Close(impGoldSec, shownGold)
-        else
+    local function DrawImported()
+        if #imported == 0 then
             Hide(impSec)
             Hide(impDaysSec)
             Hide(impItemsSec)
             Hide(impGoldSec)
+            return false
         end
-        child:SetHeight(-y)
+        local pick = imported[1]
+        for _, e in ipairs(imported) do
+            if e.key == ns.charKey then pick = e end
+        end
+        local v = pick.v
+        local source = table.concat(v.sources, " and ")
+        impSec.title:SetText("Imported from " .. source)
+        Open(impSec)
+        for i, e in ipairs(imported) do
+            local c = Place(impSec, i).cols
+            c[1]:SetText(ns.DisplayName(e.key))
+            c[2]:SetText(table.concat(e.v.sources, " and "))
+            c[3]:SetText(Num(N(e.v.sales)))
+            c[4]:SetText(Money(N(e.v.sales_copper)))
+            c[5]:SetText(Num(N(e.v.buys)))
+            c[6]:SetText(Money(N(e.v.buys_copper)))
+        end
+        for i = #impSec.rows, #imported + 1, -1 do impSec.rows[i].frame:Hide() end
+        Close(impSec, #imported)
+
+        local days = type(v.days) == "table" and v.days or {}
+        local shownDays = 0
+        impDaysSec.title:SetText(format("%s: sales by day", ns.DisplayName(pick.key)))
+        Open(impDaysSec)
+        for _, d in ipairs(days) do
+            if type(d) == "table" and shownDays < IMPORTED_DAYS_SHOWN then
+                shownDays = shownDays + 1
+                local line = Place(impDaysSec, shownDays)
+                local c = line.cols
+                c[1]:SetText(ns.Day(N(d.d), false, true))
+                if N(d.d) > 0 then line.tipAt, line.tipUtc = N(d.d), true end
+                c[2]:SetText(Num(N(d.sold)))
+                c[3]:SetText(Money(N(d.sold_copper)))
+                c[4]:SetText(Num(N(d.bought)))
+                c[5]:SetText(Money(N(d.bought_copper)))
+            end
+        end
+        for i = #impDaysSec.rows, shownDays + 1, -1 do impDaysSec.rows[i].frame:Hide() end
+        Close(impDaysSec, shownDays)
+
+        local items = type(v.items) == "table" and v.items or {}
+        local shownItems = 0
+        impItemsSec.title:SetText(format("%s: item prices", ns.DisplayName(pick.key)))
+        Open(impItemsSec)
+        for _, it in ipairs(items) do
+            if type(it) == "table" and N(it.sold) > 0 and shownItems < IMPORTED_ITEMS_SHOWN then
+                shownItems = shownItems + 1
+                local id = N(it.id)
+                local name = CStr(it.name)
+                if not name and id > 0 and C_Item and C_Item.GetItemNameByID then
+                    name = CStr(C_Item.GetItemNameByID(id))
+                end
+                local c = Place(impItemsSec, shownItems).cols
+                c[1]:SetText(name or ("Item " .. id))
+                c[2]:SetText(Num(N(it.sold)))
+                c[3]:SetText(Money(N(it.low)))
+                c[4]:SetText(Money(N(it.high)))
+                c[5]:SetText(N(it.bought) > 0 and Num(N(it.bought)) or "")
+            end
+        end
+        for i = #impItemsSec.rows, shownItems + 1, -1 do impItemsSec.rows[i].frame:Hide() end
+        Close(impItemsSec, shownItems)
+
+        local gold = type(v.gold) == "table" and v.gold or {}
+        local shownGold = 0
+        impGoldSec.title:SetText(format("%s: gold by day", ns.DisplayName(pick.key)))
+        Open(impGoldSec)
+        for i = #gold, 1, -1 do
+            local g = gold[i]
+            if type(g) == "table" and shownGold < IMPORTED_GOLD_SHOWN then
+                shownGold = shownGold + 1
+                local line = Place(impGoldSec, shownGold)
+                local c = line.cols
+                c[1]:SetText(ns.Day(N(g.t), false, true))
+                if N(g.t) > 0 then line.tipAt, line.tipUtc = N(g.t), true end
+                c[2]:SetText(Money(N(g.m)))
+            end
+        end
+        for i = #impGoldSec.rows, shownGold + 1, -1 do impGoldSec.rows[i].frame:Hide() end
+        Close(impGoldSec, shownGold)
+        return true
     end
 
-    edit:SetScript("OnTextChanged", function(self)
-        query = lower(self:GetText():match("^%s*(.-)%s*$"))
-        if page:IsShown() then Draw(true) end
-    end)
+    local stamp
+    local function Draw(force)
+        local live = ns.Ov.Live()
+        local weekStart = ns.WeekStart()
+        local level, money = CNum(UnitLevel("player")) or 0, CNum(GetMoney()) or 0
+        local sig = format("%s:%d:%d:%d:%d:%d", tab, floor(N(live and live.p) / 15), money, level, #rows,
+            floor(time() / 30))
+        if not force and sig == stamp then return end
+        stamp = sig
+        local now = time()
+        for _, r in ipairs(rows) do
+            if r.live and r.etaLevel ~= level then Estimate(r) end
+        end
+        local list = {}
+        for i, r in ipairs(rows) do list[i] = Show(r, live, weekStart) end
+
+        for key, secs in pairs(sectionsOf) do
+            if key ~= tab then
+                for _, sec in ipairs(secs) do Hide(sec) end
+            end
+        end
+        flow.y = 0
+        local filled = true
+        if tab == "characters" then
+            DrawCharacters(list, now)
+        else
+            for _, cell in ipairs(cells) do cell:Hide() end
+            if tab == "estimates" then
+                filled = DrawEstimates(list, now)
+            else
+                filled = DrawImported()
+            end
+        end
+        note:SetShown(not filled)
+        if not filled then
+            note:ClearAllPoints()
+            note:SetPoint("TOPLEFT", 0, 0)
+            note:SetText(tab == "estimates" and "No level estimates or group time recorded" or "No imported history")
+            flow.y = -ROW_H
+        end
+        child:SetHeight(max(1, -flow.y))
+    end
 
     local dirty = true
     function page:Refresh()
         if dirty then
             dirty = false
             Collect()
-            page:SetVerticalScroll(0)
+            scroll:SetVerticalScroll(0)
+            Draw(true)
+        else
+            Draw(false)
+        end
+    end
+
+    --- Opens one of the tabs: characters, estimates or imported.
+    function page:Open(key)
+        if not CHAR_TAB[key] then return end
+        tab = key
+        tabs:Select(key, true)
+        dirty = true
+        self:Refresh()
+    end
+
+    page:SetScript("OnShow", function() dirty = true end)
+    return page
+end
+
+function ns.ItemsPage(parent, ui)
+    local T, Fill, Border, Num = ui.T, ui.Fill, ui.Border, ui.Num
+
+    local page = CreateFrame("Frame", nil, parent)
+    page:SetAllPoints()
+
+    local query = ""
+    local box = CreateFrame("Frame", nil, page)
+    box:SetSize(320, BOX_H)
+    box:SetPoint("TOPLEFT", 0, 0)
+    Fill(box, T.panel):SetAllPoints()
+    Border(box, T.line2)
+    local edit = CreateFrame("EditBox", nil, box)
+    edit:SetPoint("TOPLEFT", 8, 0)
+    edit:SetPoint("BOTTOMRIGHT", -8, 0)
+    edit:SetAutoFocus(false)
+    edit:SetMaxLetters(40)
+    ui.SetFont(edit, ui.Face("body"), 13)
+    edit:SetTextColor(T.fg[1], T.fg[2], T.fg[3])
+    edit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    edit:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+
+    local scroll, child = ui.Scroll(page, ROW_H * 2)
+    scroll:SetPoint("TOPLEFT", 0, -(BOX_H + 14))
+    scroll:SetPoint("BOTTOMRIGHT")
+    local flow = Flow(ui, child)
+    local findSec = flow.Section(nil, ITEMS, { "Item", "Character", "Bags", "Bank" })
+
+    local stamp
+    local function Draw(force)
+        local sig = format("%s:%d", query, floor(GetTime() / 5))
+        if not force and sig == stamp then return end
+        stamp = sig
+        flow.y = 0
+        local hits = (#query == 0 or #query >= MIN_QUERY) and Find(query) or nil
+        local found = 0
+        findSec.empty:Hide()
+        if hits and #hits > 0 then
+            findSec.head:Show()
+            flow.Below(findSec.head, HEAD_H)
+            for i = 1, min(#hits, MAX_HITS) do
+                local h = hits[i]
+                found = found + 1
+                local c = flow.Place(findSec, found).cols
+                c[1]:SetText(h.name)
+                c[2]:SetText(ns.DisplayName(h.key))
+                Tint(c[2], ClassOf(h.key), T.fg)
+                c[3]:SetText(h.bags > 0 and Num(h.bags) or "")
+                c[4]:SetText(h.bank > 0 and Num(h.bank) or "")
+            end
+            if #hits > MAX_HITS then
+                found = found + 1
+                flow.Place(findSec, found, format("Showing %d of %d", MAX_HITS, #hits))
+            end
+        else
+            findSec.head:Hide()
+        end
+        for i = #findSec.rows, found + 1, -1 do findSec.rows[i].frame:Hide() end
+        flow.Close(findSec, found, hits and "No items match" or nil)
+        child:SetHeight(max(1, -flow.y))
+    end
+
+    edit:SetScript("OnTextChanged", function(self)
+        query = lower(self:GetText():match("^%s*(.-)%s*$"))
+        if page:IsShown() then
+            scroll:SetVerticalScroll(0)
+            Draw(true)
+        end
+    end)
+
+    local dirty = true
+    function page:Refresh()
+        if dirty then
+            dirty = false
+            scroll:SetVerticalScroll(0)
             Draw(true)
         else
             Draw(false)

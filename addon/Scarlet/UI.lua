@@ -745,6 +745,7 @@ local function SettingsTabs(parent)
     local tabs = ns.UI.Tabs(page, SETTINGS_TABS, function(key) page:Open(key) end)
     tabs:SetPoint("TOPLEFT")
     function page:Open(key)
+        if not TAB_BUILDERS[key] then return end
         settingsTab = key
         tabs:Select(key, true)
         if not settingsSubs[key] then settingsSubs[key] = TAB_BUILDERS[key](body) end
@@ -758,18 +759,21 @@ local function SettingsTabs(parent)
 end
 
 local NAV = {
-    { key = "recap", label = "Session" },
-    { key = "overview", label = "Character" },
+    { key = "recap", label = "Session", group = "Play" },
     { key = "feats", label = "Feats" },
-    { key = "characters", label = "Characters" },
+    { key = "overview", label = "Character", group = "Character" },
     { key = "stats", label = "Stats" },
-    { key = "settings", label = "Settings" },
+    { key = "characters", label = "Characters", group = "Account" },
+    { key = "items", label = "Items" },
+    { key = "settings", label = "Settings", group = "System" },
 }
+local NAV_TOP, GROUP_H, GROUP_GAP = 8, 22, 8
 
 local BUILDERS = {
     recap = function(body) return ns.SessionPage(body, ns.UI) end,
     overview = function(body) return ns.OverviewPage(body, ns.UI) end,
     characters = function(body) return ns.CharactersPage(body, ns.UI) end,
+    items = function(body) return ns.ItemsPage(body, ns.UI) end,
     stats = function(body) return ns.StatsPage(body, ns.UI) end,
     feats = function(body) return ns.FeatsPage(body, ns.UI) end,
     settings = SettingsTabs,
@@ -795,11 +799,11 @@ local function Show(key)
 end
 
 -- The current page carries a scarlet marker and a faint scarlet wash, as in the site's drawing.
-local function NavButton(parent, i, def)
+local function NavButton(parent, y, def)
     local b = CreateFrame("Button", nil, parent)
     b:SetHeight(NAV_H)
-    b:SetPoint("TOPLEFT", 0, -12 - (i - 1) * NAV_H)
-    b:SetPoint("TOPRIGHT", -1, -12 - (i - 1) * NAV_H)
+    b:SetPoint("TOPLEFT", 0, -y)
+    b:SetPoint("TOPRIGHT", -1, -y)
     b.key, b.label = def.key, def.label
     local fill = Fill(b, T.accent, 0.1)
     fill:SetAllPoints()
@@ -945,8 +949,17 @@ local function Build()
 
     pages = {}
     navButtons = {}
+    local navY = NAV_TOP
     for i, def in ipairs(NAV) do
-        local b = NavButton(sidebar, i, def)
+        if def.group then
+            if i > 1 then navY = navY + GROUP_GAP end
+            local label = Text(sidebar, 11, T.dim, "LEFT", "strong")
+            label:SetPoint("TOPLEFT", 16, -navY - 5)
+            label:SetText(def.group)
+            navY = navY + GROUP_H
+        end
+        local b = NavButton(sidebar, navY, def)
+        navY = navY + NAV_H
         navButtons[i] = b
         navButtons[def.key] = b
     end
@@ -1070,10 +1083,11 @@ function ns.UI.WindowOpen()
     return window ~= nil and window:IsShown()
 end
 
-function ns.UI.Open(key)
+function ns.UI.Open(key, tab)
     if not window then Build() end
     window:Show()
     Show(key)
+    if tab and pages[key].Open then pages[key]:Open(tab) end
 end
 
 function ns.UI.OpenSettings(tab)
@@ -1255,6 +1269,9 @@ local function Perf(arg)
     end
 end
 
+local PAGE_WORDS = { session = "recap", character = "overview", overview = "overview", stats = "stats",
+    characters = "characters", items = "items", settings = "settings" }
+
 SLASH_SCARLET1, SLASH_SCARLET2 = "/scarlet", "/scar"
 SlashCmdList.SCARLET = function(msg)
     local cmd, arg = (msg or ""):lower():match("^%s*(%S*)%s*(%S*)")
@@ -1276,6 +1293,8 @@ SlashCmdList.SCARLET = function(msg)
             ns.opt.paused and "paused" or "recording"))
     elseif cmd == "sheet" then
         ns.UI.ToggleSheet()
+    elseif PAGE_WORDS[cmd] then
+        ns.UI.Open(PAGE_WORDS[cmd], arg ~= "" and arg or nil)
     elseif cmd == "gather" then
         if ns.Gather then
             if arg == "reset" then
