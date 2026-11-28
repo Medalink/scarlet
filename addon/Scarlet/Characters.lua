@@ -59,6 +59,7 @@ local IMPORTED_ITEMS = {
 }
 local IMPORTED_GOLD = { { x = 0, w = 180 }, { x = 190, w = 180, just = "RIGHT" } }
 local MIN_QUERY, MAX_HITS, BOX_H = 2, 100, 28
+local LIVE_REDRAW_S, IDLE_REDRAW_S = 5, 30
 local IMPORTED_DAYS_SHOWN, IMPORTED_ITEMS_SHOWN, IMPORTED_GOLD_SHOWN = 14, 12, 14
 
 local imported = {}
@@ -791,7 +792,7 @@ function ns.ItemsPage(parent, ui)
 
     local stamp
     local function Draw(force)
-        local sig = format("%s:%d", query, floor(GetTime() / 5))
+        local sig = format("%s:%d", query, floor(GetTime() / (#query == 0 and IDLE_REDRAW_S or LIVE_REDRAW_S)))
         if not force and sig == stamp then return end
         stamp = sig
         flow.y = 0

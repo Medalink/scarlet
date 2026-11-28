@@ -5,6 +5,7 @@ local floor, max, min, format = math.floor, math.max, math.min, string.format
 local LEFT_W, GAP, PAGE_W = 226, 20, 655
 local WALL_W = PAGE_W - LEFT_W - GAP - 12
 local CREST, STEP, HEAD_H = 36, 48, 34
+local MARK_PAD = 2
 local PER_ROW = floor((WALL_W + STEP - CREST) / STEP)
 local CHIP_H, CHIP_GAP = 24, 6
 local CLOSEST_ROWS = 3
@@ -12,7 +13,7 @@ local WHEEL_STEP = 64
 local SITE = "scarletweb.io"
 
 local current
-local filter
+local filter, firstShown
 
 --- Opens the Feats page on one feat.
 function ns.OpenFeat(key, account)
@@ -168,7 +169,7 @@ function ns.FeatsPage(parent, ui)
     local placed = {}
     local function Slot(b, i, y)
         b:ClearAllPoints()
-        b:SetPoint("TOPLEFT", child, "TOPLEFT", ((i - 1) % PER_ROW) * STEP,
+        b:SetPoint("TOPLEFT", child, "TOPLEFT", MARK_PAD + ((i - 1) % PER_ROW) * STEP,
             -(y + HEAD_H + floor((i - 1) / PER_ROW) * STEP))
         b:Show()
         placed[b] = true
@@ -316,7 +317,10 @@ function ns.FeatsPage(parent, ui)
         for _, g in pairs(groups) do g:Hide() end
         local y = 0
         for _, e in ipairs(entries) do
-            if e.name == filter then y = y + Group(e.name, e.list, e.account == true, y) end
+            if e.name == filter then
+                y = y + Group(e.name, e.list, e.account == true, y)
+                firstShown = (e.account and "account:" or "") .. e.list[1].key
+            end
         end
         for _, pool in ipairs({ cells, acells }) do
             for _, b in pairs(pool) do
@@ -438,11 +442,14 @@ function ns.FeatsPage(parent, ui)
         foot:SetText(file and file.through and "Counted through the last export" or "Counted since install")
         local at = CellOf(picked)
         if not at or not at:IsShown() then
-            local first = shown[1]
-            picked = first and ((first.account and "account:" or "") .. first.def.key) or nil
-            if not picked then
-                local one = Feats.Collections()[1]
-                picked = one and one.feats[1] and one.feats[1].key
+            picked = firstShown
+            for _, info in ipairs(shown) do
+                local token = (info.account and "account:" or "") .. info.def.key
+                local cell = CellOf(token)
+                if cell and cell:IsShown() then
+                    picked = token
+                    break
+                end
             end
         end
         Card(picked)
