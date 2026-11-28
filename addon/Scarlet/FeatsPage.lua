@@ -2,15 +2,17 @@ local _, ns = ...
 
 local floor, max, min, format = math.floor, math.max, math.min, string.format
 
-local LEFT_W, GAP = 226, 20
-local WALL_W = 656 - LEFT_W - GAP - 12
-local CREST, STEP, LABEL_W, ROW_PAD = 28, 32, 96, 10
-local PER_ROW = floor((WALL_W - LABEL_W) / STEP)
+local LEFT_W, GAP, PAGE_W = 226, 20, 655
+local WALL_W = PAGE_W - LEFT_W - GAP - 12
+local CREST, STEP, HEAD_H = 36, 48, 34
+local PER_ROW = floor((WALL_W + STEP - CREST) / STEP)
+local CHIP_H, CHIP_GAP = 24, 6
 local CLOSEST_ROWS = 3
 local WHEEL_STEP = 64
 local SITE = "scarletweb.io"
 
 local current
+local filter
 
 --- Opens the Feats page on one feat.
 function ns.OpenFeat(key, account)
@@ -19,7 +21,7 @@ function ns.OpenFeat(key, account)
 end
 
 function ns.FeatsPage(parent, ui)
-    local T, Text, Fill, Hair, Num = ui.T, ui.Text, ui.Fill, ui.Hair, ui.Num
+    local T, Text, Fill, Num = ui.T, ui.Text, ui.Fill, ui.Num
     local Feats, tierName = ns.Feats, ns.TierName
     local page = CreateFrame("Frame", nil, parent)
     page:SetAllPoints()
@@ -109,7 +111,7 @@ function ns.FeatsPage(parent, ui)
         local h = max(24, view * view / total)
         local y = wall:GetVerticalScroll() / (total - view) * (view - h)
         thumb:ClearAllPoints()
-        thumb:SetPoint("TOPRIGHT", page, "TOPRIGHT", 0, -y)
+        thumb:SetPoint("TOPLEFT", wall, "TOPRIGHT", 9, -y)
         thumb:SetHeight(h)
     end
     wall:SetScript("OnMouseWheel", function(self, delta)
@@ -145,7 +147,7 @@ function ns.FeatsPage(parent, ui)
         b.dot = Fill(b, T.accent, 1, "OVERLAY")
         b.dot:SetSize(5, 5)
         b.dot:SetRotation(math.pi / 4)
-        b.dot:SetPoint("CENTER", b, "TOPRIGHT", -2, -2)
+        b.dot:SetPoint("CENTER", b, "TOPRIGHT", 3, -1)
         b.def = f
         b:SetScript("OnClick", function() page:Pick(f.key, account) end)
         b:SetScript("OnEnter", function(self)
@@ -163,11 +165,13 @@ function ns.FeatsPage(parent, ui)
         return b
     end
 
+    local placed = {}
     local function Slot(b, i, y)
         b:ClearAllPoints()
-        b:SetPoint("TOPLEFT", child, "TOPLEFT", LABEL_W + ((i - 1) % PER_ROW) * STEP,
-            -(y + floor((i - 1) / PER_ROW) * STEP + 2))
+        b:SetPoint("TOPLEFT", child, "TOPLEFT", ((i - 1) % PER_ROW) * STEP,
+            -(y + HEAD_H + floor((i - 1) / PER_ROW) * STEP))
         b:Show()
+        placed[b] = true
     end
 
     local function Paint(b, f, info, spells)
@@ -215,17 +219,15 @@ function ns.FeatsPage(parent, ui)
         local g = groups[name]
         if not g then
             g = CreateFrame("Frame", nil, child)
-            g.name = Text(g, 13, T.fg, "LEFT", "strong")
-            g.name:SetPoint("TOPLEFT", 0, -3)
-            g.name:SetWidth(LABEL_W - 8)
-            g.count = Text(g, 12, T.muted)
-            g.count:SetPoint("TOPLEFT", 0, -20)
-            Hair(g, "BOTTOM")
+            g.name = Text(g, 19, T.fg, "LEFT", "display")
+            g.name:SetPoint("TOPLEFT", 0, 2)
             g.name:SetText(name)
+            g.count = Text(g, 12, T.muted)
+            g.count:SetPoint("BOTTOMLEFT", g.name, "BOTTOMRIGHT", 10, 2)
             groups[name] = g
         end
         local lines = floor((#list - 1) / PER_ROW) + 1
-        local h = lines * STEP + ROW_PAD
+        local h = HEAD_H + lines * STEP
         g:ClearAllPoints()
         g:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -y)
         g:SetSize(WALL_W, h)
@@ -245,43 +247,112 @@ function ns.FeatsPage(parent, ui)
         return h
     end
 
+    local chips, more = {}, nil
+
+    local function Chip(name)
+        local b = CreateFrame("Button", nil, page)
+        b:SetHeight(CHIP_H)
+        Fill(b, T.fg, 0.05):SetAllPoints()
+        b.on = Fill(b, T.accent, 0.2, "BORDER")
+        b.on:SetAllPoints()
+        b.label = Text(b, 12, T.muted, "CENTER", "strong")
+        b.label:SetPoint("CENTER")
+        b.label:SetText(name)
+        b:SetWidth((b.label:GetStringWidth() or 40) + 18)
+        b:SetScript("OnClick", function() page:Filter(name) end)
+        chips[name] = b
+        return b
+    end
+
+    local function LayoutChips(entries)
+        for _, b in pairs(chips) do b:Hide() end
+        local x, y = 0, 0
+        local area = PAGE_W - LEFT_W - GAP
+        for _, e in ipairs(entries) do
+            local b = chips[e.name] or Chip(e.name)
+            local w = b:GetWidth()
+            if x > 0 and x + w > area then x, y = 0, y + CHIP_H + CHIP_GAP end
+            b:ClearAllPoints()
+            b:SetPoint("TOPLEFT", page, "TOPLEFT", LEFT_W + GAP + x, -y)
+            b:Show()
+            local chosen = e.name == filter
+            b.on:SetShown(chosen)
+            local c = chosen and T.fg or T.muted
+            b.label:SetTextColor(c[1], c[2], c[3])
+            x = x + w + CHIP_GAP
+        end
+        wall:ClearAllPoints()
+        wall:SetPoint("TOPLEFT", LEFT_W + GAP, -(#entries > 0 and y + CHIP_H + 12 or 0))
+        wall:SetPoint("BOTTOMRIGHT", -12, 0)
+    end
+
     local function Layout()
         built = true
-        local y = 0
-        local account = {}
+        wipe(waiting)
+        wipe(order)
+        wipe(placed)
+        nextAt = 1
+        local entries = {}
         if Feats.HasAccount() then
+            local account = {}
             for _, f in ipairs(Feats.AccountFeats()) do
                 if Shown(f) then account[#account + 1] = f end
             end
+            if #account > 0 then entries[#entries + 1] = { name = "Account", list = account, account = true } end
         end
-        if #account > 0 then y = y + Group("Account", account, true, y) end
         for _, group in ipairs(Feats.Collections()) do
             local list = {}
             for _, f in ipairs(group.feats) do
                 if Shown(f) then list[#list + 1] = f end
             end
-            if #list > 0 then y = y + Group(group.name, list, false, y) end
+            if #list > 0 then entries[#entries + 1] = { name = group.name, list = list } end
+        end
+        local known = false
+        for _, e in ipairs(entries) do
+            if e.name == filter then known = true end
+        end
+        if not known then filter = entries[1] and entries[1].name end
+        LayoutChips(entries)
+        for _, g in pairs(groups) do g:Hide() end
+        local y = 0
+        for _, e in ipairs(entries) do
+            if e.name == filter then y = y + Group(e.name, e.list, e.account == true, y) end
         end
         for _, pool in ipairs({ cells, acells }) do
             for _, b in pairs(pool) do
-                if not Shown(b.def) then b:Hide() end
+                if not placed[b] then b:Hide() end
             end
         end
         if not Web() then
-            local more = groups.__more
-            if not more then
-                more = Text(child, 12, T.muted)
-                groups.__more = more
-            end
+            if not more then more = Text(child, 12, T.muted) end
             more:ClearAllPoints()
             more:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -(y + 10))
             more:SetText(format("The website counts all %d feats · %s", #ns.FEATS, SITE))
             more:Show()
             y = y + 34
-        elseif groups.__more then
-            groups.__more:Hide()
+        elseif more then
+            more:Hide()
         end
         child:SetHeight(max(1, y))
+    end
+
+    local function Reveal(token)
+        if not built then return end
+        local account = token:sub(1, 8) == "account:"
+        local key = account and token:sub(9) or token
+        local want = account and "Account" or nil
+        if not account then
+            for _, group in ipairs(Feats.Collections()) do
+                for _, f in ipairs(group.feats) do
+                    if f.key == key then want = group.name end
+                end
+            end
+        end
+        if want and want ~= filter and chips[want] then
+            filter = want
+            Layout()
+            wall:SetVerticalScroll(0)
+        end
     end
 
     local function CellOf(token)
@@ -331,22 +402,23 @@ function ns.FeatsPage(parent, ui)
             ag.count:SetText(format("%d of %d", own, #ag.list))
         end
         for _, group in ipairs(Feats.Collections()) do
-            local own = 0
-            local list = groups[group.name] and groups[group.name].list
-            if list then
-                for _, f in ipairs(list) do
+            local own, listed = 0, 0
+            for _, f in ipairs(group.feats) do
+                if Shown(f) then
                     local info = Feats.Info(f.key)
                     local b = cells[f.key]
-                    b.crest:Set(f.crest, f.glyph, info.tier, info.progress, spells and spells[f.key])
-                    b.dot:SetShown(Feats.Moves(f))
-                    total = total + 1
+                    if b then
+                        b.crest:Set(f.crest, f.glyph, info.tier, info.progress, spells and spells[f.key])
+                        b.dot:SetShown(Feats.Moves(f))
+                    end
+                    total, listed = total + 1, listed + 1
                     if info.tier > 0 then
                         held, own = held + 1, own + 1
                         counts[info.tier] = counts[info.tier] + 1
                     end
                 end
-                groups[group.name].count:SetText(format("%d of %d", own, #list))
             end
+            if groups[group.name] then groups[group.name].count:SetText(format("%d of %d", own, listed)) end
         end
         ring:Set(total > 0 and held / total or 0, tostring(held))
         of:SetText(format("of %d feats", total))
@@ -382,8 +454,22 @@ function ns.FeatsPage(parent, ui)
         end
     end
 
+    --- Shows one collection's crests: the chip's name.
+    function page:Filter(name)
+        filter = name
+        Layout()
+        Redraw()
+        wall:SetVerticalScroll(0)
+        Thumb()
+    end
+
     function page:Pick(key, account)
         local token = account and ("account:" .. key) or key
+        if built then
+            local before = filter
+            Reveal(token)
+            if filter ~= before then Redraw() end
+        end
         local b = CellOf(token)
         if not b then return end
         picked = token
