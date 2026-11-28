@@ -413,6 +413,22 @@ function UI.Tabs(parent, defs, onSelect)
     return f
 end
 
+--- A vertical scroll area. Returns the scroll frame, for the caller to anchor, and its child, which is as wide as the
+--- frame; the caller sets the child's height to its content. A wheel notch moves step pixels.
+function UI.Scroll(parent, step)
+    local scroll = CreateFrame("ScrollFrame", nil, parent)
+    local child = CreateFrame("Frame", nil, scroll)
+    child:SetSize(1, 1)
+    scroll:SetScrollChild(child)
+    scroll:EnableMouseWheel(true)
+    scroll:SetScript("OnMouseWheel", function(self, delta)
+        local top = max(0, child:GetHeight() - self:GetHeight())
+        self:SetVerticalScroll(min(top, max(0, self:GetVerticalScroll() - delta * step)))
+    end)
+    scroll:SetScript("OnSizeChanged", function(_, w) child:SetWidth(w) end)
+    return scroll, child
+end
+
 --- The session strip of a recap (CONTRACTS.md, SessionRecap): zones, buckets, levels and moments. Compact drops the clock; by default it is compact under 70 px high.
 function UI.Strip(parent, w, h, compact)
     local f = CreateFrame("Frame", nil, parent)

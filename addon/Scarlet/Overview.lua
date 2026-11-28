@@ -10,6 +10,17 @@ local PANEL_H, PANEL_GAP, ROW_H, ROWS = 132, 10, 22, 4
 local DAYS, SPARK_H = 7, 26
 local MATES, DEATHS = 3, 3
 
+local PAGE_W, TAB_ROW = 655, 40
+local ETA_TOP, ETA_H = 80, 44
+local TILE_TOP, TILE_H = 134, 62
+local CLOSE_TOP = 212
+local CLASS_TOP, PEOPLE_TOP = 38, 150
+local COL_W, COL_X = 318, 337
+local CREST, CREST_STEP, CREST_LABEL, CREST_ROW_PAD = 40, 52, 120, 16
+local CREST_PER_ROW = floor((PAGE_W - CREST_LABEL + (CREST_STEP - CREST)) / CREST_STEP)
+local TABS = { { key = "overview", label = "Overview" }, { key = "class", label = "Class" },
+    { key = "levelling", label = "Levelling" } }
+
 -- Level estimates, see "Level estimates" in docs/OVERVIEW.md.
 local MIN_FIT_LEVELS = 5
 local MIN_LEVEL_PLAYED = 900 -- a level needs this much played time to count as a point of the fit
@@ -473,29 +484,36 @@ end
 -- Page -----------------------------------------------------------------------------
 
 function ns.OverviewPage(parent, ui)
-    local T, Fill, Border, Text = ui.T, ui.Fill, ui.Border, ui.Text
+    local T, Fill, Border, Text, Hair = ui.T, ui.Fill, ui.Border, ui.Text, ui.Hair
     local Num, Money, Duration = ui.Num, ui.Money, ui.Duration
 
     local page = CreateFrame("Frame", nil, parent)
     page:SetAllPoints()
+    local tab = "overview"
+    local tabs = ui.Tabs(page, TABS, function(key) page:Open(key) end)
+    tabs:SetPoint("TOPLEFT")
+    local view = CreateFrame("Frame", nil, page)
+    view:SetPoint("TOPLEFT", 0, -TAB_ROW)
+    view:SetPoint("BOTTOMRIGHT")
+    local sheets = {}
+    for _, def in ipairs(TABS) do
+        local f = CreateFrame("Frame", nil, view)
+        f:SetAllPoints()
+        f:Hide()
+        sheets[def.key] = f
+    end
+    local ovPage, classPage, levelPage = sheets.overview, sheets.class, sheets.levelling
 
-    local name = Text(page, 40, T.fg, "LEFT", "display")
+    local name = Text(ovPage, 40, T.fg, "LEFT", "display")
     name:SetPoint("TOPLEFT", 0, 2)
-    local where = Text(page, 14, T.fg, "RIGHT")
-    where:SetPoint("BOTTOMRIGHT", page, "TOPRIGHT", 0, -34)
-
-    local lvlPage = CreateFrame("Frame", nil, page)
-    lvlPage:SetAllPoints()
-
-    local COL_W, COL_X = 318, 338
-    local subtitle = Text(lvlPage, 13, T.text)
+    local subtitle = Text(ovPage, 13, T.text)
     subtitle:SetPoint("TOPLEFT", 0, -42)
-    local headA = Text(lvlPage, 13, T.text, "RIGHT")
+    local headA = Text(ovPage, 13, T.text, "RIGHT")
     headA:SetPoint("TOPRIGHT", 0, -12)
-    local headB = Text(lvlPage, 11.5, T.muted, "RIGHT")
+    local headB = Text(ovPage, 11.5, T.muted, "RIGHT")
     headB:SetPoint("TOPRIGHT", 0, -30)
 
-    local bar = CreateFrame("Frame", nil, lvlPage)
+    local bar = CreateFrame("Frame", nil, ovPage)
     bar:SetHeight(6)
     bar:SetPoint("TOPLEFT", 0, -62)
     bar:SetPoint("TOPRIGHT", 0, -62)
@@ -509,14 +527,14 @@ function ns.OverviewPage(parent, ui)
     barRested:SetPoint("BOTTOMLEFT", barFill, "BOTTOMRIGHT")
     barRested:SetWidth(1)
 
-    local strip = CreateFrame("Frame", nil, lvlPage)
-    strip:SetHeight(26)
-    strip:SetPoint("TOPLEFT", 0, -76)
-    strip:SetPoint("TOPRIGHT", 0, -76)
+    local strip = CreateFrame("Frame", nil, ovPage)
+    strip:SetHeight(ETA_H)
+    strip:SetPoint("TOPLEFT", 0, -ETA_TOP)
+    strip:SetPoint("TOPRIGHT", 0, -ETA_TOP)
     strip:EnableMouse(true)
     Border(strip, T.line)
     local etaLevel, etaTime, etaDate = {}, {}, {}
-    local CELL = 656 / 3
+    local CELL = PAGE_W / 3
     for i = 1, 3 do
         local x = (i - 1) * CELL
         if i > 1 then
@@ -525,15 +543,15 @@ function ns.OverviewPage(parent, ui)
             divide:SetPoint("BOTTOMLEFT", x, 0)
             divide:SetWidth(1)
         end
-        etaLevel[i] = Text(strip, 13, T.fg, "LEFT", "strong")
-        etaLevel[i]:SetPoint("TOPLEFT", x + 10, -5)
-        etaLevel[i]:SetWidth(56)
-        etaTime[i] = Text(strip, 13, T.text)
-        etaTime[i]:SetPoint("TOPLEFT", x + 66, -5)
-        etaTime[i]:SetWidth(62)
-        etaDate[i] = Text(strip, 13, T.muted)
-        etaDate[i]:SetPoint("TOPLEFT", x + 130, -5)
-        etaDate[i]:SetWidth(CELL - 136)
+        etaLevel[i] = Text(strip, 14, T.fg, "LEFT", "strong")
+        etaLevel[i]:SetPoint("TOPLEFT", x + 12, -7)
+        etaLevel[i]:SetWidth(90)
+        etaTime[i] = Text(strip, 14, T.text, "RIGHT")
+        etaTime[i]:SetPoint("TOPRIGHT", strip, "TOPLEFT", x + CELL - 12, -7)
+        etaTime[i]:SetWidth(90)
+        etaDate[i] = Text(strip, 12, T.muted)
+        etaDate[i]:SetPoint("TOPLEFT", x + 12, -26)
+        etaDate[i]:SetWidth(CELL - 24)
     end
     local basisText = ""
     strip:SetScript("OnEnter", function(self)
@@ -546,13 +564,13 @@ function ns.OverviewPage(parent, ui)
     local targets = {}
 
     local tiles, sparks = {}, {}
-    local tileBox = CreateFrame("Frame", nil, lvlPage)
-    tileBox:SetHeight(62)
-    tileBox:SetPoint("TOPLEFT", 0, -110)
-    tileBox:SetPoint("TOPRIGHT", 0, -110)
+    local tileBox = CreateFrame("Frame", nil, ovPage)
+    tileBox:SetHeight(TILE_H)
+    tileBox:SetPoint("TOPLEFT", 0, -TILE_TOP)
+    tileBox:SetPoint("TOPRIGHT", 0, -TILE_TOP)
     Border(tileBox, T.line)
     for i = 1, 4 do
-        local t = ui.Tile(tileBox, 164, 62)
+        local t = ui.Tile(tileBox, 164, TILE_H)
         t:SetPoint("TOPLEFT", (i - 1) * 164, 0)
         tiles[i] = t
         sparks[i] = {}
@@ -574,31 +592,24 @@ function ns.OverviewPage(parent, ui)
         end
     end
 
-    local closeTitle = Text(lvlPage, 19, T.fg, "LEFT", "display")
-    closeTitle:SetPoint("TOPLEFT", 0, -180)
+    local closeTitle = Text(ovPage, 19, T.fg, "LEFT", "display")
+    closeTitle:SetPoint("TOPLEFT", 0, -CLOSE_TOP)
     closeTitle:SetText("Closest feats")
-    local closeHeld = Text(lvlPage, 12, T.muted, "RIGHT")
-    closeHeld:SetPoint("TOPRIGHT", lvlPage, "TOPLEFT", COL_W, -186)
+    local closeHeld = Text(ovPage, 12, T.muted, "RIGHT")
+    closeHeld:SetPoint("TOPRIGHT", 0, -(CLOSE_TOP + 6))
     local closeRows = {}
     for i = 1, 3 do
-        local r = ui.FeatRow(lvlPage, COL_W)
-        r:SetHeight(40)
-        r:SetPoint("TOPLEFT", 0, -204 - (i - 1) * 40)
+        local r = ui.FeatRow(ovPage, PAGE_W)
+        r:SetPoint("TOPLEFT", 0, -(CLOSE_TOP + 30 + (i - 1) * 44))
         r:SetScript("OnClick", function(self)
             if self.feat and self.feat.key and ns.OpenFeat then ns.OpenFeat(self.feat.key, self.feat.account) end
         end)
         closeRows[i] = r
     end
 
-    local soFar = Text(lvlPage, 19, T.fg, "LEFT", "display")
-    soFar:SetPoint("TOPLEFT", COL_X, -180)
-    local xpStack = ui.Stack(lvlPage, COL_W, 8)
-    xpStack:SetPoint("TOPLEFT", COL_X, -210)
-    local counts = Text(lvlPage, 13, T.text)
-    counts:SetPoint("TOPLEFT", xpStack, "BOTTOMLEFT", 0, -8)
-    local lastBtn = CreateFrame("Button", nil, lvlPage)
-    lastBtn:SetSize(COL_W, 20)
-    lastBtn:SetPoint("TOPLEFT", counts, "BOTTOMLEFT", 0, -8)
+    local lastBtn = CreateFrame("Button", nil, ovPage)
+    lastBtn:SetSize(PAGE_W, 20)
+    lastBtn:SetPoint("TOPLEFT", 0, -(CLOSE_TOP + 30 + 3 * 44 + 12))
     local lastText = Text(lastBtn, 13, T.text)
     lastText:SetPoint("LEFT")
     lastText:SetPoint("RIGHT")
@@ -608,27 +619,41 @@ function ns.OverviewPage(parent, ui)
     lastBtn:SetScript("OnEnter", function() lastText:SetTextColor(T.fg[1], T.fg[2], T.fg[3]) end)
     lastBtn:SetScript("OnLeave", function() lastText:SetTextColor(T.text[1], T.text[2], T.text[3]) end)
 
-    local classTitle = Text(lvlPage, 19, T.fg, "LEFT", "display")
-    classTitle:SetPoint("TOPLEFT", 0, -326)
-    local classHeld = Text(lvlPage, 12, T.muted, "RIGHT")
-    classHeld:SetPoint("TOPRIGHT", 0, -332)
+    local classScroll, classChild = ui.Scroll(classPage, CREST_STEP)
+    classScroll:SetAllPoints()
+    local classTitle = Text(classChild, 19, T.fg, "LEFT", "display")
+    classTitle:SetPoint("TOPLEFT", 0, 0)
+    local classHeld = Text(classChild, 12, T.muted, "RIGHT")
+    classHeld:SetPoint("TOPRIGHT", classChild, "TOPRIGHT", 0, -6)
+    local classEmpty = Text(classChild, 14, T.muted)
+    classEmpty:SetPoint("TOPLEFT", 0, -CLASS_TOP)
+    classEmpty:SetText("No class feats")
     local classGroups, classBuilt = {}, false
 
-    local matesTitle = Text(lvlPage, 19, T.fg, "LEFT", "display")
-    matesTitle:SetPoint("TOPLEFT", 0, -398)
+    local levelBody = CreateFrame("Frame", nil, levelPage)
+    levelBody:SetAllPoints()
+    local soFar = Text(levelBody, 19, T.fg, "LEFT", "display")
+    soFar:SetPoint("TOPLEFT", 0, 0)
+    local xpStack = ui.Stack(levelBody, PAGE_W, 10)
+    xpStack:SetPoint("TOPLEFT", 0, -36)
+    local counts = Text(levelBody, 13, T.text)
+    counts:SetPoint("TOPLEFT", xpStack, "BOTTOMLEFT", 0, -10)
+
+    local matesTitle = Text(levelBody, 19, T.fg, "LEFT", "display")
+    matesTitle:SetPoint("TOPLEFT", 0, -PEOPLE_TOP)
     matesTitle:SetText("Played with")
-    local matesBars = ui.Bars(lvlPage, COL_W, 2, 26)
-    matesBars:SetPoint("TOPLEFT", 0, -420)
-    local matesEmpty = Text(lvlPage, 13, T.muted)
-    matesEmpty:SetPoint("TOPLEFT", 0, -424)
+    local matesBars = ui.Bars(levelBody, COL_W, MATES, 32)
+    matesBars:SetPoint("TOPLEFT", 0, -(PEOPLE_TOP + 30))
+    local matesEmpty = Text(levelBody, 13, T.muted)
+    matesEmpty:SetPoint("TOPLEFT", 0, -(PEOPLE_TOP + 34))
     matesEmpty:SetText("No groups recorded")
-    local deathTitle = Text(lvlPage, 19, T.fg, "LEFT", "display")
-    deathTitle:SetPoint("TOPLEFT", COL_X, -398)
+    local deathTitle = Text(levelBody, 19, T.fg, "LEFT", "display")
+    deathTitle:SetPoint("TOPLEFT", COL_X, -PEOPLE_TOP)
     deathTitle:SetText("Deaths by zone")
-    local deathBars = ui.Bars(lvlPage, COL_W, 2, 26)
-    deathBars:SetPoint("TOPLEFT", COL_X, -420)
-    local deathEmpty = Text(lvlPage, 13, T.muted)
-    deathEmpty:SetPoint("TOPLEFT", COL_X, -424)
+    local deathBars = ui.Bars(levelBody, COL_W, DEATHS, 32)
+    deathBars:SetPoint("TOPLEFT", COL_X, -(PEOPLE_TOP + 30))
+    local deathEmpty = Text(levelBody, 13, T.muted)
+    deathEmpty:SetPoint("TOPLEFT", COL_X, -(PEOPLE_TOP + 34))
     deathEmpty:SetText("No deaths recorded")
 
     -- Fills the rows for a character at level lvl; no rows (and no basis line) at level 60 or when
@@ -730,7 +755,7 @@ function ns.OverviewPage(parent, ui)
         return c
     end
 
-    local drawnFeats
+    local drawnClosest, drawnClass
     local base
     local deathMap, deathNames, deathVals = {}, {}, {}
     local dayP, dayQ, dayG, dayR = {}, {}, {}, {}
@@ -753,10 +778,8 @@ function ns.OverviewPage(parent, ui)
         return #out
     end
 
-    -- Max level group ---------------------------------------------------------------------
-    -- Built the first time a character has an hour at the cap, so a levelling character never pays for it.
     local maxPage, maxCards
-    local MAX_TOP, MAX_ROWS_OF_CARDS = 56, 4
+    local MAX_ROWS_OF_CARDS = 4
 
     local function Signed(copper)
         if copper < 0 then return "-" .. Money(-copper) end
@@ -764,18 +787,10 @@ function ns.OverviewPage(parent, ui)
     end
 
     local function BuildMax()
-        maxPage = CreateFrame("ScrollFrame", nil, page)
-        maxPage:SetPoint("TOPLEFT", 0, -MAX_TOP)
-        maxPage:SetPoint("BOTTOMRIGHT")
-        local child = CreateFrame("Frame", nil, maxPage)
-        child:SetSize(1, MAX_ROWS_OF_CARDS * (PANEL_H + PANEL_GAP) + 24)
-        maxPage:SetScrollChild(child)
-        maxPage:EnableMouseWheel(true)
-        maxPage:SetScript("OnMouseWheel", function(self, delta)
-            local top = max(0, child:GetHeight() - self:GetHeight())
-            self:SetVerticalScroll(math.min(top, max(0, self:GetVerticalScroll() - delta * ROW_H * 3)))
-        end)
-        maxPage:SetScript("OnSizeChanged", function(_, w) child:SetWidth(w) end)
+        local child
+        maxPage, child = ui.Scroll(levelPage, ROW_H * 3)
+        maxPage:SetAllPoints()
+        child:SetHeight(MAX_ROWS_OF_CARDS * (PANEL_H + PANEL_GAP) + 24)
         local function C(col, row, title) return Card(child, col, row, title) end
         maxCards = { atMax = C(0, 0, "At max level"), gold = C(1, 0, "Gold"), runs = C(0, 1, "Dungeons and raids"),
             deaths = C(1, 1, "Deaths"), rep = C(0, 2, "Reputation and professions"), legacy = C(1, 2, "Legacy and PvP"),
@@ -785,7 +800,6 @@ function ns.OverviewPage(parent, ui)
         f:SetText("History through the last export \194\183 this session live")
     end
 
-    -- The page is redrawn only when something it shows moved: the minute of played time, or a count
     -- the open session changed. The ticker calls Refresh every half second while the window is open.
     local drawnBase, drawnStamp
     local function RefreshMax(b, live)
@@ -911,6 +925,7 @@ function ns.OverviewPage(parent, ui)
         if xp and xpMax and xpMax > 0 then
             local ratio = min(1, max(0, xp / xpMax))
             local w = bar:GetWidth() or 0
+            bar:Show()
             barFill:SetWidth(max(1, ratio * w))
             local rested = type(GetXPExhaustion) == "function" and CNum(GetXPExhaustion()) or nil
             local extra = rested and rested > 0 and min(1 - ratio, rested / xpMax) or 0
@@ -921,8 +936,7 @@ function ns.OverviewPage(parent, ui)
             headA:SetText(text)
             headB:SetText(rested and rested > 0 and (Num(rested) .. " rested XP left") or "")
         else
-            barFill:SetWidth(1)
-            barRested:Hide()
+            bar:Hide()
             headA:SetText(levelTime > 0 and ("This level " .. Duration(levelTime)) or "")
             headB:SetText("")
         end
@@ -958,11 +972,11 @@ function ns.OverviewPage(parent, ui)
         Spark(4, dayR)
     end
 
-    local function DrawFeats()
+    local function DrawClosest()
         local Feats = ns.Feats
         local stamp = Feats and Feats.Stamp()
-        if Feats and stamp ~= drawnFeats then
-            drawnFeats = stamp
+        if Feats and stamp ~= drawnClosest then
+            drawnClosest = stamp
             local held, total = Feats.Held()
             closeHeld:SetText(total > 0 and format("%d of %d held", held, total) or "")
             local near = Feats.Closest(3, Feats.Shown)
@@ -973,51 +987,82 @@ function ns.OverviewPage(parent, ui)
                     closeRows[i]:Set(Feats.ClosestRow(info))
                 end
             end
-            closeTitle:SetShown(true)
-
-            if not classBuilt then
-                local groups = Feats.Collections()
-                for _, group in ipairs(groups) do
-                    local first = group.feats[1]
-                    if first and (first.scope == "class" or first.scope == "tree") then
-                        local g = { label = Text(lvlPage, 11, T.muted), crests = {}, feats = group.feats }
-                        for i = 1, #group.feats do
-                            g.crests[i] = ui.FeatCrest(lvlPage, 28)
-                        end
-                        g.label:SetText(group.name)
-                        classGroups[#classGroups + 1] = g
-                    end
-                end
-                classBuilt = #groups > 0
-            end
-            local x, heldClass, totalClass = 0, 0, 0
-            for _, g in ipairs(classGroups) do
-                local at = 0
-                for i, f in ipairs(g.feats) do
-                    local crest = g.crests[i]
-                    if Feats.Shown(f) then
-                        local info = Feats.Info(f.key)
-                        crest:ClearAllPoints()
-                        crest:SetPoint("TOPLEFT", lvlPage, "TOPLEFT", x + at * 32, -366)
-                        crest:Set(f, info, Feats.Moves(f))
-                        crest:Show()
-                        at = at + 1
-                        totalClass = totalClass + 1
-                        if info.tier > 0 then heldClass = heldClass + 1 end
-                    else
-                        crest:Hide()
-                    end
-                end
-                g.label:ClearAllPoints()
-                g.label:SetPoint("TOPLEFT", lvlPage, "TOPLEFT", x, -352)
-                g.label:SetShown(at > 0)
-                x = x + at * 32 + 24
-            end
-            local className = CStr((UnitClass("player")))
-            classTitle:SetText(className and (className .. " feats") or "Class feats")
-            classTitle:SetShown(totalClass > 0)
-            classHeld:SetText(totalClass > 0 and format("%d of %d held", heldClass, totalClass) or "")
         end
+    end
+
+    local function DrawLast()
+        local last = ns.Recap and ns.Recap.Last()
+        if last and type(last.played) == "number" then
+            local title = type(last.title) == "table" and last.title.text
+            lastText:SetText("Last session  " .. Duration(last.played) .. (title and (" \194\183 " .. title) or ""))
+        else
+            lastText:SetText("")
+        end
+        lastBtn:SetShown(lastText:GetText() ~= "")
+    end
+
+    local function BuildClass(Feats)
+        local groups = Feats.Collections()
+        for _, group in ipairs(groups) do
+            local first = group.feats[1]
+            if first and (first.scope == "class" or first.scope == "tree") then
+                local g = { frame = CreateFrame("Frame", nil, classChild), crests = {}, feats = group.feats }
+                Hair(g.frame, "BOTTOM")
+                g.label = Text(g.frame, 14, T.fg, "LEFT", "strong")
+                g.label:SetPoint("TOPLEFT", 0, -8)
+                g.label:SetText(group.name)
+                g.count = Text(g.frame, 12, T.muted)
+                g.count:SetPoint("TOPLEFT", 0, -28)
+                for i = 1, #group.feats do
+                    g.crests[i] = ui.FeatCrest(classChild, CREST)
+                end
+                classGroups[#classGroups + 1] = g
+            end
+        end
+        classBuilt = #groups > 0
+    end
+
+    local function DrawClass()
+        local Feats = ns.Feats
+        local stamp = Feats and Feats.Stamp()
+        if not Feats or stamp == drawnClass then return end
+        drawnClass = stamp
+        if not classBuilt then BuildClass(Feats) end
+        local y, heldClass, totalClass = CLASS_TOP, 0, 0
+        for _, g in ipairs(classGroups) do
+            local at, held = 0, 0
+            for i, f in ipairs(g.feats) do
+                local crest = g.crests[i]
+                if Feats.Shown(f) then
+                    local info = Feats.Info(f.key)
+                    crest:ClearAllPoints()
+                    crest:SetPoint("TOPLEFT", classChild, "TOPLEFT", CREST_LABEL + (at % CREST_PER_ROW) * CREST_STEP,
+                        -(y + floor(at / CREST_PER_ROW) * CREST_STEP + 4))
+                    crest:Set(f, info, Feats.Moves(f))
+                    crest:Show()
+                    at = at + 1
+                    if info.tier > 0 then held = held + 1 end
+                else
+                    crest:Hide()
+                end
+            end
+            g.frame:SetShown(at > 0)
+            if at > 0 then
+                local h = (floor((at - 1) / CREST_PER_ROW) + 1) * CREST_STEP + CREST_ROW_PAD
+                g.frame:ClearAllPoints()
+                g.frame:SetPoint("TOPLEFT", classChild, "TOPLEFT", 0, -y)
+                g.frame:SetPoint("TOPRIGHT", classChild, "TOPRIGHT", 0, -y)
+                g.frame:SetHeight(h)
+                g.count:SetText(format("%d of %d held", held, at))
+                y = y + h
+            end
+            totalClass, heldClass = totalClass + at, heldClass + held
+        end
+        local className = CStr((UnitClass("player")))
+        classTitle:SetText(className and (className .. " feats") or "Class feats")
+        classHeld:SetText(totalClass > 0 and format("%d of %d held", heldClass, totalClass) or "")
+        classEmpty:SetShown(totalClass == 0)
+        classChild:SetHeight(max(1, y))
     end
 
     local function DrawLevel(lvl, lv, wholeLevel, live)
@@ -1032,14 +1077,6 @@ function ns.OverviewPage(parent, ui)
         xpStack:Set(xpRows)
         counts:SetText(format("%s %s \194\183 %s %s \194\183 %s %s", Num(kills), kills == 1 and "kill" or "kills",
             Num(dead), dead == 1 and "death" or "deaths", Num(quests), quests == 1 and "quest" or "quests"))
-        local last = ns.Recap and ns.Recap.Last()
-        if last and type(last.played) == "number" then
-            local title = type(last.title) == "table" and last.title.text
-            lastText:SetText("Last session  " .. Duration(last.played) .. (title and (" \194\183 " .. title) or ""))
-        else
-            lastText:SetText("")
-        end
-        lastBtn:SetShown(lastText:GetText() ~= "")
 
         matesEmpty:SetShown(Rows(mateItems, matePool, base.mn, base.mv, MATES, ns.DisplayName, Duration) == 0)
         matesBars:Set(mateItems)
@@ -1056,7 +1093,20 @@ function ns.OverviewPage(parent, ui)
         deathBars:Set(deathItems)
     end
 
+    --- Opens one of the tabs: overview, class or levelling.
+    function page:Open(key)
+        if not sheets[key] then return end
+        tab = key
+        tabs:Select(key, true)
+        for k, sheet in pairs(sheets) do sheet:SetShown(k == key) end
+        self:Refresh()
+    end
+
     function page:Refresh()
+        if tab == "class" then
+            DrawClass()
+            return
+        end
         local key = ns.charKey
         if not key then return end
         local lvl = CNum(UnitLevel("player"))
@@ -1066,45 +1116,38 @@ function ns.OverviewPage(parent, ui)
         end
         local live = ns.Ov.Live()
 
-        -- Header
-        local _, classFile = UnitClass("player")
-        classFile = CStr(classFile) or base.class
-        local color = classFile and _G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[classFile] or T.fg
-        name:SetText(ns.DisplayName(key))
-        name:SetTextColor(color.r or color[1], color.g or color[2], color.b or color[3])
         local clientLevel = lvl
         lvl = lvl or (type(base.level0) == "number" and base.level0) or nil
-        local zone = CStr(GetRealZoneText()) or (type(base.zone) == "string" and base.zone) or nil
-        if lvl and zone then
-            where:SetText(format("Level %d \194\183 %s", lvl, zone))
-        else
-            where:SetText(lvl and format("Level %d", lvl) or (zone or ""))
+        local lv = live and lvl and live.lv[lvl]
+
+        if tab == "overview" then
+            local _, classFile = UnitClass("player")
+            classFile = CStr(classFile) or base.class
+            local color = classFile and _G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[classFile] or T.fg
+            name:SetText(ns.DisplayName(key))
+            name:SetTextColor(color.r or color[1], color.g or color[2], color.b or color[3])
+            local zone = CStr(GetRealZoneText()) or (type(base.zone) == "string" and base.zone) or nil
+            DrawHeader(key, lvl, clientLevel, zone, live, base.lp + (lv and N(lv.p) or 0))
+            DrawWeek(live)
+            DrawClosest()
+            DrawLast()
+            return
         end
 
-        local lv = live and lvl and live.lv[lvl]
-        local levelTime = base.lp + (lv and N(lv.p) or 0)
-        local wholeLevel = lvl ~= nil and ns.LevelFacts(key, lvl)
-
-        -- An hour at the cap: the page leads with max level data and the levelling moves down.
         local focus = base.capped and CapSeconds(base, live) >= FOCUS_SECONDS
-        lvlPage:SetShown(not focus)
-        where:SetShown(focus)
+        levelBody:SetShown(not focus)
         if maxPage then maxPage:SetShown(focus) end
         if focus then
             RefreshMax(base, live)
             maxPage:SetShown(true)
             return
         end
-
-        DrawHeader(key, lvl, clientLevel, zone, live, levelTime)
-        DrawWeek(live)
-        DrawFeats()
-        DrawLevel(lvl, lv, wholeLevel, live)
+        DrawLevel(lvl, lv, lvl ~= nil and ns.LevelFacts(key, lvl), live)
     end
 
     page:SetScript("OnShow", function()
-        base, drawnFeats = nil, nil
+        base, drawnClosest, drawnClass = nil, nil, nil
     end)
+    ovPage:Show()
     return page
 end
-
