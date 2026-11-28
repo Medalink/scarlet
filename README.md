@@ -54,9 +54,12 @@ the same rule. "Live" is a column that marks the APIs the client's UI calls; it 
 
 ## In game
 
-`/scarlet` opens the window: a character overview (this week, your current level so far, who you played with,
-where you died), the session's numbers, time splits, people and a live view. A minimap icon shows that it is
-recording.
+`/scarlet` opens the window. The rail groups the pages: Play (Session, Feats), Character (Character, Stats),
+Account (Characters, Items) and System (Settings). Character has the tabs Overview (this week, closest feats,
+level estimates), Class (class and spec feats) and Levelling (your current level so far, who you played with,
+where you died). Characters has the tabs Characters, Estimates and Imported, and Items searches every
+character's bags and bank. `/scarlet character class` and `/scarlet characters imported` open a page on a tab.
+A minimap icon shows that it is recording.
 
 ### Loot HUD
 

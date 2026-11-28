@@ -199,7 +199,9 @@ zones, most frequent killer). This week: played, dungeons, quests, gold, zones. 
 level: stacked XP sources per level, or time per level. Play history: sessions, days or levels
 with played, levels, quests, gold, zones. In game the page is shorter: header, This week (played, quests, gold, dungeons), the
 current level so far, Played with, Deaths by zone (the digest's top 10 plus newer sessions). It has no
-zones tile and no killer. Empty cards say what is missing in plain words
+zones tile and no killer. The game's page has three tabs: Overview (header, level bar and estimates, This week,
+the three closest feats, the last session), Class (the class and spec feats) and Levelling (the level so far,
+Played with, Deaths by zone, or the max level cards at the cap). Empty cards say what is missing in plain words
 ("No deaths recorded"), no slogans.
 
 The old stat grids stay, renamed "Stats".
@@ -221,8 +223,9 @@ the current game account. A character's row is its digest figures (`class`, `lev
 The character list is one table of every character, the logged-in one first, then the newest `last`
 first. With more than one game account in `accounts` it has a Game account column. With `groupByAccount`
 it is split under "This account" and "Other accounts" instead (`accounts`, else the characters this
-account recorded) and has no such column. Sections: the totals (characters, played, gold), Item search,
-the character list, This week, Level estimates and Played together.
+account recorded) and has no such column. The page has three tabs. Characters: the totals (characters, played,
+gold), the character list and This week. Estimates: Level estimates and Played together. Imported: the
+imported history tables. The Items page holds the item search.
 
 - This week sums each character's `days` from the Monday 00:00 local time of this week, plus its own rows
   after `through` and, for the logged-in character, the open session. A digest without `days` falls back
@@ -231,12 +234,12 @@ the character list, This week, Level estimates and Played together.
   digest; the logged-in character uses the client's level and XP.
 - Played together lists each pair once with the larger of the two sides' `o`, `p` and `last` from `alts`.
 
-- Item search reads `Items.lua` (`ScarletItems`), which the companion writes into `ScarletData` beside
+- The Items page's search reads `Items.lua` (`ScarletItems`), which the companion writes into `ScarletData` beside
   `Digest.lua` from each character's latest `BC` lines: `names` (itemID to name), and per character `b` and
-  `k` (itemID to count in the bags and in the bank) with `tb` and `tk`, when each was read. A query of two or
-  more characters matches an item name (any case, as typed) or an item id. A row is one item held by one
+  `k` (itemID to count in the bags and in the bank) with `tb` and `tk`, when each was read. An empty query lists every item and a
+  query of two or more characters matches an item name (any case, as typed) or an item id. A row is one item held by one
   character, with its bag and bank counts, sorted by item name, then by the larger total. The logged-in
-  character's bags are counted live; its bank is the last list read. The page shows 40 rows and says how many
+  character's bags are counted live; its bank is the last list read. The page shows 100 rows and says how many
   matched. Without `Items.lua` only the logged-in character's bags are found.
 
 ## Level estimates
@@ -357,7 +360,7 @@ at the cap switches after an hour of recorded play. Its page has no Levelling se
 max level" is the `pd` of the cap level, "Not recorded" when the ding was not seen.
 
 **The switch.** With one hour (3,600 s) of played time at the cap, the page leads with max level data
-and moves the levelling content down. Below the cap, and in the first hour at it, the page is the one
+and moves the levelling content down. In game the Levelling tab then holds the max level cards. Below the cap, and in the first hour at it, the page is the one
 described above. The app, the game and the companion apply the same rule.
 
 **Level shares.** Each level's share also holds `g` and `s` (copper earned and spent, the same net of
