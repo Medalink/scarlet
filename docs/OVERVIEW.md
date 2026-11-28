@@ -16,14 +16,14 @@ companion side, `time()` when the addon writes `S`. Two keys within 3 seconds ar
 session.
 
 **Reloads.** Every load, a login or a `/reload`, writes `S` and `ES` and one row, so these rows and the
-digest count per load. The in-game window shows a reload as the same session: the addon notes the call
-that starts a reload (`ReloadUI`, `C_UI.Reload`, the `/reload` command), closes the load's row with
-`o` set to the key of the session's first load, and keeps the live state (the counters, the recap's chart
-and route, the feat tiers) in `ScarletDB.resume`. A load within 5 minutes of that, of the same character,
-takes it, opens its own row with the same `o` and carries the rest on. The window adds the rows with one
-`o` into one session (key `o`, the first load's); the rows and the digest stay per load. A logout, a quit
-and a disconnect leave no `resume`, so the next login starts a new session. `o` is the addon's: the
-companion does not write or read it.
+digest count per load. The in-game window shows a reload as the same session. At every logout the addon
+seals the recap and leaves the live state (the counters, the recap's chart and route, the feat tiers, the
+summary chip) in `ScarletDB.resume`. At a load's first `PLAYER_ENTERING_WORLD` the client says whether it
+is a reload (`isReloadingUi`): then, for the same character within 5 minutes, the load joins the session:
+the last closed row and its own row get `o`, the key of the session's first load, and the saved state is
+put back. At a login the saved state is dropped. The window adds the rows with one `o` into one session
+(key `o`); the rows and the digest stay per load. A client that sends no flag counts every load as a
+login. `o` and `resume` are the addon's: the companion does not write or read them.
 
 ## Counting rules
 

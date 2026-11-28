@@ -658,7 +658,7 @@ local function Delta(f, played)
     local kind, per = live.kind, live.per or 1
     if kind == "counter" then
         if live.gate == "spec" or live.gate == "role" then return (cur.c[f.key] or 0) / per, GatedSeconds(f, played) end
-        return Sum(ns.sess, live.keys) / per, played
+        return Sum(ns.sess, live.keys) / per, ns.Ov.WholeSeconds()
     elseif kind == "cast" then
         return cur.c[f.key] or 0, GatedSeconds(f, played)
     elseif kind == "clock" and not live.once_at then

@@ -1551,24 +1551,6 @@ local function EnsureLogging()
 end
 
 local RESUME_WITHIN = 300
-local reloading = false
-
-local function NoteReload() reloading = true end
-
-local function HookReload()
-    if type(_G.ReloadUI) == "function" then hooksecurefunc("ReloadUI", NoteReload) end
-    local ui = _G.C_UI
-    if type(ui) == "table" and type(ui.Reload) == "function" then hooksecurefunc(ui, "Reload", NoteReload) end
-    local slash = _G.SlashCmdList
-    if type(slash) ~= "table" then return end
-    for _, key in ipairs({ "RELOAD", "RELOADUI" }) do
-        if type(slash[key]) == "function" then hooksecurefunc(slash, key, NoteReload) end
-    end
-end
-HookReload()
-
-function H.PLAYER_CAMPING() reloading = false end
-function H.PLAYER_QUITING() reloading = false end
 
 local function TakeResume()
     local db = ns.db
@@ -1615,20 +1597,24 @@ function H.PLAYER_LOGIN()
         _G.GetRealmID and _G.GetRealmID() or "", GetRealmName(),
         _G.GetCurrentRegion and _G.GetCurrentRegion() or "", select(4, GetBuildInfo()), lastXP or "", lastMax or "",
         lastMoney, ns.Cap.level or "")
-    local resume = TakeResume()
-    local after = resume and Ov.Joinable(resume.o) and Recap.Fits(resume.recap) and ns.SessFits(resume.sess) and resume.o
-        or nil
-    Ov.Start(ns.session, Num(UnitLevel("player")), Num(lastMoney), Num(lastXP), Num(lastMax), after)
-    if after then
-        Recap.Resume(resume.recap)
-        ns.RestoreSess(resume.sess)
-        if ns.Feats then ns.Feats.Resume(resume.feats) end
-    end
+    Ov.Start(ns.session, Num(UnitLevel("player")), Num(lastMoney), Num(lastXP), Num(lastMax))
     dead = UnitIsDeadOrGhost("player") and true or false
     if ns.OnLogin then ns.OnLogin() end
 end
 
-function H.PLAYER_ENTERING_WORLD()
+local function ResumeSession(isReloadingUi)
+    local saved = TakeResume()
+    if isReloadingUi ~= true or not saved then return end
+    if not (Recap.Fits(saved.recap) and ns.SessFits(saved.sess) and Ov.Join(saved.o, saved.row)) then return end
+    Recap.Resume(saved.recap)
+    ns.RestoreSess(saved.sess)
+    if ns.char and (saved.last == nil or type(saved.last) == "table") then ns.char.last = saved.last end
+    if ns.Feats then ns.Feats.Resume(saved.feats) end
+    if ns.Summary then ns.Summary.Resume(saved.summary) end
+end
+
+function H.PLAYER_ENTERING_WORLD(_, isReloadingUi)
+    if not entered then ResumeSession(isReloadingUi) end
     Zone()
     EnsureLogging()
     if not entered then
@@ -1649,8 +1635,9 @@ function H.PLAYER_LOGOUT()
     while xpPending[1] do FlushXP(table.remove(xpPending, 1)) end
     local xpNow, xpMaxNow
     if ns.Cap.Levelling() then xpNow, xpMaxNow = Num(UnitXP("player")), Num(UnitXPMax("player")) end
-    local carry = reloading
-    Ov.End(xpNow, xpMaxNow, carry)
+    local rowT, sessionStart = Ov.OpenKeys()
+    local lastBefore = ns.char and ns.char.last
+    Ov.End(xpNow, xpMaxNow)
     EndSegment()
     StopTicker()
     if campT0 then
@@ -1669,10 +1656,10 @@ function H.PLAYER_LOGOUT()
     Emit("ES")
     if ns.sessionG then Add("tracked", GetTime() - ns.sessionG) end
     ns.Seal(true)
-    local origin = Ov.Origin()
     if ns.db then
-        ns.db.resume = carry and origin and { c = ns.charKey, at = time(), g = GetTime(), o = origin,
-            recap = Recap.Suspend(), feats = ns.Feats and ns.Feats.Suspend() or nil, sess = ns.sess } or nil
+        ns.db.resume = rowT and { c = ns.charKey, at = time(), g = GetTime(), row = rowT, o = sessionStart,
+            last = lastBefore, recap = Recap.Suspend(), feats = ns.Feats and ns.Feats.Suspend() or nil,
+            summary = ns.Summary and ns.Summary.Suspend() or nil, sess = ns.sess } or nil
     end
 end
 

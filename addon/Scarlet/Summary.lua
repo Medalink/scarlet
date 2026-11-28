@@ -117,6 +117,17 @@ function Summary.ChipText(recap)
     return table.concat(parts, " · ")
 end
 
+--- Which session the chip and the card already showed for, which a reload keeps.
+function Summary.Suspend()
+    return { chip = chipFor, card = cardFor }
+end
+
+function Summary.Resume(saved)
+    if type(saved) ~= "table" then return end
+    chipFor = type(saved.chip) == "number" and saved.chip or nil
+    cardFor = type(saved.card) == "number" and saved.card or nil
+end
+
 local function ShowChip()
     local row = ns.Ov and ns.Ov.Whole()
     if not row or chipFor == row.t then return end

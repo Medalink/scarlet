@@ -51,7 +51,7 @@ local function Reason(f, tier, now)
     if lastAt and now - lastAt < SPACING then return "the last nudge was under 15 minutes ago" end
     if shown >= BUDGET then return "3 nudges already this session" end
     if ns.Alerts.Quiet() then return "combat, an encounter or a cinematic" end
-    if ns.Recap.Elapsed() < QUIET_LOGIN then return "the first minute after login" end
+    if ns.sessionG and GetTime() - ns.sessionG < QUIET_LOGIN then return "the first minute after login" end
     if ns.UI.WindowOpen() then return "the Scarlet window is open" end
     if ns.FeatToast and now - ns.FeatToast.LastAt() < QUIET_TOAST then return "a feat toast just showed" end
     if plate and plate:IsShown() then return "a nudge is on screen" end

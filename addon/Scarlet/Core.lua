@@ -462,24 +462,42 @@ local function ClosedLoadsOf(start)
     return rows
 end
 
---- True when the last closed row is a load of the session that began at start, which a reload interrupted.
-function Ov.Joinable(start)
-    local ch = ns.char
-    local sess = ch and type(ch.ov) == "table" and ch.ov.sess
+--- The open row's key and the key of the session it belongs to (its first load's), for a reload to carry on.
+function Ov.OpenKeys()
+    if not cur then return nil end
+    return cur.t, sessionOrigin or cur.t
+end
+
+--- The open row continues the session that began at start, whose last load closed as the row keyed closedT.
+--- False, with nothing changed, when that row is not the last closed one.
+function Ov.Join(start, closedT)
+    local sess = ov and ov.sess
     local last = type(sess) == "table" and sess[#sess]
-    return type(start) == "number" and type(last) == "table" and last.o == start and type(last.t) == "number"
+    if not cur or type(last) ~= "table" or type(start) ~= "number" or type(closedT) ~= "number" then return false end
+    if last.t ~= closedT or start > closedT or (last.o ~= nil and last.o ~= start) then return false end
+    last.o, cur.o, sessionOrigin = start, start, start
+    return true
 end
 
---- The session's start: its first load's time after reloads, else the open row's.
-function Ov.Origin()
-    return sessionOrigin
+--- Seconds played in the whole session: the open row and the loads a reload closed before it. Allocates nothing.
+function Ov.WholeSeconds()
+    local live = Ov.Live()
+    if not live then return 0 end
+    local secs = live.p
+    local sess = sessionOrigin and ov.sess
+    if sess then
+        for i = #sess, 1, -1 do
+            local row = sess[i]
+            if type(row) ~= "table" or row.o ~= sessionOrigin then break end
+            secs = secs + (tonumber(row.p) or 0)
+        end
+    end
+    return secs
 end
 
---- The session starts: t is the S line's time. A row left open by a session that never closed
---- (an error in the logout handler) is closed first, with what it has. after is the start of the
---- session a reload interrupted, which this load continues (Ov.Joinable); the loads keep their own
---- rows, and Ov.Whole and Ov.Sessions put them together.
-function Ov.Start(t, lv, money, xp, xpMax, after)
+-- The session starts: t is the S line's time. A row left open by a session that never closed
+-- (an error in the logout handler) is closed first, with what it has.
+function Ov.Start(t, lv, money, xp, xpMax)
     local ch = ns.char
     if not ch then return end
     if type(ch.ov) ~= "table" then ch.ov = {} end
@@ -510,8 +528,8 @@ function Ov.Start(t, lv, money, xp, xpMax, after)
         end
         if ahead then MarkHole(prev.l1, lv) end
     end
-    sessionOrigin = type(after) == "number" and after or nil
-    cur = { t = t, p = 0, l0 = lv, l1 = lv, m = money, z = 0, lv = {}, zn = {}, o = sessionOrigin }
+    sessionOrigin = nil
+    cur = { t = t, p = 0, l0 = lv, l1 = lv, m = money, z = 0, lv = {}, zn = {} }
     holed = ahead
     ov.cur = cur
     readAt, readTotal, credited = nil, nil, false
@@ -521,9 +539,8 @@ function Ov.Start(t, lv, money, xp, xpMax, after)
     if ns.Feats then ns.Feats.Start(t) end
 end
 
---- The load ends. At a logout the session ends with it: its recap is sealed. At a reload (reloading) the row is
---- closed and tagged with the session's start, and nothing is sealed, so the next load can continue it.
-function Ov.End(xp, xpMax, reloading)
+--- The load ends: a logout, a reload or a disconnect that still writes SavedVariables. The recap is sealed for the whole session.
+function Ov.End(xp, xpMax)
     if not cur then return end
     Tick()
     cur.l1 = level or cur.l1
@@ -535,12 +552,7 @@ function Ov.End(xp, xpMax, reloading)
     else
         ov.pe = nil
     end
-    if reloading then
-        sessionOrigin = sessionOrigin or cur.t
-        cur.o = sessionOrigin
-    else
-        ns.Recap.Seal(Ov.Whole())
-    end
+    ns.Recap.Seal(Ov.Whole())
     Push(cur)
     ov.cur, cur = nil, nil
     -- Logging out inside a dungeon leaves it; coming back within RUN_GAP is the same run.
@@ -606,10 +618,10 @@ function ns.SessFits(saved)
     return true
 end
 
---- Puts the counters of the session back after a reload (ns.SessFits).
+--- Adds the counters of the session a reload kept to those this load has counted so far (ns.SessFits).
 function ns.RestoreSess(saved)
     for _, k in ipairs(ns.STAT_KEYS) do
-        if IsCount(saved[k]) then ns.sess[k] = saved[k] end
+        if IsCount(saved[k]) then ns.sess[k] = ns.sess[k] + saved[k] end
     end
 end
 
