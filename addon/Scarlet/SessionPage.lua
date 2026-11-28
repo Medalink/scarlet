@@ -50,6 +50,16 @@ function ns.SessionPage(parent, ui)
     tabs:SetPoint("TOPLEFT")
     local started = Text(page, 12, T.muted, "RIGHT")
     started:SetPoint("TOPRIGHT", 0, -9)
+    local startedAt
+    local startedHot = CreateFrame("Frame", nil, page)
+    startedHot:SetAllPoints(started)
+    startedHot:EnableMouse(true)
+    startedHot:SetScript("OnEnter", function(self) ns.ShowExact(self, startedAt, false, "ANCHOR_BOTTOM") end)
+    startedHot:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    local function ShowStarted(on)
+        started:SetShown(on)
+        startedHot:SetShown(on)
+    end
 
     local view = CreateFrame("Frame", nil, page)
     view:SetPoint("TOPLEFT", 0, -TAB_ROW)
@@ -181,8 +191,8 @@ function ns.SessionPage(parent, ui)
             more[i].label:SetShown(on)
             more[i].value:SetShown(on)
         end
-        started:SetText(format("Started %s · %s", date(tab == "this" and "%H:%M" or "%b %d %H:%M", recap.start),
-            Duration(played)))
+        startedAt = recap.start
+        started:SetText(format("Started %s · %s", ns.DayTime(recap.start), Duration(played)))
     end
 
     local function Show(recap, none)
@@ -192,7 +202,7 @@ function ns.SessionPage(parent, ui)
         title:SetShown(on)
         empty:SetShown(not on)
         empty:SetText(none or "")
-        started:SetShown(on)
+        ShowStarted(on)
         if not on then
             for i = 1, 3 do featRows[i]:Hide() end
             noFeats:Hide()
@@ -247,8 +257,12 @@ function ns.SessionPage(parent, ui)
         row.kills:SetWidth(80)
         row:SetScript("OnEnter", function(self)
             if self.recap then hover:Show() end
+            ns.ShowExact(self, self.at, false, "ANCHOR_BOTTOM")
         end)
-        row:SetScript("OnLeave", function() hover:Hide() end)
+        row:SetScript("OnLeave", function()
+            hover:Hide()
+            GameTooltip:Hide()
+        end)
         row:SetScript("OnClick", function(self)
             if self.recap then page:Open("last", self.recap) end
         end)
@@ -268,7 +282,8 @@ function ns.SessionPage(parent, ui)
             row.recap = ns.Recap.For(r.t)
             row:SetEnabled(row.recap ~= nil)
             row:SetAlpha(row.recap and 1 or 0.45)
-            row.date:SetText(date("%b %d  %H:%M", r.t))
+            row.date:SetText(ns.Ago(r.t))
+            row.at = r.t
             row.title:SetText((ns.Recap.RowTitle(r)))
             row.played:SetText(Duration(r.p or 0))
             row.levels:SetText(r.l0 == r.l1 and ("Level " .. (r.l0 or "?")) or format("%s to %s", r.l0 or "?", r.l1 or "?"))
@@ -289,7 +304,7 @@ function ns.SessionPage(parent, ui)
         view:SetShown(key == "this" or key == "last")
         earlier:SetShown(key == "earlier")
         log:SetShown(key == "log")
-        started:SetShown(key == "this" or key == "last")
+        ShowStarted(key == "this" or key == "last")
         if key == "last" then
             local r = recap or ns.Recap.Last()
             Show(r, "No earlier session recorded yet.")
