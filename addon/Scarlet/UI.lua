@@ -785,7 +785,7 @@ local function Show(key)
     for k, page in pairs(pages) do page:SetShown(k == key) end
     for _, b in ipairs(navButtons) do b:SetActive(b.key == key) end
     -- The Character page opens on the character's name; the others open on their title.
-    local home = key == "overview" or key == "recap" or key == "feats"
+    local home = key == "overview" or key == "recap" or key == "feats" or key == "characters"
     window.pageTitle:SetShown(not home)
     local title = navButtons[key].label
     if ns.char and key == "stats" and not ns.History(ns.charKey) then

@@ -17,6 +17,7 @@ local MORE = {
     { "Jumps", "jumps" },
 }
 local MORE_ROWS = 6
+local SESSION_TABS = { this = true, last = true, earlier = true, log = true }
 
 local function Total(t)
     local sum = 0
@@ -299,6 +300,7 @@ function ns.SessionPage(parent, ui)
     local logPage = ui.LivePage(log)
 
     function page:Open(key, recap)
+        if not SESSION_TABS[key] then return end
         tab = key
         tabs:Select(key, true)
         view:SetShown(key == "this" or key == "last")
