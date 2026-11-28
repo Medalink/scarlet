@@ -317,7 +317,7 @@ days covered: `min(14, (now - first) / 86400)`, not rounded, at least 1, where `
 digest's `first` (the start of the character's oldest recorded session; the oldest merged row
 when the digest has none). A character recorded for 2 days is measured over 2 days, not 14.
 `rate` is played seconds per calendar day. The date is `now + time / rate * 86400` seconds, in local
-time, written `Fri 28 Nov` (weekday, day, month), with the year added when it is not this year.
+time, written `Fri Nov 28` (weekday, month, day), with the year added when it is not this year (`Fri Nov 28 2025`).
 Leave the date out when `rate` is 0 or when `time / rate` is more than 3,650 days. The page
 writes "about" before it.
 
