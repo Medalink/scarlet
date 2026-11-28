@@ -482,13 +482,18 @@ function Recap.Last()
     return saved
 end
 
---- The app's recap for the session that began at start, or nil. None for a load of a session a reload joined.
+--- The app's recap for the session that began at start, or nil. The app's key may be up to Ov.SAME_KEY_SECS off the
+--- row's. None for a load of a session a reload joined.
 function Recap.FromApp(start)
     local list = FromApp()
-    if not list or ns.Ov.InJoined(start) then return nil end
+    if not list or type(start) ~= "number" or ns.Ov.InJoined(start) then return nil end
+    local best, gap = nil, ns.Ov.SAME_KEY_SECS + 1
     for i = 1, #list do
-        if list[i].start == start then return list[i] end
+        local r = list[i]
+        local off = type(r) == "table" and type(r.start) == "number" and math.abs(r.start - start)
+        if off and off < gap then best, gap = r, off end
     end
+    return best
 end
 
 --- The recap of the closed session that began at start: the app's, or the copy this addon saved of the last one.

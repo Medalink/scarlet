@@ -483,6 +483,7 @@ function Ov.Join(start, closedT)
 end
 
 local SAME_KEY_SECS = 3
+Ov.SAME_KEY_SECS = SAME_KEY_SECS
 
 --- Whether a load that began at t belongs to a session a reload split: one closed, or the one still open. t may be
 --- the app's key for the load, which is within SAME_KEY_SECS of the row's.
