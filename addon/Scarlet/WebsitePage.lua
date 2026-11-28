@@ -1,6 +1,6 @@
 local _, ns = ...
 
-local format, date, time = string.format, date, time
+local format = string.format
 
 local DEFAULT_HOST = "scarletweb.io"
 
@@ -57,11 +57,7 @@ end
 
 local function LastUpload(t)
     if not t then return "No upload yet." end
-    local day = date("%Y%m%d", t)
-    local clock = date("%H:%M", t)
-    if day == date("%Y%m%d") then return "Last upload today " .. clock .. "." end
-    if day == date("%Y%m%d", time() - 86400) then return "Last upload yesterday " .. clock .. "." end
-    return format("Last upload %s %s.", date("%d %b", t), clock)
+    return "Last upload " .. ns.Ago(t) .. "."
 end
 
 local function AddressBox(parent, ui, w)
@@ -115,11 +111,18 @@ function ns.WebsitePage(parent, ui)
     local note = Text(page, 13, T.muted)
     note:SetPoint("TOPLEFT", box, "BOTTOMLEFT", 0, -12)
 
-    local drawnKind, drawnPage, drawnSync, hasAddress
+    local noteHot = CreateFrame("Frame", nil, page)
+    noteHot:SetAllPoints(note)
+    noteHot:EnableMouse(true)
+    noteHot:SetScript("OnEnter", function(self) ns.ShowExact(self, Web.State().sync, false, "ANCHOR_BOTTOM") end)
+    noteHot:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    local drawnKind, drawnPage, drawnSync, drawnAgo, hasAddress
     function page:Refresh()
         local s = Web.State()
-        if s.kind == drawnKind and s.page == drawnPage and s.sync == drawnSync then return end
-        drawnKind, drawnPage, drawnSync = s.kind, s.page, s.sync
+        local ago = s.sync and ns.Ago(s.sync) or nil
+        if s.kind == drawnKind and s.page == drawnPage and s.sync == drawnSync and ago == drawnAgo then return end
+        drawnKind, drawnPage, drawnSync, drawnAgo = s.kind, s.page, s.sync, ago
         local address, line, tail
         if s.kind == "none" then
             local total = ns.FEATS and #ns.FEATS or 0
@@ -143,6 +146,7 @@ function ns.WebsitePage(parent, ui)
         box:SetShown(hasAddress)
         if address then box:Set(address) end
         note:SetText(tail or "")
+        noteHot:SetShown(s.kind == "linked" and s.sync ~= nil)
         note:ClearAllPoints()
         note:SetPoint("TOPLEFT", address and box or sentence, "BOTTOMLEFT", 0, -12)
     end
